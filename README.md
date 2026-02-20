@@ -1,4 +1,4 @@
-# intelli-clawd
+# intelli-claw
 
 > A multi-panel agent workspace for [OpenClaw](https://github.com/openclaw/openclaw).  
 > Talk to multiple AI agents side-by-side, manage sessions, and track tasks — all from one browser tab.
@@ -10,7 +10,7 @@
 OpenClaw connects to messaging platforms like Telegram, Slack, Discord, and more.  
 But those platforms have **limits** — no multi-panel views, no per-session task tracking, limited slash command UX, and no way to work with multiple agents or sessions simultaneously.
 
-**intelli-clawd** is a purpose-built web workspace that unlocks the full power of OpenClaw:
+**intelli-claw** is a purpose-built web workspace that unlocks the full power of OpenClaw:
 
 - **Multiple panels** — talk to different agents (or different sessions of the same agent) side by side
 - **Session management** — switch, rename, create, and delete sessions with keyboard shortcuts
@@ -91,8 +91,8 @@ Click the gear icon to access per-session settings:
 
 ```bash
 # Clone
-git clone https://github.com/intellieffect/intelli-clawd.git
-cd intelli-clawd
+git clone https://github.com/intellieffect/intelli-claw.git
+cd intelli-claw
 
 # Install dependencies
 pnpm install
