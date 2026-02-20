@@ -23,6 +23,11 @@ export const DEFAULT_SHORTCUTS: ShortcutDef[] = [
   { id: "reopen-panel", keys: "Ctrl+Shift+X", description: "닫은 패널 다시 열기", scope: "global" },
   { id: "new-session", keys: "Ctrl+N", description: "현재 패널 새 세션", scope: "panel" },
   { id: "session-switcher", keys: "Cmd+K", description: "세션 스위처 열기", scope: "panel" },
+  { id: "focus-panel-1", keys: "Cmd+1", description: "패널 1 포커스", scope: "global" },
+  { id: "focus-panel-2", keys: "Cmd+2", description: "패널 2 포커스", scope: "global" },
+  { id: "focus-panel-3", keys: "Cmd+3", description: "패널 3 포커스", scope: "global" },
+  { id: "focus-panel-4", keys: "Cmd+4", description: "패널 4 포커스", scope: "global" },
+  { id: "focus-panel-5", keys: "Cmd+5", description: "패널 5 포커스", scope: "global" },
 ];
 
 // Re-export for backward compat

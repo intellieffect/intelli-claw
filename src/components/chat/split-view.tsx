@@ -167,11 +167,18 @@ export function SplitView() {
     (window as any).__awfSplitNavPanel = navPanel;
     (window as any).__awfSplitCloseActivePanel = () => removePanel(state.activePanelId);
     (window as any).__awfSplitReopenLastPanel = reopenLastClosedPanel;
+    (window as any).__awfSplitFocusPanel = (index: number) => {
+      setState((prev) => {
+        if (index < 0 || index >= prev.panels.length) return prev;
+        return { ...prev, activePanelId: prev.panels[index].id };
+      });
+    };
     return () => {
       delete (window as any).__awfSplitAddPanel;
       delete (window as any).__awfSplitNavPanel;
       delete (window as any).__awfSplitCloseActivePanel;
       delete (window as any).__awfSplitReopenLastPanel;
+      delete (window as any).__awfSplitFocusPanel;
     };
   });
 

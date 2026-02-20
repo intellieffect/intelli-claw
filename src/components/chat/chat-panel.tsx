@@ -108,33 +108,38 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
 
   const summarizeLabelFromText = useCallback((text: string, agent: string) => {
     const clean = text
-      .replace(/^\/(new|reset|status|help|reasoning|model\s+\S+)\b/gi, "")
+      .replace(/^\/(new|reset|status|help|reasoning|model\s+\S+|think\S*|verbose\S*)\b/gi, "")
       .replace(/\s+/g, " ")
       .trim();
     if (!clean) return makeDefaultThreadLabel(agent);
-    const snippet = clean.length > 28 ? `${clean.slice(0, 28)}…` : clean;
+    const snippet = clean.length > 40 ? `${clean.slice(0, 38)}…` : clean;
     return `${agent}/${snippet}`;
   }, [makeDefaultThreadLabel]);
 
-  async function maybeAutoRenameThread(key: string | undefined, text: string) {
+  async function maybeAutoLabelSession(key: string | undefined, text: string) {
     if (!client || !isConnected || !key) return;
     const parsed = parseSessionKey(key);
-    if (parsed.type !== "thread") return;
+    // Only auto-label main and thread sessions
+    if (parsed.type !== "thread" && parsed.type !== "main") return;
 
     const session = (sessions as GatewaySession[]).find((s) => s.key === key);
     const currentLabel = (session?.label || "").trim();
     const isAutoOrEmpty =
       !currentLabel ||
-      /스레드\s*#|thread\s*#|^thread[:\s-]/i.test(currentLabel);
+      /스레드\s*#|thread\s*#|^thread[:\s-]|작업-\d{4}/i.test(currentLabel);
 
     if (!isAutoOrEmpty) return;
 
+    // Skip slash commands
+    const clean = text.replace(/^\/(new|reset|status|help|reasoning|model\s+\S+|think\S*|verbose\S*)\b/gi, "").trim();
+    if (!clean) return;
+
     try {
-      const label = summarizeLabelFromText(text, parsed.agentId);
+      const label = summarizeLabelFromText(clean, parsed.agentId);
       await client.request("sessions.patch", { key, label });
       refreshSessions();
     } catch (err) {
-      console.error("[AWF] auto-rename thread failed:", err);
+      console.error("[AWF] auto-label session failed:", err);
     }
   }
 
@@ -166,7 +171,7 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
       }
 
       if (attachments.length > 0) {
-        await maybeAutoRenameThread(effectiveSessionKey, text);
+        await maybeAutoLabelSession(effectiveSessionKey, text);
         const payloads = await Promise.all(attachments.map(attachmentToPayload));
         const userMsg = text || "";
         const displayAtts = attachments.map((att) => ({
@@ -189,7 +194,7 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
         }
         clearAttachments();
       } else {
-        await maybeAutoRenameThread(effectiveSessionKey, text);
+        await maybeAutoLabelSession(effectiveSessionKey, text);
         sendMessage(text);
       }
     },

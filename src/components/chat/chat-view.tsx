@@ -32,6 +32,12 @@ export function ChatView() {
         e.preventDefault();
         (window as any).__awfSplitAddPanel?.();
       }
+
+      // Cmd+1~9: focus panel by index
+      if (e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey && e.key >= "1" && e.key <= "9") {
+        e.preventDefault();
+        (window as any).__awfSplitFocusPanel?.(parseInt(e.key, 10) - 1);
+      }
     }
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
