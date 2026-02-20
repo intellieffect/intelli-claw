@@ -69,23 +69,23 @@ export function ChatHeader({ sessionKey, agents, sessions, messages }: ChatHeade
   const topic = useMemo(() => deriveTopic(session, messages), [session, messages]);
 
   return (
-    <div className="flex-shrink-0 border-b border-zinc-800 bg-zinc-900/80 px-4 py-2.5">
+    <div className="flex-shrink-0 border-b border-zinc-700/50 bg-zinc-900/90 px-5 py-3.5">
       {/* Agent name + session type */}
-      <div className="flex items-center gap-2.5">
-        <Bot size={18} className="text-amber-500 flex-shrink-0" />
-        <span className="text-base font-bold text-zinc-50 truncate tracking-tight">
+      <div className="flex items-center gap-3">
+        <Bot size={22} className="text-amber-500 flex-shrink-0" />
+        <span className="text-lg font-extrabold text-white truncate tracking-tight leading-tight">
           {agentName}
         </span>
-        <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] font-medium text-zinc-500">
+        <span className="rounded-md bg-zinc-800 px-2 py-0.5 text-[10px] font-medium text-zinc-500 uppercase tracking-wide">
           {sessionType}
         </span>
       </div>
 
       {/* Topic / first message summary */}
       {topic && (
-        <div className="mt-1 flex items-center gap-1.5">
-          <MessageSquare size={11} className="text-zinc-500 flex-shrink-0" />
-          <span className="text-xs text-zinc-400 truncate">{topic}</span>
+        <div className="mt-1.5 flex items-center gap-2 pl-[34px]">
+          <MessageSquare size={12} className="text-zinc-600 flex-shrink-0" />
+          <span className="text-[13px] text-zinc-400 truncate">{topic}</span>
         </div>
       )}
     </div>
