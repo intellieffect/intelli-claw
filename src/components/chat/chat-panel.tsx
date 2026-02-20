@@ -396,8 +396,18 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true, initi
         sessions={sessions as GatewaySession[]}
         agents={agents}
         currentKey={effectiveSessionKey}
+        currentAgentId={agentId}
         onSelect={(key) => {
+          // Parse agent from session key and switch if different
+          const parsed = parseSessionKey(key);
+          if (parsed.agentId !== agentId) {
+            handleAgentChange(parsed.agentId);
+          }
           setSessionKey(key);
+          setAgentBrowserOpen(false);
+        }}
+        onAgentChange={(id) => {
+          handleAgentChange(id);
           setAgentBrowserOpen(false);
         }}
         open={agentBrowserOpen}

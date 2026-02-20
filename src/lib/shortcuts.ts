@@ -17,6 +17,7 @@ export const SHORTCUTS: ShortcutDef[] = [
   { id: "new-session", keys: "Ctrl+N", description: "현재 패널 새 세션", scope: "panel" },
   { id: "abort-stream", keys: "Ctrl+C", description: "스트리밍 중지", scope: "panel" },
   { id: "session-switcher", keys: "Cmd+K", description: "세션 스위처 열기", scope: "panel" },
+  { id: "agent-browser", keys: "Cmd+O", description: "에이전트별 세션 브라우저", scope: "panel" },
 ];
 
 export function isShortcutHelp(e: KeyboardEvent) {

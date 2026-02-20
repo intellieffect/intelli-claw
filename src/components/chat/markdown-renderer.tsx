@@ -417,9 +417,21 @@ function MediaPdf({ src, fileName }: { src: string; fileName: string }) {
   );
 }
 
+const mediaTypeIconMap: Record<MediaType, typeof FileIcon> = {
+  audio: FileAudio,
+  video: FileVideo,
+  pdf: FileText,
+  code: FileCode,
+  spreadsheet: FileSpreadsheet,
+  archive: FileArchive,
+  text: FileText,
+  image: FileIcon,
+  other: FileIcon,
+};
+
 function FileCard({ url, fileName, type }: { url: string; fileName: string; type: MediaType }) {
   const [fileInfo, setFileInfo] = useState<{ size: number } | null>(null);
-  const Icon = getMediaTypeIcon(type);
+  const Icon = mediaTypeIconMap[type] ?? FileIcon;
 
   useEffect(() => {
     const originalPath = extractOriginalPath(url);
