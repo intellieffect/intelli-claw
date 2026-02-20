@@ -154,21 +154,21 @@ describe("ChatInput", () => {
 
 describe("SessionSwitcher", () => {
   const mockSessions: GatewaySession[] = [
-    { key: "agent:my-agent:main", updatedAt: 300, label: "Alpha 메인" },
-    { key: "agent:brxce:main", updatedAt: 200 },
-    { key: "agent:my-agent:main:thread:123", updatedAt: 100, totalTokens: 5000 },
+    { key: "agent:alpha:main", updatedAt: 300, label: "Alpha Main" },
+    { key: "agent:beta:main", updatedAt: 200 },
+    { key: "agent:alpha:main:thread:123", updatedAt: 100, totalTokens: 5000 },
   ];
 
   it("renders trigger button with current session name", () => {
     render(
       <SessionSwitcher
         sessions={mockSessions}
-        currentKey="agent:my-agent:main"
+        currentKey="agent:alpha:main"
         onSelect={() => {}}
         onNew={() => {}}
       />
     );
-    expect(screen.getByText("Alpha 메인")).toBeInTheDocument();
+    expect(screen.getByText("Alpha Main")).toBeInTheDocument();
   });
 
   it("renders trigger button with fallback text when no current session", () => {
@@ -204,9 +204,7 @@ describe("SessionSwitcher", () => {
         onOpenChange={() => {}}
       />
     );
-    // Session with updatedAt: 300 should appear (label: Alpha 메인)
-    expect(screen.getByText("Alpha 메인")).toBeInTheDocument();
-    // All 3 sessions + new conversation
+    expect(screen.getByText("Alpha Main")).toBeInTheDocument();
     expect(screen.getByText("3개 세션")).toBeInTheDocument();
   });
 
@@ -221,7 +219,7 @@ describe("SessionSwitcher", () => {
       />
     );
     const input = screen.getByPlaceholderText(/세션 검색/);
-    fireEvent.change(input, { target: { value: "brxce" } });
+    fireEvent.change(input, { target: { value: "beta" } });
     expect(screen.getByText(/1개 세션/)).toBeInTheDocument();
   });
 
@@ -237,8 +235,8 @@ describe("SessionSwitcher", () => {
         onOpenChange={onOpenChange}
       />
     );
-    fireEvent.click(screen.getByText("Alpha 메인"));
-    expect(onSelect).toHaveBeenCalledWith("agent:my-agent:main");
+    fireEvent.click(screen.getByText("Alpha Main"));
+    expect(onSelect).toHaveBeenCalledWith("agent:alpha:main");
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
@@ -285,10 +283,9 @@ describe("SessionSwitcher", () => {
         onOpenChange={() => {}}
       />
     );
-    // Agent badges should be visible
-    const my-agentBadges = screen.getAllByText("my-agent");
-    expect(my-agentBadges.length).toBeGreaterThanOrEqual(2); // 2 my-agent sessions
-    expect(screen.getByText("brxce")).toBeInTheDocument();
+    const alphaBadges = screen.getAllByText("alpha");
+    expect(alphaBadges.length).toBeGreaterThanOrEqual(2); // 2 alpha sessions
+    expect(screen.getByText("beta")).toBeInTheDocument();
   });
 
   it("shows keyboard navigation hints in footer", () => {
@@ -316,10 +313,8 @@ describe("SessionSwitcher", () => {
         onOpenChange={() => {}}
       />
     );
-    // Palette should not be visible
     expect(screen.queryByPlaceholderText(/세션 검색/)).not.toBeInTheDocument();
 
-    // Re-render with open=true
     rerender(
       <SessionSwitcher
         sessions={mockSessions}
@@ -396,7 +391,6 @@ describe("MessageList", () => {
       },
     ];
     const { container } = render(<MessageList messages={messages} loading={false} streaming={false} />);
-    // The blinking cursor indicator
     expect(container.querySelector(".animate-pulse")).toBeInTheDocument();
   });
 });

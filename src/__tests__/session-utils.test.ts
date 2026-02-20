@@ -8,28 +8,28 @@ import {
 
 describe("parseSessionKey", () => {
   it("parses main session", () => {
-    const result = parseSessionKey("agent:my-agent:main");
-    expect(result).toEqual({ agentId: "my-agent", type: "main" });
+    const result = parseSessionKey("agent:alpha:main");
+    expect(result).toEqual({ agentId: "alpha", type: "main" });
   });
 
   it("parses thread session", () => {
-    const result = parseSessionKey("agent:my-agent:main:thread:18833");
-    expect(result).toEqual({ agentId: "my-agent", type: "thread", detail: "18833" });
+    const result = parseSessionKey("agent:alpha:main:thread:18833");
+    expect(result).toEqual({ agentId: "alpha", type: "thread", detail: "18833" });
   });
 
   it("parses cron session", () => {
-    const result = parseSessionKey("agent:brxce:cron:daily-check");
-    expect(result).toEqual({ agentId: "brxce", type: "cron", detail: "daily-check" });
+    const result = parseSessionKey("agent:beta:cron:daily-check");
+    expect(result).toEqual({ agentId: "beta", type: "cron", detail: "daily-check" });
   });
 
   it("parses subagent session", () => {
-    const result = parseSessionKey("agent:my-agent:subagent:abc-123");
-    expect(result).toEqual({ agentId: "my-agent", type: "subagent", detail: "abc-123" });
+    const result = parseSessionKey("agent:alpha:subagent:abc-123");
+    expect(result).toEqual({ agentId: "alpha", type: "subagent", detail: "abc-123" });
   });
 
   it("parses A2A session", () => {
-    const result = parseSessionKey("agent:my-agent:agent:brxce:main");
-    expect(result).toEqual({ agentId: "my-agent", type: "a2a", detail: "brxce" });
+    const result = parseSessionKey("agent:alpha:agent:beta:main");
+    expect(result).toEqual({ agentId: "alpha", type: "a2a", detail: "beta" });
   });
 
   it("handles unknown format", () => {
@@ -40,21 +40,21 @@ describe("parseSessionKey", () => {
 
 describe("sessionDisplayName", () => {
   it("uses label when available", () => {
-    expect(sessionDisplayName({ key: "agent:my-agent:main", label: "My Chat" })).toBe("My Chat");
+    expect(sessionDisplayName({ key: "agent:alpha:main", label: "My Chat" })).toBe("My Chat");
   });
 
   it("generates name from key for main session", () => {
-    expect(sessionDisplayName({ key: "agent:my-agent:main" })).toBe("my-agent 메인");
+    expect(sessionDisplayName({ key: "agent:alpha:main" })).toBe("alpha 메인");
   });
 
   it("generates name for thread session", () => {
-    expect(sessionDisplayName({ key: "agent:my-agent:main:thread:18833" })).toBe(
-      "my-agent 스레드 #18833"
+    expect(sessionDisplayName({ key: "agent:alpha:main:thread:18833" })).toBe(
+      "alpha 스레드 #18833"
     );
   });
 
   it("generates name for A2A session", () => {
-    expect(sessionDisplayName({ key: "agent:my-agent:agent:brxce:main" })).toBe("my-agent → brxce");
+    expect(sessionDisplayName({ key: "agent:alpha:agent:beta:main" })).toBe("alpha → beta");
   });
 
   it("falls back to displayName", () => {
@@ -67,25 +67,25 @@ describe("sessionDisplayName", () => {
 describe("groupSessionsByAgent", () => {
   it("groups sessions by agent", () => {
     const sessions: GatewaySession[] = [
-      { key: "agent:my-agent:main", updatedAt: 100 },
-      { key: "agent:brxce:main", updatedAt: 200 },
-      { key: "agent:my-agent:main:thread:123", updatedAt: 300 },
+      { key: "agent:alpha:main", updatedAt: 100 },
+      { key: "agent:beta:main", updatedAt: 200 },
+      { key: "agent:alpha:main:thread:123", updatedAt: 300 },
     ];
     const groups = groupSessionsByAgent(sessions);
     expect(groups).toHaveLength(2);
-    // my-agent group first (thread:123 has updatedAt 300)
-    expect(groups[0].agentId).toBe("my-agent");
+    // alpha group first (thread:123 has updatedAt 300)
+    expect(groups[0].agentId).toBe("alpha");
     expect(groups[0].sessions).toHaveLength(2);
-    // brxce group second
-    expect(groups[1].agentId).toBe("brxce");
+    // beta group second
+    expect(groups[1].agentId).toBe("beta");
     expect(groups[1].sessions).toHaveLength(1);
   });
 
   it("sorts sessions within group by updatedAt desc", () => {
     const sessions: GatewaySession[] = [
-      { key: "agent:my-agent:main", updatedAt: 100 },
-      { key: "agent:my-agent:main:thread:1", updatedAt: 300 },
-      { key: "agent:my-agent:cron:daily", updatedAt: 200 },
+      { key: "agent:alpha:main", updatedAt: 100 },
+      { key: "agent:alpha:main:thread:1", updatedAt: 300 },
+      { key: "agent:alpha:cron:daily", updatedAt: 200 },
     ];
     const groups = groupSessionsByAgent(sessions);
     expect(groups[0].sessions[0].updatedAt).toBe(300);

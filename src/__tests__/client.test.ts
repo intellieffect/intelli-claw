@@ -128,9 +128,9 @@ describe("GatewayClient", () => {
           stateVersion: { presence: 1, health: 1 },
           uptimeMs: 1000,
           sessionDefaults: {
-            defaultAgentId: "my-agent",
-            mainKey: "agent:my-agent:main",
-            mainSessionKey: "agent:my-agent:main",
+            defaultAgentId: "alpha",
+            mainKey: "agent:alpha:main",
+            mainSessionKey: "agent:alpha:main",
           },
         },
         policy: { maxPayload: 1048576, maxBufferedBytes: 4194304, tickIntervalMs: 15000 },
@@ -138,7 +138,7 @@ describe("GatewayClient", () => {
     }));
 
     expect(states).toContain("connected");
-    expect(client.mainSessionKey).toBe("agent:my-agent:main");
+    expect(client.mainSessionKey).toBe("agent:alpha:main");
   });
 
   it("resolves request promises on ok response", async () => {
