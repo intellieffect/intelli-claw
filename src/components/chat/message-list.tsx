@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import { useState as useStateCopy } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { User, Bot, Clock, X, Copy, Check } from "lucide-react";
 import { MarkdownRenderer } from "./markdown-renderer";
 import { ToolCallCard } from "./tool-call-card";
@@ -29,10 +28,24 @@ export function MessageList({
 }) {
   const agentAv = getAgentAvatar(agentId);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [userScrolledUp, setUserScrolledUp] = useState(false);
 
+  // Detect if user has scrolled up from bottom
+  const handleScroll = useCallback(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    // Consider "at bottom" if within 80px of the bottom
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    setUserScrolledUp(!atBottom);
+  }, []);
+
+  // Auto-scroll only when user is at the bottom
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    if (!userScrolledUp) {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages, userScrolledUp]);
 
   if (loading) {
     return (
@@ -57,7 +70,7 @@ export function MessageList({
   }
 
   return (
-    <div className="flex-1 overflow-y-auto overflow-x-hidden px-[3%] py-3 md:px-[5%] lg:px-[7%] md:py-4" style={{ WebkitOverflowScrolling: "touch" }}>
+    <div ref={containerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto overflow-x-hidden px-[3%] py-3 md:px-[5%] lg:px-[7%] md:py-4" style={{ WebkitOverflowScrolling: "touch" }}>
       <div className="mx-auto space-y-3 md:space-y-4">
         {messages
           .filter((msg) => msg.content || msg.toolCalls.length > 0 || msg.streaming)
@@ -124,7 +137,7 @@ function copyToClipboard(text: string): Promise<void> {
 }
 
 function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useStateCopy(false);
+  const [copied, setCopied] = useState(false);
   const handleCopy = async (e: React.MouseEvent) => {
     e.stopPropagation();
     try {
