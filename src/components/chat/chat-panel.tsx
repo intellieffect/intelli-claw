@@ -121,7 +121,7 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true, initi
       .replace(/\s+/g, " ")
       .trim();
     if (!clean) return makeDefaultThreadLabel(agent);
-    const snippet = clean.length > 28 ? `${clean.slice(0, 28)}…` : clean;
+    const snippet = clean.length > 80 ? `${clean.slice(0, 80)}…` : clean;
     return `${agent}/${snippet}`;
   }, [makeDefaultThreadLabel]);
 
