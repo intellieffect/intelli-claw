@@ -149,14 +149,48 @@ export function AgentSessionBrowser({
     });
   }, [agentData, search]);
 
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const isKeyboardNav = useRef(false);
+
+  // Build flat navigation items: agents + their sessions when expanded
+  type NavItem = { type: "agent"; agentId: string } | { type: "session"; agentId: string; sessionKey: string } | { type: "new-session"; agentId: string };
+  const navItems = useMemo(() => {
+    const items: NavItem[] = [];
+    for (const item of filtered) {
+      items.push({ type: "agent", agentId: item.agentId });
+      if (expandedAgent === item.agentId) {
+        items.push({ type: "new-session", agentId: item.agentId });
+        for (const s of item.sessions) {
+          items.push({ type: "session", agentId: item.agentId, sessionKey: s.key });
+        }
+      }
+    }
+    return items;
+  }, [filtered, expandedAgent]);
+
   // Reset on open
   useEffect(() => {
     if (open) {
       setSearch("");
       setExpandedAgent(null);
+      setSelectedIndex(0);
       setTimeout(() => searchRef.current?.focus(), 16);
     }
   }, [open]);
+
+  // Reset selection when search changes
+  useEffect(() => {
+    setSelectedIndex(0);
+  }, [search]);
+
+  // Scroll selected into view
+  useEffect(() => {
+    if (!isKeyboardNav.current || !listRef.current) return;
+    const items = listRef.current.querySelectorAll("[data-nav-item]");
+    const target = items[selectedIndex] as HTMLElement | undefined;
+    target?.scrollIntoView({ block: "nearest" });
+    requestAnimationFrame(() => { isKeyboardNav.current = false; });
+  }, [selectedIndex]);
 
   // Global Escape
   useEffect(() => {
@@ -178,7 +212,6 @@ export function AgentSessionBrowser({
 
   const handleAgentClick = (agentId: string) => {
     if (expandedAgent === agentId) {
-      // Already expanded — clicking agent name switches to its main session
       onAgentChange(agentId);
       setOpen(false);
     } else {
@@ -192,10 +225,54 @@ export function AgentSessionBrowser({
   };
 
   const handleNewSession = (agentId: string) => {
-    // Switch to agent, which will create a new main session
     onAgentChange(agentId);
     setOpen(false);
   };
+
+  // Keyboard handler
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    const total = navItems.length;
+    if (total === 0) return;
+
+    switch (e.key) {
+      case "ArrowDown":
+        e.preventDefault();
+        isKeyboardNav.current = true;
+        setSelectedIndex((i) => Math.min(i + 1, total - 1));
+        break;
+      case "ArrowUp":
+        e.preventDefault();
+        isKeyboardNav.current = true;
+        setSelectedIndex((i) => Math.max(i - 1, 0));
+        break;
+      case "ArrowRight": {
+        e.preventDefault();
+        const item = navItems[selectedIndex];
+        if (item?.type === "agent" && expandedAgent !== item.agentId) {
+          setExpandedAgent(item.agentId);
+        }
+        break;
+      }
+      case "ArrowLeft":
+        e.preventDefault();
+        if (expandedAgent) {
+          // Move selection back to the agent row
+          const agentIdx = navItems.findIndex((n) => n.type === "agent" && n.agentId === expandedAgent);
+          if (agentIdx >= 0) setSelectedIndex(agentIdx);
+          setExpandedAgent(null);
+        }
+        break;
+      case "Enter": {
+        e.preventDefault();
+        const item = navItems[selectedIndex];
+        if (!item) break;
+        if (item.type === "agent") handleAgentClick(item.agentId);
+        else if (item.type === "session") handleSessionClick(item.sessionKey);
+        else if (item.type === "new-session") handleNewSession(item.agentId);
+        break;
+      }
+    }
+  }, [navItems, selectedIndex, expandedAgent, handleAgentClick, handleSessionClick, handleNewSession]);
 
   if (!open) return null;
 
@@ -211,6 +288,7 @@ export function AgentSessionBrowser({
 
       {/* Panel */}
       <div
+        onKeyDown={handleKeyDown}
         className={`relative w-full bg-card shadow-2xl shadow-black/50 animate-in duration-200 ${
           isMobile
             ? "max-h-[85vh] rounded-t-2xl slide-in-from-bottom-4 safe-bottom"
@@ -253,16 +331,23 @@ export function AgentSessionBrowser({
             const isCurrent = item.agentId === currentAgentId;
             const isExpanded = expandedAgent === item.agentId;
             const sessionCount = item.sessions.length;
+            const agentNavIdx = navItems.findIndex((n) => n.type === "agent" && n.agentId === item.agentId);
+            const isAgentSelected = selectedIndex === agentNavIdx;
 
             return (
               <div key={item.agentId}>
                 {/* Agent row */}
                 <button
+                  data-nav-item
                   onClick={() => handleAgentClick(item.agentId)}
+                  onMouseMove={() => {
+                    if (!isKeyboardNav.current && selectedIndex !== agentNavIdx) setSelectedIndex(agentNavIdx);
+                  }}
                   className={cn(
                     "mx-2 flex w-[calc(100%-1rem)] items-center gap-3 rounded-lg px-3 py-3 text-left transition-colors",
-                    isCurrent ? "bg-primary/10" : "hover:bg-muted",
-                    isExpanded && "bg-muted"
+                    isCurrent && !isAgentSelected ? "bg-primary/10" : "",
+                    isAgentSelected ? "bg-muted/70 ring-1 ring-primary/30" : "hover:bg-muted",
+                    isExpanded && !isAgentSelected && "bg-muted/50"
                   )}
                 >
                   {/* Avatar */}
@@ -318,26 +403,44 @@ export function AgentSessionBrowser({
                 {isExpanded && (
                   <div className="mx-2 mb-1 ml-8 border-l border-border/50 pl-4">
                     {/* Main session shortcut */}
-                    <button
-                      onClick={() => handleNewSession(item.agentId)}
-                      className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-muted"
-                    >
-                      <Plus size={14} className="text-primary" />
-                      <span className="text-primary">새 대화 시작</span>
-                    </button>
+                    {(() => {
+                      const newNavIdx = navItems.findIndex((n) => n.type === "new-session" && n.agentId === item.agentId);
+                      return (
+                        <button
+                          data-nav-item
+                          onClick={() => handleNewSession(item.agentId)}
+                          onMouseMove={() => {
+                            if (!isKeyboardNav.current && selectedIndex !== newNavIdx) setSelectedIndex(newNavIdx);
+                          }}
+                          className={cn(
+                            "flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors",
+                            selectedIndex === newNavIdx ? "bg-muted/70" : "hover:bg-muted"
+                          )}
+                        >
+                          <Plus size={14} className="text-primary" />
+                          <span className="text-primary">새 대화 시작</span>
+                        </button>
+                      );
+                    })()}
 
                     {/* Sessions */}
                     {item.sessions.map((session) => {
                       const parsed = parseSessionKey(session.key);
                       const isCurrentSession = currentKey === session.key;
+                      const sessNavIdx = navItems.findIndex((n) => n.type === "session" && "sessionKey" in n && n.sessionKey === session.key);
+                      const isSessSelected = selectedIndex === sessNavIdx;
 
                       return (
                         <button
+                          data-nav-item
                           key={session.key}
                           onClick={() => handleSessionClick(session.key)}
+                          onMouseMove={() => {
+                            if (!isKeyboardNav.current && selectedIndex !== sessNavIdx) setSelectedIndex(sessNavIdx);
+                          }}
                           className={cn(
                             "flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors",
-                            isCurrentSession ? "bg-primary/10" : "hover:bg-muted"
+                            isSessSelected ? "bg-muted/70" : isCurrentSession ? "bg-primary/10" : "hover:bg-muted"
                           )}
                         >
                           <SessionTypeIcon type={parsed.type} size={12} />
@@ -366,10 +469,22 @@ export function AgentSessionBrowser({
         {/* Footer */}
         {!isMobile && (
           <div className="flex items-center gap-3 border-t border-border px-4 py-2 text-[10px] text-muted-foreground">
-            <span>클릭: 세션 보기</span>
-            <span>·</span>
-            <span>더블클릭: 에이전트 전환</span>
-            <span>·</span>
+            <span className="flex items-center gap-1">
+              <kbd className="rounded border border-border px-1">↑↓</kbd>
+              이동
+            </span>
+            <span className="flex items-center gap-1">
+              <kbd className="rounded border border-border px-1">→</kbd>
+              펼치기
+            </span>
+            <span className="flex items-center gap-1">
+              <kbd className="rounded border border-border px-1">←</kbd>
+              접기
+            </span>
+            <span className="flex items-center gap-1">
+              <kbd className="rounded border border-border px-1">↵</kbd>
+              선택
+            </span>
             <span className="flex items-center gap-1">
               <kbd className="rounded border border-border px-1">esc</kbd>
               닫기
