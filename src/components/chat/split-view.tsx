@@ -185,10 +185,10 @@ export function SplitView() {
   // Customizable shortcuts — resolved via matchesShortcutId
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (matchesShortcutId(e, "focus-left") || matchesShortcutId(e, "focus-up")) {
+      if (matchesShortcutId(e, "focus-left")) {
         e.preventDefault(); e.stopPropagation();
         navPanel(-1);
-      } else if (matchesShortcutId(e, "focus-right") || matchesShortcutId(e, "focus-down")) {
+      } else if (matchesShortcutId(e, "focus-right")) {
         e.preventDefault(); e.stopPropagation();
         navPanel(1);
       } else if (matchesShortcutId(e, "swap-panels")) {

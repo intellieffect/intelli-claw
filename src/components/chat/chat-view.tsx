@@ -28,7 +28,7 @@ export function ChatView() {
       }
       if (e.key === "Escape") setShortcutOpen(false);
 
-      if (matchesShortcutId(e, "add-panel") || matchesShortcutId(e, "add-panel-alt")) {
+      if (matchesShortcutId(e, "add-panel")) {
         e.preventDefault();
         (window as any).__awfSplitAddPanel?.();
       }
