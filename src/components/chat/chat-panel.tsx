@@ -14,6 +14,7 @@ import { SessionSettings } from "@/components/settings/session-settings";
 import { ChatHeader } from "./chat-header";
 import { matchesShortcutId } from "@/lib/shortcuts";
 import { NewSessionPicker, AgentManager } from "@/components/settings/agent-manager";
+import { SessionManagerPanel } from "./session-manager-panel";
 
 export interface ChatPanelProps {
   /** Panel id for focus management */
@@ -63,6 +64,7 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
   const [sessionSwitcherOpen, setSessionSwitcherOpen] = useState(false);
   const [newSessionPickerOpen, setNewSessionPickerOpen] = useState(false);
   const [agentManagerOpen, setAgentManagerOpen] = useState(false);
+  const [sessionManagerOpen, setSessionManagerOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
 
   // Shortcuts (active panel only)
@@ -323,6 +325,8 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
           onSelectSession={setSessionKey}
           onNewSession={handleNewSession}
           onDeleteSession={(key) => handleDelete(key)}
+          onRenameSession={(key, label) => handleRename(key, label)}
+          onOpenSessionManager={() => setSessionManagerOpen(true)}
         />
       )}
 
@@ -398,6 +402,18 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
       <AgentManager
         open={agentManagerOpen}
         onClose={() => setAgentManagerOpen(false)}
+      />
+
+      {/* Session Manager Panel */}
+      <SessionManagerPanel
+        open={sessionManagerOpen}
+        onClose={() => setSessionManagerOpen(false)}
+        agents={agents}
+        sessions={sessions as any}
+        currentSessionKey={effectiveSessionKey}
+        onSelectSession={(key) => { setSessionKey(key); setSessionManagerOpen(false); }}
+        onDeleteSession={async (key) => { await handleDelete(key); }}
+        onResetSession={async (key) => { await handleReset(key); }}
       />
     </div>
   );
