@@ -7,17 +7,19 @@
 
 ## Why?
 
-OpenClaw is powerful, but its built-in control UI is minimal.  
-**intelli-clawd** gives you a full workspace experience:
+OpenClaw connects to messaging platforms like Telegram, Slack, Discord, and more.  
+But those platforms have **limits** — no multi-panel views, no per-session task tracking, limited slash command UX, and no way to work with multiple agents or sessions simultaneously.
+
+**intelli-clawd** is a purpose-built web workspace that unlocks the full power of OpenClaw:
 
 - **Multiple panels** — talk to different agents (or different sessions of the same agent) side by side
 - **Session management** — switch, rename, create, and delete sessions with keyboard shortcuts
 - **Task tracking** — per-session task memos that update automatically as your agent works
 - **Slash commands** — `/stop`, `/new`, `/reset`, `/model`, `/status` and more, with autocomplete
 - **File attachments** — drag & drop or paste files directly into chat
-- **Works with any OpenClaw agent** — just point it at your Gateway
+- **Full Gateway access** — session settings, model switching, thinking levels — things messaging apps can't do natively
 
-Think of it as a **mission control for your AI agents**.
+Think of it as **mission control for your AI agents** — everything Telegram/Slack can't give you.
 
 ---
 
