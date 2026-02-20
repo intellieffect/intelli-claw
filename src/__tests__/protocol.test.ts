@@ -186,9 +186,9 @@ describe("protocol", () => {
           stateVersion: { presence: 1, health: 1 },
           uptimeMs: 86400000,
           sessionDefaults: {
-            defaultAgentId: "my-agent",
-            mainKey: "agent:my-agent:main",
-            mainSessionKey: "agent:my-agent:main:thread:123",
+            defaultAgentId: "alpha",
+            mainKey: "agent:alpha:main",
+            mainSessionKey: "agent:alpha:main:thread:123",
           },
           authMode: "token",
         },
@@ -198,7 +198,7 @@ describe("protocol", () => {
       expect(payload.protocol).toBe(3);
       expect(payload.server.connId).toBe("conn-001");
       expect(payload.features.methods).toContain("chat.send");
-      expect(payload.snapshot.sessionDefaults?.mainSessionKey).toBe("agent:my-agent:main:thread:123");
+      expect(payload.snapshot.sessionDefaults?.mainSessionKey).toBe("agent:alpha:main:thread:123");
       expect(payload.policy.tickIntervalMs).toBe(15000);
     });
 
@@ -267,7 +267,7 @@ describe("protocol", () => {
   describe("chat.send params (Protocol v3)", () => {
     it("ChatSendParams requires sessionKey, message, idempotencyKey", () => {
       const params: ChatSendParams = {
-        sessionKey: "agent:my-agent:main:thread:123",
+        sessionKey: "agent:alpha:main:thread:123",
         message: "Hello, how are you?",
         idempotencyKey: "awf-1737264000000-abc123",
       };
@@ -278,7 +278,7 @@ describe("protocol", () => {
 
     it("ChatSendParams supports optional thinking, deliver, attachments, timeoutMs", () => {
       const params: ChatSendParams = {
-        sessionKey: "agent:my-agent:main",
+        sessionKey: "agent:alpha:main",
         message: "Think hard about this",
         idempotencyKey: "key-1",
         thinking: "high",
@@ -296,10 +296,10 @@ describe("protocol", () => {
   describe("chat.history params (Protocol v3)", () => {
     it("ChatHistoryParams requires sessionKey with optional limit", () => {
       const params: ChatHistoryParams = {
-        sessionKey: "agent:my-agent:main",
+        sessionKey: "agent:alpha:main",
         limit: 100,
       };
-      expect(params.sessionKey).toBe("agent:my-agent:main");
+      expect(params.sessionKey).toBe("agent:alpha:main");
       expect(params.limit).toBe(100);
     });
   });
@@ -308,7 +308,7 @@ describe("protocol", () => {
     it("ChatEvent has runId, sessionKey, seq, state", () => {
       const ev: ChatEvent = {
         runId: "run-xyz",
-        sessionKey: "agent:my-agent:main",
+        sessionKey: "agent:alpha:main",
         seq: 1,
         state: "delta",
         message: { role: "assistant", content: [{ type: "text", text: "Hi" }] },
@@ -320,7 +320,7 @@ describe("protocol", () => {
     it("ChatEvent supports error state with errorMessage", () => {
       const ev: ChatEvent = {
         runId: "run-xyz",
-        sessionKey: "agent:my-agent:main",
+        sessionKey: "agent:alpha:main",
         seq: 5,
         state: "error",
         errorMessage: "Context limit exceeded",
@@ -332,7 +332,7 @@ describe("protocol", () => {
     it("ChatEvent supports final state with usage and stopReason", () => {
       const ev: ChatEvent = {
         runId: "run-xyz",
-        sessionKey: "agent:my-agent:main",
+        sessionKey: "agent:alpha:main",
         seq: 10,
         state: "final",
         usage: { inputTokens: 500, outputTokens: 200 },
@@ -345,7 +345,7 @@ describe("protocol", () => {
     it("ChatEvent supports aborted state", () => {
       const ev: ChatEvent = {
         runId: "run-xyz",
-        sessionKey: "agent:my-agent:main",
+        sessionKey: "agent:alpha:main",
         seq: 3,
         state: "aborted",
       };
