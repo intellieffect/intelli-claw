@@ -29,7 +29,7 @@ interface SessionSettingsProps {
 }
 
 export function SessionSettings({ sessionKey, onDelete, onReset }: SessionSettingsProps) {
-  const { session, models, loading, patchSession, resetSession, deleteSession, refresh } =
+  const { session, models, loading, patchSession, setThinking, setVerbose, resetSession, deleteSession, refresh } =
     useSessionSettings(sessionKey);
 
   const [open, setOpen] = useState(false);
@@ -142,7 +142,7 @@ export function SessionSettings({ sessionKey, onDelete, onReset }: SessionSettin
               {THINKING_LEVELS.map((level) => (
                 <button
                   key={level}
-                  onClick={() => patchSession({ thinking: level })}
+                  onClick={() => setThinking(level)}
                   disabled={loading}
                   className={`flex-1 rounded-md py-1 text-[11px] font-medium transition-colors ${
                     currentThinking === level
@@ -162,7 +162,7 @@ export function SessionSettings({ sessionKey, onDelete, onReset }: SessionSettin
               <Monitor size={10} /> Verbose
             </span>
             <button
-              onClick={() => patchSession({ verbose: !(session?.verbose ?? false) })}
+              onClick={() => setVerbose(!(session?.verbose ?? false))}
               className={`h-5 w-9 rounded-full transition-colors ${
                 session?.verbose ? "bg-amber-600" : "bg-zinc-700"
               }`}
