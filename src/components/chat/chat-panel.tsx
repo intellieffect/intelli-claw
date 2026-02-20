@@ -21,9 +21,13 @@ export interface ChatPanelProps {
   onFocus: () => void;
   /** Show header controls (agent selector, session switcher) */
   showHeader?: boolean;
+  /** Agent to pre-select when this panel first mounts (inherited from split source). */
+  initialAgentId?: string;
+  /** Notify parent when this panel's agent changes. */
+  onAgentChange?: (agentId: string) => void;
 }
 
-export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: ChatPanelProps) {
+export function ChatPanel({ panelId, isActive, onFocus, showHeader = true, initialAgentId, onAgentChange }: ChatPanelProps) {
   const { client, state, mainSessionKey } = useGateway();
 
   const storagePrefix = `awf:panel:${panelId}:`;
@@ -34,10 +38,19 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
   // Load persisted panel state on mount (client only)
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const savedSession = localStorage.getItem(`${storagePrefix}sessionKey`) || undefined;
-    const savedAgent = localStorage.getItem(`${storagePrefix}agentId`) || process.env.NEXT_PUBLIC_DEFAULT_AGENT || "default";
+    // If initialAgentId is set (from split), start fresh (no saved session)
+    const savedSession = initialAgentId
+      ? undefined
+      : (localStorage.getItem(`${storagePrefix}sessionKey`) || undefined);
+    // Prefer initialAgentId (from split) > localStorage > env default
+    const savedAgent = initialAgentId
+      || localStorage.getItem(`${storagePrefix}agentId`)
+      || process.env.NEXT_PUBLIC_DEFAULT_AGENT
+      || "default";
     setSessionKeyRaw(savedSession);
     setAgentId(savedAgent);
+    onAgentChange?.(savedAgent);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storagePrefix]);
 
   const setSessionKey = useCallback((key: string | undefined) => {
@@ -195,6 +208,7 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
   const handleAgentChange = (id: string | undefined) => {
     const newId = id || process.env.NEXT_PUBLIC_DEFAULT_AGENT || "default";
     setAgentId(newId);
+    onAgentChange?.(newId);
     if (typeof window !== "undefined") {
       localStorage.setItem(`${storagePrefix}agentId`, newId);
     }

@@ -15,6 +15,8 @@ interface PanelState {
   id: string;
   /** Flex-basis width in fractions (not percentages). All panels sum to 1. */
   width: number;
+  /** Agent to pre-select when this panel first mounts (inherited from source panel). */
+  initialAgentId?: string;
 }
 
 interface SplitState {
@@ -71,6 +73,8 @@ export function SplitView() {
   const containerRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ index: number; startX: number; startWidths: number[] } | null>(null);
   const closedPanelsRef = useRef<PanelState[]>([]);
+  /** Tracks each panel's current agentId so addPanel can inherit it. */
+  const panelAgentRef = useRef<Record<string, string>>({});
   const isMobile = useIsMobile();
 
   // Restore from localStorage after hydration
@@ -92,7 +96,12 @@ export function SplitView() {
       const newId = uid();
       const count = prev.panels.length + 1;
       const w = equalWidths(count);
-      const panels = [...prev.panels.map((p) => ({ ...p, width: w })), { id: newId, width: w }];
+      // Inherit the active panel's current agent
+      const sourceAgent = panelAgentRef.current[prev.activePanelId];
+      const panels = [
+        ...prev.panels.map((p) => ({ ...p, width: w })),
+        { id: newId, width: w, initialAgentId: sourceAgent },
+      ];
       return { panels, activePanelId: newId };
     });
   }, []);
@@ -328,6 +337,8 @@ export function SplitView() {
               isActive={panel.id === activePanelId}
               onFocus={() => setActive(panel.id)}
               showHeader={true}
+              initialAgentId={panel.initialAgentId}
+              onAgentChange={(agentId) => { panelAgentRef.current[panel.id] = agentId; }}
             />
           </div>
 
