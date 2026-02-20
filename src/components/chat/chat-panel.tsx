@@ -13,6 +13,7 @@ import { TaskMemo } from "./task-memo";
 import { SessionSettings } from "@/components/settings/session-settings";
 import { ChatHeader } from "./chat-header";
 import { matchesShortcutId } from "@/lib/shortcuts";
+import { NewSessionPicker, AgentManager } from "@/components/settings/agent-manager";
 
 export interface ChatPanelProps {
   /** Panel id for focus management */
@@ -60,6 +61,8 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
   const { attachments, addFiles, removeAttachment, clearAttachments } = useFileAttachments();
 
   const [sessionSwitcherOpen, setSessionSwitcherOpen] = useState(false);
+  const [newSessionPickerOpen, setNewSessionPickerOpen] = useState(false);
+  const [agentManagerOpen, setAgentManagerOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
 
   // Shortcuts (active panel only)
@@ -72,10 +75,7 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
       }
       if (matchesShortcutId(e, "new-session")) {
         e.preventDefault();
-        const threadId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-        const newKey = `agent:${agentId}:main:thread:${threadId}`;
-        setSessionKey(newKey);
-        refreshSessions();
+        setNewSessionPickerOpen(true);
       }
     }
     document.addEventListener("keydown", handleKeyDown);
@@ -205,25 +205,38 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
     setSessionKey(undefined);
   };
 
-  const handleNewSession = async () => {
-    // Generate a new thread session key
+    const handleNewSession = () => {
+    setNewSessionPickerOpen(true);
+  };
+
+  const createSessionForAgent = async (selectedAgentId: string) => {
     const threadId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-    const newKey = `agent:${agentId}:main:thread:${threadId}`;
+    const newKey = `agent:${selectedAgentId}:main:thread:${threadId}`;
+
+    // Switch agent context if different
+    if (selectedAgentId !== agentId) {
+      setAgentId(selectedAgentId);
+      if (typeof window !== "undefined") {
+        localStorage.setItem(`${storagePrefix}agentId`, selectedAgentId);
+      }
+    }
+
     setSessionKey(newKey);
 
-    // Pre-label the thread so it doesn't stay as #id
+    // Pre-label the thread
     if (client && isConnected) {
       try {
         await client.request("sessions.patch", {
           key: newKey,
-          label: makeDefaultThreadLabel(agentId),
+          label: makeDefaultThreadLabel(selectedAgentId),
         });
       } catch {
-        // ignore; it can still be auto-labeled on first message
+        // ignore; auto-labeled on first message
       }
     }
 
     refreshSessions();
+    refocusPanel();
   };
 
   const handleRename = useCallback(
@@ -363,6 +376,20 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
             </div>
           </>
         ) : undefined}
+      />
+
+      {/* New Session Picker */}
+      <NewSessionPicker
+        open={newSessionPickerOpen}
+        onClose={() => setNewSessionPickerOpen(false)}
+        onSelect={createSessionForAgent}
+        onManageAgents={() => setAgentManagerOpen(true)}
+      />
+
+      {/* Agent Manager */}
+      <AgentManager
+        open={agentManagerOpen}
+        onClose={() => setAgentManagerOpen(false)}
       />
     </div>
   );
