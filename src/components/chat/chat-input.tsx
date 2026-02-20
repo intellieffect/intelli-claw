@@ -301,6 +301,9 @@ export function ChatInput({
 
           {/* Textarea + inline actions row */}
           <div className="flex items-end gap-1 p-1.5 sm:p-2">
+            {/* Agent selector */}
+            {agentSlot}
+
             {/* Attach button */}
             {onAttachFiles && (
               <Button
