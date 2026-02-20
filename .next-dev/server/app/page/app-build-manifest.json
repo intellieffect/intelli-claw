@@ -1,0 +1,27 @@
+{
+  "pages": {
+    "/page": [
+      "static/chunks/node_modules__pnpm_39dc57cc._.js",
+      "static/chunks/src_587cbd64._.js",
+      "static/chunks/src_styles_globals_47180df9.css",
+      "static/chunks/src_app_layout_tsx_de595413._.js",
+      "static/chunks/cdc28_next_dist_client_components_builtin_global-error_f67ce8c3.js",
+      "static/chunks/src_cd86047a._.js",
+      "static/chunks/f545a_micromark_dev_lib_2a08bc19._.js",
+      "static/chunks/b5ecd_micromark-core-commonmark_dev_lib_bc76a96f._.js",
+      "static/chunks/46550_highlight_900e1129.js",
+      "static/chunks/8cee7_framer-motion_dist_es_24564d46._.js",
+      "static/chunks/node_modules__pnpm_eceeedfb._.js",
+      "static/chunks/src_app_page_tsx_f67ce8c3._.js",
+      "static/chunks/[turbopack]_browser_dev_hmr-client_hmr-client_ts_7723e303._.js",
+      "static/chunks/cdc28_next_dist_compiled_react-dom_0cac81cd._.js",
+      "static/chunks/cdc28_next_dist_compiled_next-devtools_index_c835a8ac.js",
+      "static/chunks/cdc28_next_dist_compiled_3e2aeb04._.js",
+      "static/chunks/cdc28_next_dist_client_a900c7b3._.js",
+      "static/chunks/cdc28_next_dist_17b38c3f._.js",
+      "static/chunks/69652_@swc_helpers_cjs_77b72907._.js",
+      "static/chunks/_a0ff3932._.js",
+      "static/chunks/turbopack-_fb04e680._.js"
+    ]
+  }
+}

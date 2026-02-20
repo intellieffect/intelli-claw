@@ -5,7 +5,7 @@ import os from "os";
 
 const SHOWCASE_DIR =
   process.env.SHOWCASE_DIR ||
-  path.join(os.homedir(), ".openclaw/workspace-iponoff/drafts");
+  path.join(os.homedir(), ".openclaw/showcase");
 
 const MIME: Record<string, string> = {
   ".html": "text/html; charset=utf-8",

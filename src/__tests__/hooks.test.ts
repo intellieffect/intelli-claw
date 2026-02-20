@@ -56,7 +56,7 @@ describe("agent event mapping", () => {
     const result = mapAgentEvent({
       stream: "assistant",
       data: { text: "Hello world", delta: " world" },
-      sessionKey: "agent:karajan:main",
+      sessionKey: "agent:alpha:main",
     });
     expect(result).toEqual({ type: "text-delta", delta: " world" });
   });
