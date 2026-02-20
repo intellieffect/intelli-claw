@@ -65,9 +65,13 @@ export function NewSessionPicker({
                 onClick={() => { onSelect(agent.id); onClose(); }}
                 className="flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left transition hover:bg-zinc-800"
               >
-                <div className={cn("flex size-9 shrink-0 items-center justify-center rounded-full text-base", av.color)}>
-                  {av.emoji}
-                </div>
+                {av.imageUrl ? (
+                  <img src={av.imageUrl} alt={agent.id} className="size-9 rounded-full object-cover shrink-0" />
+                ) : (
+                  <div className={cn("flex size-9 shrink-0 items-center justify-center rounded-full text-base", av.color)}>
+                    {av.emoji}
+                  </div>
+                )}
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-semibold text-zinc-100 truncate">{agent.name || agent.id}</div>
                   {agent.description && (
@@ -310,9 +314,13 @@ export function AgentManager({
 
                 return (
                   <div key={agent.id} className="flex items-center gap-3 rounded-lg px-3 py-2.5 hover:bg-zinc-800/50">
-                    <div className={cn("flex size-8 shrink-0 items-center justify-center rounded-full text-sm", av.color)}>
-                      {av.emoji}
-                    </div>
+                    {av.imageUrl ? (
+                      <img src={av.imageUrl} alt={agent.id} className="size-8 rounded-full object-cover shrink-0" />
+                    ) : (
+                      <div className={cn("flex size-8 shrink-0 items-center justify-center rounded-full text-sm", av.color)}>
+                        {av.emoji}
+                      </div>
+                    )}
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-medium text-zinc-200 truncate">{agent.name || agent.id}</div>
                       <div className="text-[10px] text-zinc-600 truncate">{agent.id} · {agent.model || "default"}</div>

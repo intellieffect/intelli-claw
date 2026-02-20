@@ -192,9 +192,13 @@ export function SessionManagerPanel({
                   className="flex w-full items-center gap-2.5 px-4 py-2.5 hover:bg-zinc-800/30 transition"
                 >
                   {isExpanded ? <ChevronDown size={12} className="text-zinc-500" /> : <ChevronRight size={12} className="text-zinc-500" />}
-                  <div className={cn("flex size-6 shrink-0 items-center justify-center rounded-full text-xs", av.color)}>
-                    {av.emoji}
-                  </div>
+                  {av.imageUrl ? (
+                    <img src={av.imageUrl} alt={group.agentId} className="size-6 rounded-full object-cover shrink-0" />
+                  ) : (
+                    <div className={cn("flex size-6 shrink-0 items-center justify-center rounded-full text-xs", av.color)}>
+                      {av.emoji}
+                    </div>
+                  )}
                   <span className="text-sm font-medium text-zinc-200 flex-1 text-left truncate">
                     {group.agent?.name || group.agentId}
                   </span>
