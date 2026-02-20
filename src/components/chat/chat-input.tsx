@@ -260,12 +260,8 @@ export function ChatInput({
       />
 
       <div
-        className="mx-auto flex w-full max-w-3xl items-center gap-3"
+        className="mx-auto w-full max-w-3xl"
       >
-        {/* Agent avatar outside input box */}
-        {agentSlot && (
-          <div className="shrink-0">{agentSlot}</div>
-        )}
         <div
           className="flex-1"
           onDragOver={onDragOver}
