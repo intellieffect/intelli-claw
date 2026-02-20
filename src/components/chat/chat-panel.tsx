@@ -305,13 +305,13 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
         onAttachFiles={addFiles}
         onRemoveAttachment={removeAttachment}
         panelId={panelId}
-        agentSlot={showHeader ? (
+        agentSlot={
           <AvatarAgentSelector
             agents={agents}
             selectedId={currentAgentId}
             onSelect={handleAgentChange}
           />
-        ) : undefined}
+        }
         toolbar={showHeader ? (
           <>
             <SessionSettings
