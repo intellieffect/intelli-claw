@@ -1,10 +1,14 @@
 "use client";
 
-import { memo, useCallback, useState } from "react";
+import { memo, useCallback, useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
-import { Check, Copy, ExternalLink, Eye, Code2 } from "lucide-react";
+import {
+  Check, Copy, ExternalLink, Eye, Code2, Download,
+  FileText, FileAudio, FileVideo, File as FileIcon,
+  FileSpreadsheet, FileCode, FileArchive,
+} from "lucide-react";
 import type { Components } from "react-markdown";
 
 function copyText(text: string) {
@@ -73,7 +77,6 @@ function HtmlPreview({ code }: { code: string }) {
     doc.open();
     doc.write(code);
     doc.close();
-    // Auto-resize + blank detection
     const resize = () => {
       const h = doc.documentElement?.scrollHeight || doc.body?.scrollHeight || 300;
       iframe.style.height = Math.min(h + 4, 600) + "px";
@@ -248,22 +251,252 @@ const components: Partial<Components> = {
   },
 };
 
+// ---- Media file type detection ----
+
+type MediaType = "image" | "video" | "audio" | "pdf" | "code" | "text" | "spreadsheet" | "archive" | "other";
+
+const IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "gif", "webp", "svg", "ico", "bmp", "tiff", "tif"]);
+const VIDEO_EXTS = new Set(["mp4", "webm", "mov", "avi", "mkv"]);
+const AUDIO_EXTS = new Set(["mp3", "wav", "ogg", "flac", "aac", "m4a", "wma"]);
+const CODE_EXTS = new Set(["js", "ts", "tsx", "jsx", "py", "rs", "go", "java", "c", "cpp", "h", "sh", "sql", "rb", "php", "swift", "kt", "css", "html", "xml"]);
+const SPREADSHEET_EXTS = new Set(["csv", "xls", "xlsx"]);
+const ARCHIVE_EXTS = new Set(["zip", "tar", "gz", "7z", "rar"]);
+
+function getExtension(path: string): string {
+  const match = path.match(/\.(\w+)(?:\?|$)/);
+  return match ? match[1].toLowerCase() : "";
+}
+
+function detectMediaType(path: string): MediaType {
+  const ext = getExtension(path);
+  if (IMAGE_EXTS.has(ext)) return "image";
+  if (VIDEO_EXTS.has(ext)) return "video";
+  if (AUDIO_EXTS.has(ext)) return "audio";
+  if (ext === "pdf") return "pdf";
+  if (CODE_EXTS.has(ext)) return "code";
+  if (SPREADSHEET_EXTS.has(ext)) return "spreadsheet";
+  if (ARCHIVE_EXTS.has(ext)) return "archive";
+  if (["txt", "md", "log", "json", "yaml", "yml"].includes(ext)) return "text";
+  return "other";
+}
+
+function getFileName(path: string): string {
+  // Handle both URL-encoded API paths and raw paths
+  const decoded = decodeURIComponent(path);
+  const parts = decoded.split("/");
+  const last = parts[parts.length - 1];
+  // Remove query params
+  return last.split("?")[0] || "file";
+}
+
+function getMediaTypeIcon(type: MediaType) {
+  switch (type) {
+    case "audio": return FileAudio;
+    case "video": return FileVideo;
+    case "pdf": return FileText;
+    case "code": return FileCode;
+    case "spreadsheet": return FileSpreadsheet;
+    case "archive": return FileArchive;
+    case "text": return FileText;
+    default: return FileIcon;
+  }
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+}
+
+/** Extract original file path from MEDIA: URL for info API */
+function extractOriginalPath(url: string): string | null {
+  try {
+    const match = url.match(/[?&]path=([^&]+)/);
+    return match ? decodeURIComponent(match[1]) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Extract MEDIA: lines and return [cleanedContent, mediaEntries[]] */
+interface MediaEntry {
+  url: string;
+  originalPath: string;
+  type: MediaType;
+  fileName: string;
+}
+
+function extractMediaLines(text: string): [string, MediaEntry[]] {
+  const entries: MediaEntry[] = [];
+  // Only match MEDIA: lines with actual file paths (starting with /) or URLs
+  const cleaned = text.replace(/^MEDIA:\s*(.+)$/gm, (_match, path: string) => {
+    const trimmed = path.trim();
+    // Skip if it doesn't look like a path or URL
+    if (!trimmed.startsWith("/") && !trimmed.startsWith("http://") && !trimmed.startsWith("https://") && !trimmed.startsWith("data:")) {
+      return _match; // Leave as-is, not a real MEDIA marker
+    }
+    let url: string;
+    let originalPath: string;
+
+    if (trimmed.startsWith("http://") || trimmed.startsWith("https://") || trimmed.startsWith("data:")) {
+      url = trimmed;
+      originalPath = trimmed;
+    } else {
+      url = `/api/media?path=${encodeURIComponent(trimmed)}`;
+      originalPath = trimmed;
+    }
+
+    const type = detectMediaType(trimmed);
+    const fileName = getFileName(trimmed);
+    entries.push({ url, originalPath, type, fileName });
+    return "";
+  });
+  return [cleaned, entries];
+}
+
+// ---- Media renderers ----
+
+function MediaImage({ src }: { src: string }) {
+  const [error, setError] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+
+  if (error) {
+    return (
+      <div className="flex h-48 w-48 items-center justify-center rounded-lg border border-zinc-700 bg-zinc-800/50 text-xs text-zinc-500">
+        ⚠️ 로드 실패
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={src}
+      alt="media"
+      className={`rounded-lg border border-zinc-700 cursor-pointer transition-all ${expanded ? "max-w-full" : "h-48 max-w-xs md:h-56 md:max-w-sm"} object-contain`}
+      onClick={() => setExpanded(e => !e)}
+      onError={() => setError(true)}
+    />
+  );
+}
+
+function MediaVideo({ src }: { src: string }) {
+  return (
+    <video
+      src={src}
+      controls
+      className="h-48 md:h-56 rounded-lg border border-zinc-700"
+      preload="metadata"
+    />
+  );
+}
+
+function MediaAudio({ src, fileName }: { src: string; fileName: string }) {
+  return (
+    <div className="flex w-64 items-center gap-3 rounded-lg border border-zinc-700 bg-zinc-800/80 p-3">
+      <FileAudio size={20} className="shrink-0 text-zinc-400" />
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-sm text-zinc-200">{fileName}</div>
+        <audio src={src} controls className="mt-1.5 w-full" preload="metadata" />
+      </div>
+    </div>
+  );
+}
+
+function MediaPdf({ src, fileName }: { src: string; fileName: string }) {
+  return (
+    <div className="w-72 overflow-hidden rounded-lg border border-zinc-700">
+      <object
+        data={src}
+        type="application/pdf"
+        className="h-48 md:h-56 w-full"
+      >
+        <FileCard url={src} fileName={fileName} type="pdf" />
+      </object>
+    </div>
+  );
+}
+
+function FileCard({ url, fileName, type }: { url: string; fileName: string; type: MediaType }) {
+  const [fileInfo, setFileInfo] = useState<{ size: number } | null>(null);
+  const Icon = getMediaTypeIcon(type);
+
+  useEffect(() => {
+    const originalPath = extractOriginalPath(url);
+    if (!originalPath) return;
+    fetch(`/api/media?path=${encodeURIComponent(originalPath)}&info=1`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data?.size) setFileInfo({ size: data.size }); })
+      .catch(() => {});
+  }, [url]);
+
+  return (
+    <div className="flex w-56 items-center gap-3 rounded-lg border border-zinc-700 bg-zinc-800/80 px-4 py-3">
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-zinc-700/60">
+        <Icon size={20} className="text-zinc-300" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-sm font-medium text-zinc-200">{fileName}</div>
+        {fileInfo && (
+          <div className="text-xs text-zinc-500">{formatFileSize(fileInfo.size)}</div>
+        )}
+      </div>
+      <a
+        href={url}
+        download={fileName}
+        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-zinc-400 transition hover:bg-zinc-700 hover:text-zinc-200"
+        title="다운로드"
+      >
+        <Download size={16} />
+      </a>
+    </div>
+  );
+}
+
+function MediaRenderer({ entry }: { entry: MediaEntry }) {
+  switch (entry.type) {
+    case "image":
+      return <MediaImage src={entry.url} />;
+    case "video":
+      return <MediaVideo src={entry.url} />;
+    case "audio":
+      return <MediaAudio src={entry.url} fileName={entry.fileName} />;
+    case "pdf":
+      return <MediaPdf src={entry.url} fileName={entry.fileName} />;
+    default:
+      return <FileCard url={entry.url} fileName={entry.fileName} type={entry.type} />;
+  }
+}
+
 export const MarkdownRenderer = memo(function MarkdownRenderer({
   content,
 }: {
   content: string;
 }) {
+  // Extract MEDIA: lines
+  const [withoutMedia, mediaEntries] = extractMediaLines(content);
   // Collapse 3+ consecutive newlines to 2 (one blank line)
-  const cleaned = content.replace(/\n{3,}/g, "\n\n");
+  const cleaned = withoutMedia.replace(/\n{3,}/g, "\n\n").trim();
   return (
     <div className="prose">
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        rehypePlugins={[rehypeHighlight]}
-        components={components}
-      >
-        {cleaned}
-      </ReactMarkdown>
+      {mediaEntries.length > 0 && (
+        <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-thin">
+          {mediaEntries.map((entry, i) => (
+            <div key={i} className="shrink-0">
+              <MediaRenderer entry={entry} />
+            </div>
+          ))}
+        </div>
+      )}
+      {cleaned && (
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          rehypePlugins={[rehypeHighlight]}
+          components={components}
+        >
+          {cleaned}
+        </ReactMarkdown>
+      )}
     </div>
   );
 });

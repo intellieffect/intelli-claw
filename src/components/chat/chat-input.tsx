@@ -25,6 +25,7 @@ export function ChatInput({
   panelId,
   toolbar,
   agentAvatar,
+  agentSlot: agentSlotProp,
 }: {
   onSend: (text: string) => void;
   onAbort: () => void;
@@ -38,8 +39,10 @@ export function ChatInput({
   toolbar?: React.ReactNode;
   /** Optional agent avatar badge */
   agentAvatar?: { emoji: string; color: string };
+  /** Custom agent slot node (overrides agentAvatar) */
+  agentSlot?: React.ReactNode;
 }) {
-  const agentSlot = agentAvatar ? (
+  const agentSlotFromAvatar = agentAvatar ? (
     <div
       className={cn(
         "flex size-7 shrink-0 items-center justify-center rounded-full text-sm",
@@ -50,6 +53,7 @@ export function ChatInput({
       {agentAvatar.emoji}
     </div>
   ) : null;
+  const agentSlot = agentSlotProp || agentSlotFromAvatar;
   const storageKey = panelId ? `awf:draft:${panelId}` : null;
   const [text, setText] = useState(() => {
     if (storageKey && typeof window !== "undefined") {
@@ -257,20 +261,22 @@ export function ChatInput({
 
       <div
         className="mx-auto w-full max-w-3xl"
-        onDragOver={onDragOver}
-        onDragLeave={onDragLeave}
-        onDrop={onDrop}
       >
+        <div
+          className="flex-1"
+          onDragOver={onDragOver}
+          onDragLeave={onDragLeave}
+          onDrop={onDrop}
+        >
         <div
           className={cn(
             "relative flex w-full flex-col rounded-xl sm:rounded-2xl border border-input bg-background shadow-sm transition-[border-color,box-shadow]",
-            "focus-within:border-primary focus-within:ring-[3px] focus-within:ring-ring/20"
+            "focus-within:border-primary focus-within:ring-[3px] focus-within:ring-primary/40"
           )}
         >
-          {/* Toolbar: agent slot + controls */}
-          {(toolbar || agentSlot) && (
-            <div className="flex items-center gap-2 px-2.5 pt-2 sm:px-3">
-              {agentSlot}
+          {/* Toolbar: controls */}
+          {toolbar && (
+            <div className="flex w-full min-w-0 items-center gap-1.5 px-2.5 pt-2 sm:px-3">
               {toolbar}
             </div>
           )}
@@ -371,10 +377,11 @@ export function ChatInput({
           </AnimatePresence>
         </div>
 
-        <p className="mt-1 text-center text-[10px] sm:text-[11px] text-muted-foreground/50">
-          Shift+Enter로 줄바꿈 · 에이전트는 실수할 수 있습니다
-        </p>
+        </div>
       </div>
+      <p className="mt-1 text-center text-[10px] sm:text-[11px] text-muted-foreground/50">
+        Shift+Enter로 줄바꿈 · 에이전트는 실수할 수 있습니다
+      </p>
     </div>
   );
 }
