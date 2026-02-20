@@ -77,12 +77,12 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true, initi
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if (!isActive) return;
-      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+      if ((e.metaKey || e.ctrlKey) && e.code === "KeyK") {
         e.preventDefault();
         setSessionSwitcherOpen((prev) => !prev);
       }
-      // Ctrl+N: new session(thread)
-      if (e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "n") {
+      // Ctrl+N: new session(thread) — use e.code to work with any IME/language input
+      if (e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey && e.code === "KeyN") {
         e.preventDefault();
         const threadId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
         const newKey = `agent:${agentId}:main:thread:${threadId}`;
