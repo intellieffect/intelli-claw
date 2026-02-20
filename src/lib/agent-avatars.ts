@@ -1,4 +1,4 @@
-/** Deterministic agent avatar — no hardcoded agent names */
+/** Deterministic agent avatar with optional profile image from /agents/<id>.jpg */
 
 const COLORS = [
   "bg-violet-500/20 text-violet-400",
@@ -19,7 +19,14 @@ const COLORS = [
   "bg-lime-500/20 text-lime-400",
 ];
 
-const DEFAULT_AVATAR = { emoji: "🤖", color: "bg-primary/20 text-primary" };
+export interface AgentAvatar {
+  emoji: string;
+  color: string;
+  /** URL to agent profile image if available */
+  imageUrl?: string;
+}
+
+const DEFAULT_AVATAR: AgentAvatar = { emoji: "🤖", color: "bg-primary/20 text-primary" };
 
 function hashCode(s: string): number {
   let h = 0;
@@ -29,9 +36,26 @@ function hashCode(s: string): number {
   return Math.abs(h);
 }
 
-const cache = new Map<string, { emoji: string; color: string }>();
+const cache = new Map<string, AgentAvatar>();
 
-export function getAgentAvatar(agentId?: string) {
+/**
+ * Known agent profile images (from Telegram bot avatars).
+ * Falls back to hash-based initials if not listed here.
+ */
+const AGENT_IMAGES: Record<string, string> = {
+  main: "/agents/jarvis.jpg",
+  jarvis: "/agents/jarvis.jpg",
+  murim: "/agents/murim.jpg",
+  mobidic: "/agents/mobidic.jpg",
+  brxce: "/agents/brxce.jpg",
+  tcscms: "/agents/tcscms.jpg",
+  hongdon: "/agents/hongdon.jpg",
+  odoo: "/agents/odoo.jpg",
+  newscash: "/agents/newscash.jpg",
+  seoa: "/agents/seoa.jpg",
+};
+
+export function getAgentAvatar(agentId?: string): AgentAvatar {
   if (!agentId) return DEFAULT_AVATAR;
 
   const key = agentId.toLowerCase();
@@ -40,7 +64,12 @@ export function getAgentAvatar(agentId?: string) {
 
   const h = hashCode(key);
   const initials = key.slice(0, 2).toUpperCase();
-  const result = { emoji: initials, color: COLORS[h % COLORS.length] };
+  const imageUrl = AGENT_IMAGES[key];
+  const result: AgentAvatar = {
+    emoji: initials,
+    color: COLORS[h % COLORS.length],
+    ...(imageUrl ? { imageUrl } : {}),
+  };
   cache.set(key, result);
   return result;
 }
