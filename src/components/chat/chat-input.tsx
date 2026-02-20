@@ -276,7 +276,7 @@ export function ChatInput({
         >
           {/* Toolbar: controls */}
           {toolbar && (
-            <div className="flex items-center gap-2 px-2.5 pt-2 sm:px-3">
+            <div className="flex min-w-0 items-center gap-1.5 px-2.5 pt-2 sm:px-3">
               {toolbar}
             </div>
           )}

@@ -337,19 +337,26 @@ export function SessionSwitcher({
   );
 
   const current = gwSessions.find((s) => s.key === currentKey);
+  const currentParsed = currentKey ? parseSessionKey(currentKey) : null;
 
   return (
     <>
-      {/* Trigger button */}
+      {/* Trigger — Option D: Minimal Dot + Inline */}
       <button
         onClick={() => setOpen(true)}
-        className="flex items-center gap-2 rounded-lg border border-border bg-muted px-3 py-1.5 text-sm text-foreground transition hover:border-border hover:bg-muted"
+        className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition hover:bg-muted"
       >
-        <MessageSquare size={14} className="text-emerald-400" />
-        <span className="max-w-[200px] truncate">
-          {current ? sessionDisplayName(current) : "세션 선택"}
+        <span className="size-2 shrink-0 rounded-full bg-emerald-500" />
+        <span className="min-w-0 flex-1 truncate text-left text-foreground">
+          {current ? (
+            <>
+              <strong className="font-semibold">{currentParsed?.agentId || "agent"}</strong>
+              <span className="text-muted-foreground"> / </span>
+              {sessionDisplayName(current)}
+            </>
+          ) : "세션 선택"}
         </span>
-        <kbd className="ml-1 hidden rounded border border-border bg-muted px-1 py-0.5 text-[10px] leading-none text-muted-foreground sm:inline-flex">
+        <kbd className="ml-1 hidden shrink-0 rounded border border-border bg-muted px-1 py-0.5 text-[10px] leading-none text-muted-foreground sm:inline-flex">
           <Command size={10} className="mr-0.5" />K
         </kbd>
       </button>
