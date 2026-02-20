@@ -287,13 +287,24 @@ export function SplitView() {
   return (
     <div ref={containerRef} className="flex h-full">
       {visiblePanels.map((panel, i) => (
-        <div key={panel.id} className="flex h-full min-w-0" style={{ flex: isMobile ? "1 0 0%" : `${panel.width} 0 0%` }}>
+        <div key={panel.id} className="flex h-full min-w-0" style={{
+          flex: isMobile ? "1 0 0%" : `${panel.width} 0 0%`,
+          border: !isMobile && panels.length > 1
+            ? panel.id === activePanelId
+              ? "2px solid #f97316"
+              : "1px solid #3f3f46"
+            : "none",
+          borderRadius: !isMobile && panels.length > 1 ? "12px" : undefined,
+          overflow: !isMobile && panels.length > 1 ? "hidden" : undefined,
+        }}
+        onClick={() => setActive(panel.id)}
+        onFocusCapture={() => setActive(panel.id)}
+        >
           {/* Panel */}
           <div
-            className={`relative h-full min-w-0 flex-1 ${
-              !isMobile && panel.id === activePanelId ? "ring-1 ring-blue-500/40 ring-inset" : ""
-            }`}
+            className="relative h-full min-w-0 flex-1"
             onClick={() => setActive(panel.id)}
+            onFocusCapture={() => setActive(panel.id)}
           >
             {/* Panel controls (desktop only, multi-panel) */}
             {!isMobile && panels.length > 1 && (
