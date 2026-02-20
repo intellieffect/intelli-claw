@@ -260,11 +260,18 @@ export function ChatInput({
       />
 
       <div
-        className="mx-auto w-full max-w-3xl"
-        onDragOver={onDragOver}
-        onDragLeave={onDragLeave}
-        onDrop={onDrop}
+        className="mx-auto flex w-full max-w-3xl items-end gap-3"
       >
+        {/* Agent avatar outside input box */}
+        {agentSlot && (
+          <div className="mb-2 shrink-0">{agentSlot}</div>
+        )}
+        <div
+          className="flex-1"
+          onDragOver={onDragOver}
+          onDragLeave={onDragLeave}
+          onDrop={onDrop}
+        >
         <div
           className={cn(
             "relative flex w-full flex-col rounded-xl sm:rounded-2xl border border-input bg-background shadow-sm transition-[border-color,box-shadow]",
@@ -290,8 +297,6 @@ export function ChatInput({
 
           {/* Textarea + inline actions row */}
           <div className="flex items-end gap-1 p-1.5 sm:p-2">
-            {/* Agent avatar */}
-            {agentSlot && <div className="shrink-0 mb-0.5">{agentSlot}</div>}
             {/* Attach button */}
             {onAttachFiles && (
               <Button
@@ -379,6 +384,7 @@ export function ChatInput({
         <p className="mt-1 text-center text-[10px] sm:text-[11px] text-muted-foreground/50">
           Shift+Enter로 줄바꿈 · 에이전트는 실수할 수 있습니다
         </p>
+        </div>
       </div>
     </div>
   );
