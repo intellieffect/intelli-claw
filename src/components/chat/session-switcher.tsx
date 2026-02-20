@@ -268,15 +268,6 @@ export function SessionSwitcher({
           isKeyboardNav.current = true;
           setSelectedIndex((i) => (i - 1 + totalItems) % totalItems);
           break;
-        case "F2": {
-          if (!onRename) break;
-          if (selectedIndex >= filtered.length) break;
-          e.preventDefault();
-          const s = filtered[selectedIndex];
-          setEditLabel(s.label || sessionDisplayName(s));
-          setEditingKey(s.key);
-          break;
-        }
         case "Enter":
           e.preventDefault();
           if (selectedIndex < filtered.length) {
