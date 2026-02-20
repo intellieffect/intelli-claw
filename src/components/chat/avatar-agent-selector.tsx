@@ -43,7 +43,7 @@ export function AvatarAgentSelector({
         {avatar.emoji}
       </button>
       {selectedId && (
-        <span className="max-w-[4.5rem] truncate text-[10px] text-muted-foreground">{selectedId}</span>
+        <span className="max-w-[5rem] truncate text-xs font-medium text-muted-foreground">{selectedId}</span>
       )}
 
       {open && (
