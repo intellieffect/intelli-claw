@@ -228,6 +228,13 @@ function extractText(node: React.ReactNode): string {
 }
 
 const components: Partial<Components> = {
+  table({ children }) {
+    return (
+      <div className="table-wrapper">
+        <table>{children}</table>
+      </div>
+    );
+  },
   code({ className, children, ...props }) {
     const isInline = !className && typeof children === "string" && !children.includes("\n");
     if (isInline) {

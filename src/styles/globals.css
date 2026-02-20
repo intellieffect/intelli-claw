@@ -124,12 +124,21 @@ body {
 }
 
 .prose table {
-  width: 100%;
+  width: max-content;
+  min-width: 100%;
   border-collapse: collapse;
   margin: 0.75em 0;
+}
+
+.prose .table-wrapper {
   display: block;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
+  margin: 0.75em 0;
+}
+
+.prose .table-wrapper table {
+  margin: 0;
 }
 
 .prose th,
@@ -137,6 +146,7 @@ body {
   border: 1px solid var(--color-border);
   padding: 0.5em 0.75em;
   text-align: left;
+  white-space: nowrap;
 }
 
 .prose th {
