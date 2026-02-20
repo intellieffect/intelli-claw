@@ -294,6 +294,7 @@ export function SplitView() {
               !isMobile && panel.id === activePanelId ? "ring-1 ring-primary/60 ring-inset" : ""
             }`}
             onClick={() => setActive(panel.id)}
+            onFocusCapture={() => setActive(panel.id)}
           >
             {/* Panel controls (desktop only, multi-panel) */}
             {!isMobile && panels.length > 1 && (
