@@ -51,7 +51,7 @@ export function ChatView() {
         <div className="flex items-center gap-2 md:gap-3">
           <div className="flex items-center gap-2">
             <Zap size={isMobile ? 18 : 20} className="text-primary" />
-            <span className="text-sm font-semibold text-foreground">AWF</span>
+            <span className="text-sm font-semibold text-foreground">intelli-claw</span>
           </div>
         </div>
 
