@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AWF - Subagent Embed Concept</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #09090b; color: #fafafa; font-family: -apple-system, system-ui, sans-serif; padding: 16px; max-width: 700px; margin: 0 auto; }
+
+.msg { display: flex; gap: 10px; margin-bottom: 16px; }
+.msg.user { flex-direction: row-reverse; }
+.avatar { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 14px; }
+.avatar.bot { background: rgba(59,130,246,0.15); color: #3b82f6; }
+.avatar.user { background: #27272a; color: #a1a1aa; }
+.bubble { max-width: 85%; border-radius: 12px; padding: 10px 14px; font-size: 14px; line-height: 1.6; }
+.bubble.bot { background: #18181b; border: 1px solid #27272a; }
+.bubble.user { background: #3b82f6; color: white; }
+
+.subagent-card { margin: 8px 0; border: 1px solid #27272a; border-radius: 10px; overflow: hidden; background: #111113; }
+.subagent-header { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: #18181b; border-bottom: 1px solid #27272a; cursor: pointer; }
+.subagent-header .icon { font-size: 12px; }
+.subagent-header .label { font-size: 12px; font-weight: 500; color: #a1a1aa; flex: 1; }
+.subagent-header .status { font-size: 10px; padding: 2px 6px; border-radius: 10px; display: inline-flex; align-items: center; gap: 4px; }
+.status.running { background: rgba(59,130,246,0.15); color: #3b82f6; }
+.status.done { background: rgba(34,197,94,0.15); color: #22c55e; }
+
+.subagent-body { padding: 10px 12px; max-height: 200px; overflow-y: auto; }
+.subagent-stream { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #71717a; line-height: 1.5; white-space: pre-wrap; word-break: break-all; }
+.subagent-stream .hl { color: #a1a1aa; }
+
+.subagent-tool { display: flex; align-items: center; gap: 6px; padding: 4px 12px; font-size: 11px; color: #71717a; border-top: 1px solid #27272a; background: #0d0d0f; }
+
+.subagent-result { padding: 10px 12px; border-top: 1px solid #27272a; font-size: 12px; color: #22c55e; background: rgba(34,197,94,0.05); line-height: 1.6; }
+
+@keyframes pulse-dot { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+.pulse { display: inline-flex; gap: 3px; }
+.pulse span { width: 4px; height: 4px; border-radius: 50%; background: #3b82f6; animation: pulse-dot 1.2s infinite; }
+.pulse span:nth-child(2) { animation-delay: 0.15s; }
+.pulse span:nth-child(3) { animation-delay: 0.3s; }
+
+.timestamp { font-size: 10px; color: #52525b; margin-top: 4px; }
+.divider { text-align: center; font-size: 11px; color: #52525b; margin: 24px 0 16px; }
+
+.session-list { border: 1px solid #27272a; border-radius: 10px; overflow: hidden; background: #18181b; font-size: 13px; margin-top: 8px; }
+.session-list .item { padding: 10px 14px; border-bottom: 1px solid #27272a; display: flex; align-items: center; gap: 8px; }
+.session-list .item:last-child { border-bottom: none; }
+.session-list .hint { padding: 10px 14px; color: #52525b; font-size: 11px; }
+</style>
+</head>
+<body>
+
+<div class="divider">— 💡 컨셉: 서브에이전트가 대화 흐름에 embed —</div>
+
+<!-- User -->
+<div class="msg user">
+  <div class="avatar user">B</div>
+  <div>
+    <div class="bubble user">세션 관리 UI랑 파일 첨부 기능 구현해줘</div>
+    <div class="timestamp" style="text-align:right">08:30</div>
+  </div>
+</div>
+
+<!-- Assistant: subagent running -->
+<div class="msg">
+  <div class="avatar bot">K</div>
+  <div style="max-width:85%">
+    <div class="bubble bot">
+      서브에이전트로 진행합니다.
+      <div class="subagent-card">
+        <div class="subagent-header">
+          <span class="icon">🤖</span>
+          <span class="label">awf-session-mgmt-files</span>
+          <span class="status running">
+            <span class="pulse"><span></span><span></span><span></span></span>
+            작업중 3m
+          </span>
+        </div>
+        <div class="subagent-tool">
+          <span>⚙️</span>
+          <span>exec: grep -n "sessions.patch" src/...</span>
+        </div>
+        <div class="subagent-body">
+          <div class="subagent-stream"><span class="hl">SessionSwitcher 개선 중...</span>
+- 에이전트별 그룹핑 구현
+- 세션 이름 변경 (sessions.patch)
+- 검색/필터 추가
+<span class="hl">파일 첨부 구현 중...</span>
+- 드래그앤드롭 핸들러
+- 클립보드 붙여넣기 (Ctrl+V)</div>
+        </div>
+      </div>
+    </div>
+    <div class="timestamp">08:30</div>
+  </div>
+</div>
+
+<div class="divider">— ✅ 완료 후 접힌 상태 —</div>
+
+<!-- Assistant: subagent done (collapsed) -->
+<div class="msg">
+  <div class="avatar bot">K</div>
+  <div style="max-width:85%">
+    <div class="bubble bot">
+      서브에이전트로 진행합니다.
+      <div class="subagent-card">
+        <div class="subagent-header">
+          <span class="icon">🤖</span>
+          <span class="label">awf-session-mgmt-files</span>
+          <span class="status done">✓ 완료 12m</span>
+        </div>
+        <div class="subagent-result">
+          ✅ 세션 관리 UI — 이름 변경, 삭제, 리셋, 검색<br>
+          ✅ 파일 첨부 — 드래그앤드롭, 클립보드, 미리보기<br>
+          ✅ 94 tests passing, pushed to main
+        </div>
+      </div>
+    </div>
+    <div class="timestamp">08:42</div>
+  </div>
+</div>
+
+<div class="divider">— 📋 세션 목록 (subagent 제외) —</div>
+
+<div class="session-list">
+  <div class="item">
+    <span style="color:#3b82f6">●</span> <b>My-Agent Main</b> <span style="color:#71717a; font-size:11px; margin-left:auto">방금</span>
+  </div>
+  <div class="item">
+    <span style="color:#71717a">●</span> Brxce Main <span style="color:#71717a; font-size:11px; margin-left:auto">2시간 전</span>
+  </div>
+  <div class="item">
+    <span style="color:#71717a">●</span> Creator Main <span style="color:#71717a; font-size:11px; margin-left:auto">어제</span>
+  </div>
+  <div class="hint">ℹ️ subagent/cron 세션은 부모 대화 안에 embed</div>
+</div>
+
+</body>
+</html>
