@@ -268,8 +268,7 @@ export function SessionSwitcher({
           isKeyboardNav.current = true;
           setSelectedIndex((i) => (i - 1 + totalItems) % totalItems);
           break;
-        case "r":
-        case "R": {
+        case "F2": {
           if (!onRename) break;
           if (selectedIndex >= filtered.length) break;
           e.preventDefault();
