@@ -132,11 +132,21 @@ export function SplitView() {
   }, []);
 
   const setActive = useCallback((id: string) => {
+    // Skip if keyboard navigation is in progress (prevents focus ping-pong)
+    if (navLockRef.current) return;
     setState((prev) => (prev.activePanelId === id ? prev : { ...prev, activePanelId: id }));
   }, []);
 
+  /** True while keyboard navigation is in progress (suppresses focus-based setActive) */
+  const navLockRef = useRef(false);
+  const navLockTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+
   /** Navigate focus to prev (-1) or next (+1) panel */
   const navPanel = useCallback((dir: -1 | 1) => {
+    // Lock to prevent onFocusCapture from overriding keyboard nav
+    navLockRef.current = true;
+    clearTimeout(navLockTimer.current);
+    navLockTimer.current = setTimeout(() => { navLockRef.current = false; }, 200);
     setState((prev) => {
       const idx = prev.panels.findIndex((p) => p.id === prev.activePanelId);
       const next = idx + dir;

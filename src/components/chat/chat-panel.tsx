@@ -7,6 +7,7 @@ import { ChatInput } from "./chat-input";
 import { AvatarAgentSelector } from "./avatar-agent-selector";
 import { AgentSelector } from "./agent-selector";
 import { SessionSwitcher } from "./session-switcher";
+import { AgentSessionBrowser } from "./agent-session-browser";
 import { DropZone, useFileAttachments, attachmentToPayload } from "./file-attachments";
 import { parseSessionKey, sessionDisplayName, type GatewaySession } from "@/lib/gateway/session-utils";
 import { TaskMemo } from "./task-memo";
@@ -71,6 +72,7 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true, initi
   const { attachments, addFiles, removeAttachment, clearAttachments } = useFileAttachments();
 
   const [sessionSwitcherOpen, setSessionSwitcherOpen] = useState(false);
+  const [agentBrowserOpen, setAgentBrowserOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
 
   // Shortcuts (active panel only)
@@ -84,6 +86,10 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true, initi
         if (e.code === "KeyK") {
           e.preventDefault();
           setSessionSwitcherOpen((prev) => !prev);
+        }
+        if (e.code === "KeyO") {
+          e.preventDefault();
+          setAgentBrowserOpen((prev) => !prev);
         }
       }
       // Ctrl+C: abort/stop streaming
@@ -109,13 +115,17 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true, initi
   }, [isActive, agentId, setSessionKey, refreshSessions, streaming, abort]);
 
   // Focus textarea when panel becomes active
+  const focusTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   useEffect(() => {
+    // Clear any pending focus from previous activation
+    clearTimeout(focusTimerRef.current);
     if (isActive) {
-      setTimeout(() => {
+      focusTimerRef.current = setTimeout(() => {
         const textarea = panelRef.current?.querySelector("textarea");
         textarea?.focus();
       }, 50);
     }
+    return () => clearTimeout(focusTimerRef.current);
   }, [isActive]);
 
   const isConnected = state === "connected";
@@ -363,6 +373,11 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true, initi
             />
             <div className="ml-auto flex shrink-0 items-center gap-2">
               <kbd className="hidden rounded border border-border bg-muted px-1 py-0.5 text-[10px] leading-none text-muted-foreground sm:inline-flex">⌘K</kbd>
+              <kbd
+                className="hidden cursor-pointer rounded border border-border bg-muted px-1 py-0.5 text-[10px] leading-none text-muted-foreground hover:text-foreground sm:inline-flex"
+                onClick={() => setAgentBrowserOpen(true)}
+                title="에이전트별 세션 브라우저"
+              >⌘O</kbd>
               {currentSession?.model && (
                 <span className="text-[10px] text-muted-foreground" title={currentSession.model}>
                   {currentSession.model.split("/").pop()}
@@ -374,6 +389,20 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true, initi
             </div>
           </div>
         ) : undefined}
+      />
+
+      {/* Agent session browser (Cmd+O) */}
+      <AgentSessionBrowser
+        sessions={sessions as GatewaySession[]}
+        agents={agents}
+        currentKey={effectiveSessionKey}
+        onSelect={(key) => {
+          setSessionKey(key);
+          setAgentBrowserOpen(false);
+        }}
+        open={agentBrowserOpen}
+        onOpenChange={setAgentBrowserOpen}
+        portalContainer={panelRef.current}
       />
     </div>
   );
