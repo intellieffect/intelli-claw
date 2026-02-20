@@ -11,6 +11,7 @@ import { DropZone, useFileAttachments, attachmentToPayload } from "./file-attach
 import { parseSessionKey, sessionDisplayName, type GatewaySession } from "@/lib/gateway/session-utils";
 import { TaskMemo } from "./task-memo";
 import { SessionSettings } from "@/components/settings/session-settings";
+import { ChatHeader } from "./chat-header";
 
 export interface ChatPanelProps {
   /** Panel id for focus management */
@@ -285,6 +286,16 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
       className="relative flex h-full flex-col bg-background"
       onClick={onFocus}
     >
+      {/* Chat Header — agent name + topic */}
+      {showHeader && effectiveSessionKey && (
+        <ChatHeader
+          sessionKey={effectiveSessionKey}
+          agents={agents}
+          sessions={sessions as unknown as Array<Record<string, unknown>>}
+          messages={messages as unknown as Array<Record<string, unknown>>}
+        />
+      )}
+
       {/* Task Memo */}
       {effectiveSessionKey && (
         <TaskMemo key={effectiveSessionKey} sessionKey={effectiveSessionKey} messages={messages as unknown as Array<Record<string, unknown>>} />
