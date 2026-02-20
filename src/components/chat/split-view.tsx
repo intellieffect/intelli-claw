@@ -132,9 +132,11 @@ export function SplitView() {
   /** Navigate focus to prev (-1) or next (+1) panel */
   const navPanel = useCallback((dir: -1 | 1) => {
     setState((prev) => {
+      const len = prev.panels.length;
+      if (len <= 1) return prev;
       const idx = prev.panels.findIndex((p) => p.id === prev.activePanelId);
-      const next = idx + dir;
-      if (next < 0 || next >= prev.panels.length) return prev;
+      const next = (idx + dir + len) % len; // wrap around
+      if (next === idx) return prev;
       return { ...prev, activePanelId: prev.panels[next].id };
     });
   }, []);
