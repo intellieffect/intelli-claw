@@ -12,6 +12,7 @@ import { parseSessionKey, sessionDisplayName, type GatewaySession } from "@/lib/
 import { TaskMemo } from "./task-memo";
 import { SessionSettings } from "@/components/settings/session-settings";
 import { ChatHeader } from "./chat-header";
+import { matchesShortcutId } from "@/lib/shortcuts";
 
 export interface ChatPanelProps {
   /** Panel id for focus management */
@@ -65,12 +66,11 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if (!isActive) return;
-      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+      if (matchesShortcutId(e, "session-switcher")) {
         e.preventDefault();
         setSessionSwitcherOpen((prev) => !prev);
       }
-      // Ctrl+N: new session(thread)
-      if (e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "n") {
+      if (matchesShortcutId(e, "new-session")) {
         e.preventDefault();
         const threadId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
         const newKey = `agent:${agentId}:main:thread:${threadId}`;

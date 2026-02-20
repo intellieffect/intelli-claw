@@ -4,6 +4,7 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { ChatPanel } from "./chat-panel";
 import { useIsMobile } from "@/lib/hooks/use-mobile";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
+import { matchesShortcutId } from "@/lib/shortcuts";
 
 function uid() {
   return Math.random().toString(36).slice(2, 8);
@@ -174,35 +175,37 @@ export function SplitView() {
     };
   });
 
-  // Aerospace-style shortcuts:
-  // - Ctrl+H/L: focus prev/next panel
-  // - Ctrl+Shift+H/L: move current panel left/right
-  // - Ctrl+X: close active panel
-  // - Ctrl+Shift+X: reopen last closed panel
+  // Customizable shortcuts — resolved via matchesShortcutId
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (!e.ctrlKey || e.metaKey || e.altKey) return;
-
-      if (e.code === "KeyH") {
-        e.preventDefault();
-        e.stopPropagation();
-        if (e.shiftKey) moveActivePanel(-1);
-        else navPanel(-1);
-      } else if (e.code === "KeyL") {
-        e.preventDefault();
-        e.stopPropagation();
-        if (e.shiftKey) moveActivePanel(1);
-        else navPanel(1);
-      } else if (e.code === "KeyX") {
-        e.preventDefault();
-        e.stopPropagation();
-        if (e.shiftKey) reopenLastClosedPanel();
-        else removePanel(state.activePanelId);
+      if (matchesShortcutId(e, "focus-left") || matchesShortcutId(e, "focus-up")) {
+        e.preventDefault(); e.stopPropagation();
+        navPanel(-1);
+      } else if (matchesShortcutId(e, "focus-right") || matchesShortcutId(e, "focus-down")) {
+        e.preventDefault(); e.stopPropagation();
+        navPanel(1);
+      } else if (matchesShortcutId(e, "swap-panels")) {
+        e.preventDefault(); e.stopPropagation();
+        // Swap active panel with the next one (wraps around)
+        setState((prev) => {
+          if (prev.panels.length < 2) return prev;
+          const idx = prev.panels.findIndex((p) => p.id === prev.activePanelId);
+          const next = (idx + 1) % prev.panels.length;
+          const panels = [...prev.panels];
+          [panels[idx], panels[next]] = [panels[next], panels[idx]];
+          return { ...prev, panels };
+        });
+      } else if (matchesShortcutId(e, "close-panel")) {
+        e.preventDefault(); e.stopPropagation();
+        removePanel(state.activePanelId);
+      } else if (matchesShortcutId(e, "reopen-panel")) {
+        e.preventDefault(); e.stopPropagation();
+        reopenLastClosedPanel();
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [navPanel, moveActivePanel, removePanel, reopenLastClosedPanel, state.activePanelId]);
+  }, [navPanel, removePanel, reopenLastClosedPanel, state.activePanelId]);
 
   // --- Resize ---
 

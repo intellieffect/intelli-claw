@@ -6,7 +6,7 @@ import { useIsMobile } from "@/lib/hooks/use-mobile";
 import { ConnectionStatus } from "./connection-status";
 import { SplitView } from "./split-view";
 import { ShortcutHelpDialog } from "./shortcut-help-dialog";
-import { isShortcutHelp } from "@/lib/shortcuts";
+import { isShortcutHelp, matchesShortcutId } from "@/lib/shortcuts";
 import { Zap, Plus, Keyboard } from "lucide-react";
 
 export function ChatView() {
@@ -28,7 +28,7 @@ export function ChatView() {
       }
       if (e.key === "Escape") setShortcutOpen(false);
 
-      if ((e.metaKey || e.ctrlKey) && e.key === "\\") {
+      if (matchesShortcutId(e, "add-panel") || matchesShortcutId(e, "add-panel-alt")) {
         e.preventDefault();
         (window as any).__awfSplitAddPanel?.();
       }
