@@ -210,7 +210,7 @@ export function SessionManagerPanel({
                       const isCurrent = s.key === currentSessionKey;
                       const isMain = s.parsed.type === "main";
                       const isConfirming = confirmAction?.key === s.key;
-                      const label = s.label || s.displayName || (isMain ? "메인 세션" : `${TYPE_LABELS[s.parsed.type] || "세션"} #${(s.parsed.detail || "").slice(0, 8)}`);
+                      const label = s.label || (isMain ? "메인 세션" : `${TYPE_LABELS[s.parsed.type] || "세션"} #${(s.parsed.detail || "").slice(0, 8)}`);
                       const tokens = formatTokens(s.totalTokens);
                       const time = relativeTime(s.updatedAt);
 
