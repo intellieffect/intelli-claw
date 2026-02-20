@@ -130,7 +130,7 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
       await client.request("sessions.patch", { key, label });
       refreshSessions();
     } catch (err) {
-      console.error("[AWF] auto-rename thread failed:", err);
+      console.error("[intelli-claw] auto-rename thread failed:", err);
     }
   }
 
@@ -305,13 +305,15 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
         onAttachFiles={addFiles}
         onRemoveAttachment={removeAttachment}
         panelId={panelId}
+        agentSlot={showHeader ? (
+          <AvatarAgentSelector
+            agents={agents}
+            selectedId={currentAgentId}
+            onSelect={handleAgentChange}
+          />
+        ) : undefined}
         toolbar={showHeader ? (
           <>
-            <AvatarAgentSelector
-              agents={agents}
-              selectedId={currentAgentId}
-              onSelect={handleAgentChange}
-            />
             <SessionSettings
               sessionKey={effectiveSessionKey}
               onDelete={() => setSessionKey(undefined)}
