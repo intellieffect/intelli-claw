@@ -250,7 +250,7 @@ export function ChatInput({
   const showAttachments = onRemoveAttachment && attachments.length > 0;
 
   return (
-    <div className="relative px-[5%] py-2 sm:py-3 md:px-[8%] lg:px-[12%] safe-bottom">
+    <div className="relative px-[3%] py-2 sm:py-3 md:px-[5%] lg:px-[7%] safe-bottom">
       {/* Skill picker */}
       <SkillPicker
         inputText={text}
