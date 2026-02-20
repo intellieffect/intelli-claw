@@ -291,10 +291,9 @@ export function SplitView() {
           {/* Panel */}
           <div
             className={`relative h-full min-w-0 flex-1 ${
-              !isMobile && panel.id === activePanelId ? "ring-1 ring-primary/60 ring-inset" : ""
+              !isMobile && panel.id === activePanelId ? "ring-1 ring-blue-500/40 ring-inset" : ""
             }`}
             onClick={() => setActive(panel.id)}
-            onFocusCapture={() => setActive(panel.id)}
           >
             {/* Panel controls (desktop only, multi-panel) */}
             {!isMobile && panels.length > 1 && (
