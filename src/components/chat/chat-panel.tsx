@@ -77,9 +77,23 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true, initi
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if (!isActive) return;
-      if ((e.metaKey || e.ctrlKey) && e.code === "KeyK") {
-        e.preventDefault();
-        setSessionSwitcherOpen((prev) => !prev);
+      // Cmd+K (macOS) or Ctrl+K (Windows/Linux) — session switcher
+      // On macOS, only Cmd+K triggers (not Ctrl+K)
+      const isMac = navigator.platform?.startsWith("Mac") || navigator.userAgent?.includes("Mac");
+      if (isMac ? (e.metaKey && !e.ctrlKey) : (e.ctrlKey && !e.metaKey)) {
+        if (e.code === "KeyK") {
+          e.preventDefault();
+          setSessionSwitcherOpen((prev) => !prev);
+        }
+      }
+      // Ctrl+C: abort/stop streaming
+      if (e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey && e.code === "KeyC") {
+        // Only intercept when streaming and no text is selected
+        const selection = window.getSelection()?.toString();
+        if (streaming && !selection) {
+          e.preventDefault();
+          abort();
+        }
       }
       // Ctrl+N: new session(thread) — use e.code to work with any IME/language input
       if (e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey && e.code === "KeyN") {
@@ -92,7 +106,7 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true, initi
     }
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [isActive, agentId, setSessionKey, refreshSessions]);
+  }, [isActive, agentId, setSessionKey, refreshSessions, streaming, abort]);
 
   // Focus textarea when panel becomes active
   useEffect(() => {

@@ -15,6 +15,7 @@ export const SHORTCUTS: ShortcutDef[] = [
   { id: "close-panel", keys: "Ctrl+X", description: "현재 패널 닫기", scope: "global" },
   { id: "reopen-panel", keys: "Ctrl+Shift+X", description: "닫은 패널 다시 열기", scope: "global" },
   { id: "new-session", keys: "Ctrl+N", description: "현재 패널 새 세션", scope: "panel" },
+  { id: "abort-stream", keys: "Ctrl+C", description: "스트리밍 중지", scope: "panel" },
   { id: "session-switcher", keys: "Cmd+K", description: "세션 스위처 열기", scope: "panel" },
 ];
 
