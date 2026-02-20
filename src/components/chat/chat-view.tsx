@@ -33,8 +33,8 @@ export function ChatView() {
         (window as any).__awfSplitAddPanel?.();
       }
 
-      // Ctrl+1~9: focus panel by index
-      if (e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey && e.key >= "1" && e.key <= "9") {
+      // Ctrl+1~9: focus panel by index (ignore key repeat)
+      if (!e.repeat && e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey && e.key >= "1" && e.key <= "9") {
         e.preventDefault();
         (window as any).__awfSplitFocusPanel?.(parseInt(e.key, 10) - 1);
       }

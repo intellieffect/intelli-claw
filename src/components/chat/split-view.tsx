@@ -81,9 +81,11 @@ export function SplitView() {
     setHydrated(true);
   }, []);
 
-  // Persist on every change (only after hydration)
+  // Persist on change (debounced to avoid thrashing on rapid switches)
   useEffect(() => {
-    if (hydrated) saveState(state);
+    if (!hydrated) return;
+    const timer = setTimeout(() => saveState(state), 200);
+    return () => clearTimeout(timer);
   }, [state, hydrated]);
 
   // --- Panel management ---
@@ -187,10 +189,10 @@ export function SplitView() {
     const handler = (e: KeyboardEvent) => {
       if (matchesShortcutId(e, "focus-left")) {
         e.preventDefault(); e.stopPropagation();
-        navPanel(-1);
+        if (!e.repeat) navPanel(-1);
       } else if (matchesShortcutId(e, "focus-right")) {
         e.preventDefault(); e.stopPropagation();
-        navPanel(1);
+        if (!e.repeat) navPanel(1);
       } else if (matchesShortcutId(e, "swap-panels")) {
         e.preventDefault(); e.stopPropagation();
         // Swap active panel with the next one (wraps around)
