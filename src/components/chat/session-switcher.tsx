@@ -178,9 +178,16 @@ export function SessionSwitcher({
 
   // Filter
   const filtered = useMemo(() => {
-    if (!search.trim()) return sorted;
+    // Hide cron and subagent sessions from the list (unless explicitly searched)
+    const isSystemSearch = search.toLowerCase().includes("cron") || search.toLowerCase().includes("subagent");
+    const visible = sorted.filter((s) => {
+      const parsed = parseSessionKey(s.key);
+      if (!isSystemSearch && (parsed.type === "cron" || parsed.type === "subagent")) return false;
+      return true;
+    });
+    if (!search.trim()) return visible;
     const q = search.toLowerCase();
-    return sorted.filter((s) => {
+    return visible.filter((s) => {
       const name = sessionDisplayName(s).toLowerCase();
       const key = s.key.toLowerCase();
       const parsed = parseSessionKey(s.key);
