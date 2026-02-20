@@ -285,7 +285,11 @@ export function SplitView() {
           {/* Panel */}
           <div
             className={`relative h-full min-w-0 flex-1 ${
-              !isMobile && panel.id === activePanelId ? "ring-1 ring-blue-500/40 ring-inset" : ""
+              !isMobile
+                ? panel.id === activePanelId
+                  ? "ring-1 ring-blue-500/50 ring-inset border-l border-r border-zinc-700/60"
+                  : "border-l border-r border-zinc-800/50"
+                : ""
             }`}
             onClick={() => setActive(panel.id)}
           >
