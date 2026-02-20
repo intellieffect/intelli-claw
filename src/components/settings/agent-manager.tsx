@@ -69,7 +69,7 @@ export function NewSessionPicker({
                   {av.emoji}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm font-semibold text-zinc-100 truncate">{agent.name}</div>
+                  <div className="text-sm font-semibold text-zinc-100 truncate">{agent.name || agent.id}</div>
                   {agent.description && (
                     <div className="text-xs text-zinc-500 truncate">{agent.description}</div>
                   )}
@@ -314,7 +314,7 @@ export function AgentManager({
                       {av.emoji}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium text-zinc-200 truncate">{agent.name}</div>
+                      <div className="text-sm font-medium text-zinc-200 truncate">{agent.name || agent.id}</div>
                       <div className="text-[10px] text-zinc-600 truncate">{agent.id} · {agent.model || "default"}</div>
                     </div>
                     <div className="flex items-center gap-1">

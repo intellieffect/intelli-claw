@@ -249,7 +249,7 @@ export function parseFrame(data: string): Frame | null {
 
 export interface Agent {
   id: string;
-  name: string;
+  name?: string;
   model?: string;
   description?: string;
   systemPrompt?: string;
