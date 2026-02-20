@@ -35,7 +35,7 @@ export function AvatarAgentSelector({
         type="button"
         onClick={() => setOpen(!open)}
         className={cn(
-          "flex size-7 shrink-0 items-center justify-center rounded-full text-sm transition-all hover:scale-110 hover:ring-2 hover:ring-ring/30",
+          "flex size-14 shrink-0 items-center justify-center rounded-full text-2xl transition-all hover:scale-110 hover:ring-2 hover:ring-ring/30",
           avatar.color
         )}
         title={selectedId ? `${selectedId} · 클릭하여 변경` : "에이전트 선택"}

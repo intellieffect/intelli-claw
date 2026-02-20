@@ -178,9 +178,16 @@ export function SessionSwitcher({
 
   // Filter
   const filtered = useMemo(() => {
-    if (!search.trim()) return sorted;
+    // Hide cron and subagent sessions from the list (unless explicitly searched)
+    const isSystemSearch = search.toLowerCase().includes("cron") || search.toLowerCase().includes("subagent");
+    const visible = sorted.filter((s) => {
+      const parsed = parseSessionKey(s.key);
+      if (!isSystemSearch && (parsed.type === "cron" || parsed.type === "subagent")) return false;
+      return true;
+    });
+    if (!search.trim()) return visible;
     const q = search.toLowerCase();
-    return sorted.filter((s) => {
+    return visible.filter((s) => {
       const name = sessionDisplayName(s).toLowerCase();
       const key = s.key.toLowerCase();
       const parsed = parseSessionKey(s.key);
@@ -261,16 +268,6 @@ export function SessionSwitcher({
           isKeyboardNav.current = true;
           setSelectedIndex((i) => (i - 1 + totalItems) % totalItems);
           break;
-        case "r":
-        case "R": {
-          if (!onRename) break;
-          if (selectedIndex >= filtered.length) break;
-          e.preventDefault();
-          const s = filtered[selectedIndex];
-          setEditLabel(s.label || sessionDisplayName(s));
-          setEditingKey(s.key);
-          break;
-        }
         case "Enter":
           e.preventDefault();
           if (selectedIndex < filtered.length) {
@@ -337,21 +334,34 @@ export function SessionSwitcher({
   );
 
   const current = gwSessions.find((s) => s.key === currentKey);
+  const currentParsed = currentKey ? parseSessionKey(currentKey) : null;
 
   return (
     <>
-      {/* Trigger button */}
+      {/* Trigger — Option D: Minimal Dot + Inline */}
       <button
         onClick={() => setOpen(true)}
-        className="flex items-center gap-2 rounded-lg border border-border bg-muted px-3 py-1.5 text-sm text-foreground transition hover:border-border hover:bg-muted"
+        className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition hover:bg-muted"
       >
-        <MessageSquare size={14} className="text-emerald-400" />
-        <span className="max-w-[200px] truncate">
-          {current ? sessionDisplayName(current) : "세션 선택"}
+        <span className="size-2 shrink-0 rounded-full bg-emerald-500" />
+        <span className="min-w-0 flex-1 truncate text-left text-foreground">
+          {current ? (
+            current.label ? (
+              <>
+                <strong className="font-semibold">{currentParsed?.agentId || "agent"}</strong>
+                <span className="text-muted-foreground"> / </span>
+                {current.label.replace(new RegExp(`^${currentParsed?.agentId || ""}/`), "")}
+              </>
+            ) : sessionDisplayName(current)
+          ) : currentParsed ? (
+            <>
+              <strong className="font-semibold">{currentParsed.agentId}</strong>
+              {currentParsed.type === "thread" && (
+                <span className="text-muted-foreground"> / 새 세션</span>
+              )}
+            </>
+          ) : "세션 선택"}
         </span>
-        <kbd className="ml-1 hidden rounded border border-border bg-muted px-1 py-0.5 text-[10px] leading-none text-muted-foreground sm:inline-flex">
-          <Command size={10} className="mr-0.5" />K
-        </kbd>
       </button>
 
       {/* Command palette modal — portal to panel container or body */}

@@ -306,6 +306,7 @@ export function SplitView() {
                   }
             ) : undefined}
             onClick={() => setActive(panel.id)}
+            onFocusCapture={() => setActive(panel.id)}
           >
             {/* Panel controls (desktop only, multi-panel) */}
             {!isMobile && panels.length > 1 && (
