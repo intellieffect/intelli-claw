@@ -352,18 +352,6 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
         panelId={panelId}
         toolbar={showHeader ? (
           <>
-            <AvatarAgentSelector
-              agents={agents}
-              selectedId={currentAgentId}
-              onSelect={handleAgentChange}
-            />
-            <SessionSettings
-              sessionKey={effectiveSessionKey}
-              onDelete={() => setSessionKey(undefined)}
-              onReset={() => {
-                refreshSessions();
-              }}
-            />
             <SessionSwitcher
               sessions={sessions as GatewaySession[]}
               currentKey={sessionKey}
