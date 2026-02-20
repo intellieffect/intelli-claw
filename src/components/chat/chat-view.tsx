@@ -6,8 +6,8 @@ import { useIsMobile } from "@/lib/hooks/use-mobile";
 import { ConnectionStatus } from "./connection-status";
 import { SplitView } from "./split-view";
 import { ShortcutHelpDialog } from "./shortcut-help-dialog";
-import { isShortcutHelp, matchesShortcutId } from "@/lib/shortcuts";
-import { Zap, Plus, Keyboard } from "lucide-react";
+import { isShortcutHelp } from "@/lib/shortcuts";
+import { Plus, Keyboard } from "lucide-react";
 
 export function ChatView() {
   const { state } = useGateway();
@@ -28,15 +28,9 @@ export function ChatView() {
       }
       if (e.key === "Escape") setShortcutOpen(false);
 
-      if (matchesShortcutId(e, "add-panel")) {
+      if ((e.metaKey || e.ctrlKey) && e.key === "\\") {
         e.preventDefault();
         (window as any).__awfSplitAddPanel?.();
-      }
-
-      // Ctrl+1~9: focus panel by index (ignore key repeat)
-      if (!e.repeat && e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey && e.key >= "1" && e.key <= "9") {
-        e.preventDefault();
-        (window as any).__awfSplitFocusPanel?.(parseInt(e.key, 10) - 1);
       }
     }
     document.addEventListener("keydown", handleKeyDown);
@@ -50,7 +44,7 @@ export function ChatView() {
       <header className="relative z-20 flex items-center justify-between border-b border-border bg-background/80 px-3 py-2 md:px-4 md:py-2.5 backdrop-blur-sm">
         <div className="flex items-center gap-2 md:gap-3">
           <div className="flex items-center gap-2">
-            <Zap size={isMobile ? 18 : 20} className="text-primary" />
+            <img src="/logo.svg" alt="intelli-claw" className="h-5 w-5 md:h-6 md:w-6" />
             <span className="text-sm font-semibold text-foreground">intelli-claw</span>
           </div>
         </div>
