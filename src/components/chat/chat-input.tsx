@@ -271,7 +271,7 @@ export function ChatInput({
         <div
           className={cn(
             "relative flex w-full flex-col rounded-xl sm:rounded-2xl border border-input bg-background shadow-sm transition-[border-color,box-shadow]",
-            "focus-within:border-primary focus-within:ring-[3px] focus-within:ring-ring/20"
+            "focus-within:border-primary focus-within:ring-[3px] focus-within:ring-primary/40"
           )}
         >
           {/* Toolbar: controls */}
