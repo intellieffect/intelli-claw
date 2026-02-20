@@ -349,16 +349,15 @@ export function SessionSwitcher({
         <span className="size-2 shrink-0 rounded-full bg-emerald-500" />
         <span className="min-w-0 flex-1 truncate text-left text-foreground">
           {current ? (
-            <>
-              <strong className="font-semibold">{currentParsed?.agentId || "agent"}</strong>
-              <span className="text-muted-foreground"> / </span>
-              {sessionDisplayName(current)}
-            </>
+            current.label ? (
+              <>
+                <strong className="font-semibold">{currentParsed?.agentId || "agent"}</strong>
+                <span className="text-muted-foreground"> / </span>
+                {current.label.replace(new RegExp(`^${currentParsed?.agentId || ""}/`), "")}
+              </>
+            ) : sessionDisplayName(current)
           ) : "세션 선택"}
         </span>
-        <kbd className="ml-1 hidden shrink-0 rounded border border-border bg-muted px-1 py-0.5 text-[10px] leading-none text-muted-foreground sm:inline-flex">
-          <Command size={10} className="mr-0.5" />K
-        </kbd>
       </button>
 
       {/* Command palette modal — portal to panel container or body */}

@@ -347,14 +347,15 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true, initi
               onOpenChange={setSessionSwitcherOpen}
               portalContainer={panelRef.current}
             />
-            <div className="ml-auto flex items-center gap-2">
+            <div className="ml-auto flex shrink-0 items-center gap-2">
+              <kbd className="hidden rounded border border-border bg-muted px-1 py-0.5 text-[10px] leading-none text-muted-foreground sm:inline-flex">⌘K</kbd>
               {currentSession?.model && (
                 <span className="text-[10px] text-muted-foreground" title={currentSession.model}>
                   {currentSession.model.split("/").pop()}
                 </span>
               )}
               {tokenStr && (
-                <span className="text-[10px] text-muted-foreground">{tokenStr} tokens</span>
+                <span className="text-[10px] text-muted-foreground">{tokenStr}</span>
               )}
             </div>
           </>
