@@ -18,8 +18,8 @@ const isMac = typeof navigator !== "undefined" ? /Mac|iPhone|iPad|iPod/.test(nav
 export const DEFAULT_SHORTCUTS: ShortcutDef[] = [
   { id: "help", keys: isMac ? "Cmd+/" : "Ctrl+/", description: "단축키 도움말 열기", scope: "global" },
   { id: "add-panel", keys: isMac ? "Cmd+\\" : "Ctrl+\\", description: "패널 추가", scope: "global" },
-  { id: "focus-left", keys: "Ctrl+H", description: "왼쪽 패널 포커스", scope: "global" },
-  { id: "focus-right", keys: "Ctrl+L", description: "오른쪽 패널 포커스", scope: "global" },
+  { id: "focus-left", keys: isMac ? "Ctrl+H" : "Ctrl+ArrowLeft", description: "왼쪽 패널 포커스", scope: "global" },
+  { id: "focus-right", keys: isMac ? "Ctrl+L" : "Ctrl+ArrowRight", description: "오른쪽 패널 포커스", scope: "global" },
   { id: "swap-panels", keys: isMac ? "Cmd+Ctrl+Shift+S" : "Ctrl+Alt+Shift+S", description: "패널 위치 스왑", scope: "global" },
   { id: "close-panel", keys: "Ctrl+X", description: "현재 패널 닫기", scope: "global" },
   { id: "reopen-panel", keys: "Ctrl+Shift+X", description: "닫은 패널 다시 열기", scope: "global" },
