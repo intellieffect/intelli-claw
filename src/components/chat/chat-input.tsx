@@ -381,11 +381,11 @@ export function ChatInput({
           </AnimatePresence>
         </div>
 
-        <p className="mt-1 text-center text-[10px] sm:text-[11px] text-muted-foreground/50">
-          Shift+Enter로 줄바꿈 · 에이전트는 실수할 수 있습니다
-        </p>
         </div>
       </div>
+      <p className="mt-1 text-center text-[10px] sm:text-[11px] text-muted-foreground/50">
+        Shift+Enter로 줄바꿈 · 에이전트는 실수할 수 있습니다
+      </p>
     </div>
   );
 }
