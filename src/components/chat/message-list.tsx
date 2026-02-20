@@ -6,6 +6,7 @@ import { User, Bot, Clock, X, Copy, Check } from "lucide-react";
 import { MarkdownRenderer } from "./markdown-renderer";
 import { ToolCallCard } from "./tool-call-card";
 import type { DisplayMessage, DisplayAttachment } from "@/lib/gateway/hooks";
+import { getAgentAvatar } from "@/lib/agent-avatars";
 
 /** Strip task-memo HTML comments from display text */
 const TASK_MEMO_STRIP_RE = /\s*<!--\s*task-memo:\s*\{[\s\S]*?\}\s*-->\s*/g;
@@ -18,12 +19,15 @@ export function MessageList({
   loading,
   streaming,
   onCancelQueued,
+  agentId,
 }: {
   messages: DisplayMessage[];
   loading: boolean;
   streaming: boolean;
   onCancelQueued?: (id: string) => void;
+  agentId?: string;
 }) {
+  const agentAv = getAgentAvatar(agentId);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -41,7 +45,11 @@ export function MessageList({
   if (messages.length === 0) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-3 text-muted-foreground">
-        <Bot size={48} strokeWidth={1.5} className="text-muted-foreground" />
+        {agentAv.imageUrl ? (
+          <img src={agentAv.imageUrl} alt="" className="size-12 rounded-full object-cover opacity-50" />
+        ) : (
+          <Bot size={48} strokeWidth={1.5} className="text-muted-foreground" />
+        )}
         <p className="text-lg">무엇을 도와드릴까요?</p>
         <p className="text-sm text-muted-foreground">메시지를 입력하여 대화를 시작하세요</p>
       </div>
@@ -57,22 +65,31 @@ export function MessageList({
             const prevRole = idx > 0 ? arr[idx - 1].role : null;
             const showAvatar = msg.role !== "assistant" || prevRole !== "assistant";
             return (
-              <MessageBubble key={msg.id} message={msg} showAvatar={showAvatar} onCancel={msg.queued ? onCancelQueued : undefined} />
+              <MessageBubble key={msg.id} message={msg} showAvatar={showAvatar} onCancel={msg.queued ? onCancelQueued : undefined} agentImageUrl={agentAv.imageUrl} />
             );
           })}
-        {streaming && !messages.some(m => m.streaming) && <ThinkingIndicator />}
+        {streaming && !messages.some(m => m.streaming) && <ThinkingIndicator agentImageUrl={agentAv.imageUrl} />}
         <div ref={bottomRef} />
       </div>
     </div>
   );
 }
 
-function ThinkingIndicator() {
+function AgentAvatarBubble({ imageUrl, size = 18 }: { imageUrl?: string; size?: number }) {
+  if (imageUrl) {
+    return <img src={imageUrl} alt="" className="h-8 w-8 shrink-0 rounded-full object-cover" />;
+  }
+  return (
+    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+      <Bot size={size} />
+    </div>
+  );
+}
+
+function ThinkingIndicator({ agentImageUrl }: { agentImageUrl?: string }) {
   return (
     <div className="flex gap-3">
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-        <Bot size={18} />
-      </div>
+      <AgentAvatarBubble imageUrl={agentImageUrl} />
       <div className="flex items-center gap-1.5 rounded-2xl bg-muted/60 px-4 py-3">
         <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground" style={{ animationDelay: "0ms" }} />
         <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground" style={{ animationDelay: "150ms" }} />
@@ -127,7 +144,7 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
-function MessageBubble({ message, showAvatar = true, onCancel }: { message: DisplayMessage; showAvatar?: boolean; onCancel?: (id: string) => void }) {
+function MessageBubble({ message, showAvatar = true, onCancel, agentImageUrl }: { message: DisplayMessage; showAvatar?: boolean; onCancel?: (id: string) => void; agentImageUrl?: string }) {
   const isUser = message.role === "user";
   const isSystem = message.role === "system";
   const isQueued = message.queued;
@@ -153,9 +170,7 @@ function MessageBubble({ message, showAvatar = true, onCancel }: { message: Disp
       )}
       {!isUser && (
         showAvatar ? (
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-            <Bot size={18} />
-          </div>
+          <AgentAvatarBubble imageUrl={agentImageUrl} />
         ) : (
           <div className="w-8 shrink-0" />
         )

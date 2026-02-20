@@ -337,7 +337,7 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
 
       {/* Messages */}
       <DropZone onDrop={addFiles}>
-        <MessageList messages={messages} loading={loading} streaming={streaming} onCancelQueued={cancelQueued} />
+        <MessageList messages={messages} loading={loading} streaming={streaming} onCancelQueued={cancelQueued} agentId={currentAgentId} />
       </DropZone>
 
       {/* Input with integrated toolbar */}
