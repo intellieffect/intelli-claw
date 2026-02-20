@@ -260,11 +260,11 @@ export function ChatInput({
       />
 
       <div
-        className="mx-auto flex w-full max-w-3xl items-end gap-3"
+        className="mx-auto flex w-full max-w-3xl items-center gap-3"
       >
         {/* Agent avatar outside input box */}
         {agentSlot && (
-          <div className="mb-2 shrink-0">{agentSlot}</div>
+          <div className="shrink-0">{agentSlot}</div>
         )}
         <div
           className="flex-1"
