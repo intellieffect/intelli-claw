@@ -41,20 +41,9 @@ const TYPE_ICONS: Record<string, React.ReactNode> = {
 
 // --- Helpers ---
 
-/** Derive a short display label for a session tab. */
+/** Derive a short display label for a session tab — conversation content only. */
 function sessionTabLabel(session: SessionEntry): string {
-  // 1. Gateway origin.label or displayName (from external channels)
-  const origin = session.origin as Record<string, unknown> | undefined;
-  if (origin?.label && typeof origin.label === "string") {
-    const l = origin.label as string;
-    return l.length > 28 ? `${l.slice(0, 26)}…` : l;
-  }
-  if (session.displayName && typeof session.displayName === "string") {
-    const d = session.displayName as string;
-    return d.length > 28 ? `${d.slice(0, 26)}…` : d;
-  }
-
-  // 2. User-set or auto-generated label
+  // 1. User-set or auto-generated label
   if (session.label && typeof session.label === "string") {
     const label = session.label as string;
     const slashIdx = label.indexOf("/");
