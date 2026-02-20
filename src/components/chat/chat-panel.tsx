@@ -315,6 +315,8 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
           agents={agents}
           sessions={sessions as unknown as Array<Record<string, unknown>>}
           messages={messages as unknown as Array<Record<string, unknown>>}
+          onSelectSession={setSessionKey}
+          onNewSession={handleNewSession}
         />
       )}
 
