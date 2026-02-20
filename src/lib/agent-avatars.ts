@@ -36,7 +36,12 @@ function hashCode(s: string): number {
   return Math.abs(h);
 }
 
-const cache = new Map<string, AgentAvatar>();
+// Use globalThis to survive HMR without stale cache
+const _g = globalThis as any;
+if (!_g.__agentAvatarCache) _g.__agentAvatarCache = new Map<string, AgentAvatar>();
+const cache: Map<string, AgentAvatar> = _g.__agentAvatarCache;
+// Clear cache on module reload (HMR)
+cache.clear();
 
 /**
  * Known agent profile images (from Telegram bot avatars).
