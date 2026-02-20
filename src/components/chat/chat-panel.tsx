@@ -82,15 +82,18 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [isActive, agentId, setSessionKey, refreshSessions]);
 
+  // Restore focus to this panel's textarea
+  const refocusPanel = useCallback(() => {
+    setTimeout(() => {
+      const textarea = panelRef.current?.querySelector("textarea");
+      textarea?.focus();
+    }, 50);
+  }, []);
+
   // Focus textarea when panel becomes active
   useEffect(() => {
-    if (isActive) {
-      setTimeout(() => {
-        const textarea = panelRef.current?.querySelector("textarea");
-        textarea?.focus();
-      }, 50);
-    }
-  }, [isActive]);
+    if (isActive) refocusPanel();
+  }, [isActive, refocusPanel]);
 
   const isConnected = state === "connected";
 
@@ -231,9 +234,11 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
         await refreshSessions();
       } catch (err) {
         console.error("[AWF] sessions.patch error:", err);
+      } finally {
+        refocusPanel();
       }
     },
-    [client, isConnected, refreshSessions]
+    [client, isConnected, refreshSessions, refocusPanel]
   );
 
   const handleDelete = useCallback(
@@ -245,9 +250,11 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
         await refreshSessions();
       } catch (err) {
         console.error("[AWF] sessions.delete error:", err);
+      } finally {
+        refocusPanel();
       }
     },
-    [client, isConnected, sessionKey, setSessionKey, refreshSessions]
+    [client, isConnected, sessionKey, setSessionKey, refreshSessions, refocusPanel]
   );
 
   const handleReset = useCallback(
@@ -258,9 +265,11 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
         await refreshSessions();
       } catch (err) {
         console.error("[AWF] sessions.reset error:", err);
+      } finally {
+        refocusPanel();
       }
     },
-    [client, isConnected, refreshSessions]
+    [client, isConnected, refreshSessions, refocusPanel]
   );
 
   // Derive agent from session key
