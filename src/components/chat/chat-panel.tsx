@@ -337,7 +337,7 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true, initi
             />
             <SessionSwitcher
               sessions={sessions as GatewaySession[]}
-              currentKey={sessionKey}
+              currentKey={effectiveSessionKey}
               onSelect={setSessionKey}
               onNew={handleNewSession}
               onRename={handleRename}
