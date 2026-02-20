@@ -292,12 +292,19 @@ export function SplitView() {
           {/* Panel */}
           <div
             className={`relative h-full min-w-0 flex-1 overflow-hidden ${
-              !isMobile
-                ? panel.id === activePanelId
-                  ? "rounded-lg border-2 border-blue-400/60 shadow-[0_0_15px_rgba(59,130,246,0.15),0_0_30px_rgba(59,130,246,0.05)] transition-shadow duration-300"
-                  : "rounded-lg border border-zinc-700/40 shadow-none transition-shadow duration-300"
-                : ""
+              !isMobile ? "rounded-lg transition-all duration-300" : ""
             }`}
+            style={!isMobile ? (
+              panel.id === activePanelId
+                ? {
+                    border: "2px solid rgba(96, 165, 250, 0.6)",
+                    boxShadow: "0 0 12px rgba(59, 130, 246, 0.25), 0 0 24px rgba(59, 130, 246, 0.1), inset 0 0 12px rgba(59, 130, 246, 0.05)",
+                  }
+                : {
+                    border: "1px solid rgba(63, 63, 70, 0.4)",
+                    boxShadow: "none",
+                  }
+            ) : undefined}
             onClick={() => setActive(panel.id)}
           >
             {/* Panel controls (desktop only, multi-panel) */}
