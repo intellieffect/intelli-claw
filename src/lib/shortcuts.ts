@@ -8,18 +8,23 @@ export type ShortcutDef = {
   scope?: "global" | "panel";
 };
 
+// --- OS detection ---
+
+const isMac = typeof navigator !== "undefined" ? /Mac|iPhone|iPad|iPod/.test(navigator.userAgent) : true;
+
 // --- Default shortcuts ---
+// On Windows/Linux: Cmd → Ctrl, and browser-conflicting Ctrl combos → Alt
 
 export const DEFAULT_SHORTCUTS: ShortcutDef[] = [
-  { id: "help", keys: "Cmd+/", description: "단축키 도움말 열기", scope: "global" },
-  { id: "add-panel", keys: "Cmd+\\", description: "패널 추가", scope: "global" },
+  { id: "help", keys: isMac ? "Cmd+/" : "Ctrl+/", description: "단축키 도움말 열기", scope: "global" },
+  { id: "add-panel", keys: isMac ? "Cmd+\\" : "Ctrl+\\", description: "패널 추가", scope: "global" },
   { id: "focus-left", keys: "Ctrl+H", description: "왼쪽 패널 포커스", scope: "global" },
   { id: "focus-right", keys: "Ctrl+L", description: "오른쪽 패널 포커스", scope: "global" },
-  { id: "swap-panels", keys: "Cmd+Ctrl+Shift+S", description: "패널 위치 스왑", scope: "global" },
+  { id: "swap-panels", keys: isMac ? "Cmd+Ctrl+Shift+S" : "Ctrl+Alt+Shift+S", description: "패널 위치 스왑", scope: "global" },
   { id: "close-panel", keys: "Ctrl+X", description: "현재 패널 닫기", scope: "global" },
   { id: "reopen-panel", keys: "Ctrl+Shift+X", description: "닫은 패널 다시 열기", scope: "global" },
-  { id: "new-session", keys: "Ctrl+N", description: "현재 패널 새 세션", scope: "panel" },
-  { id: "session-switcher", keys: "Cmd+K", description: "세션 스위처 열기", scope: "panel" },
+  { id: "new-session", keys: isMac ? "Ctrl+N" : "Alt+N", description: "현재 패널 새 세션", scope: "panel" },
+  { id: "session-switcher", keys: isMac ? "Cmd+K" : "Ctrl+K", description: "세션 스위처 열기", scope: "panel" },
   { id: "focus-panel-1", keys: "Ctrl+1", description: "패널 1 포커스", scope: "global" },
   { id: "focus-panel-2", keys: "Ctrl+2", description: "패널 2 포커스", scope: "global" },
   { id: "focus-panel-3", keys: "Ctrl+3", description: "패널 3 포커스", scope: "global" },
