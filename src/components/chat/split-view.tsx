@@ -294,8 +294,8 @@ export function SplitView() {
             className={`relative h-full min-w-0 flex-1 overflow-hidden ${
               !isMobile
                 ? panel.id === activePanelId
-                  ? "rounded-lg border-2 border-blue-500/50 shadow-lg shadow-blue-500/5"
-                  : "rounded-lg border border-zinc-700/50"
+                  ? "rounded-lg border-2 border-blue-400/60 shadow-[0_0_15px_rgba(59,130,246,0.15),0_0_30px_rgba(59,130,246,0.05)] transition-shadow duration-300"
+                  : "rounded-lg border border-zinc-700/40 shadow-none transition-shadow duration-300"
                 : ""
             }`}
             onClick={() => setActive(panel.id)}
