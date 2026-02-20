@@ -4,13 +4,13 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import "@/styles/globals.css";
 
 export const metadata: Metadata = {
-  title: "AWF - Agentic Workflow",
+  title: "intelli-claw",
   description: "OpenClaw Agentic Workflow",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "AWF",
+    title: "intelli-claw",
   },
 };
 
