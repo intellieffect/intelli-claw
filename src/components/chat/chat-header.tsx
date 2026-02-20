@@ -68,8 +68,13 @@ function sessionTabLabel(session: SessionEntry): string {
 
   // 5. Fallback by type
   const parsed = parseSessionKey(session.key || "");
-  if (parsed.type === "main") return "메인";
-  if (parsed.type === "thread") return `스레드 #${(parsed.detail || "").slice(0, 6)}`;
+  const CHAN: Record<string, string> = {
+    telegram: "TG", signal: "SG", whatsapp: "WA",
+    discord: "DC", slack: "SL", webchat: "Web", imessage: "iMsg",
+  };
+  const chanTag = parsed.channel ? `${CHAN[parsed.channel] || parsed.channel} · ` : "";
+  if (parsed.type === "main") return `${chanTag}메인`;
+  if (parsed.type === "thread") return `${chanTag}스레드 #${(parsed.detail || "").slice(0, 6)}`;
   if (parsed.type === "subagent") return `서브 #${(parsed.detail || "").slice(0, 6)}`;
   if (parsed.type === "cron") return `크론 ${parsed.detail || ""}`;
   return parsed.type;

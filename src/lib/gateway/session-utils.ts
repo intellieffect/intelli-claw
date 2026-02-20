@@ -6,6 +6,8 @@ export interface ParsedSessionKey {
   agentId: string;
   type: "main" | "thread" | "cron" | "subagent" | "a2a" | "unknown";
   detail?: string;
+  /** Channel the session came through (e.g. "telegram", "signal", "webchat") */
+  channel?: string;
 }
 
 /**
@@ -51,6 +53,21 @@ export function parseSessionKey(key: string): ParsedSessionKey {
     return { agentId, type: "main" };
   }
 
+  // Channel-routed sessions: agent:{id}:{channel}:{bot}:{chatType}:{userId}:thread:{threadId}
+  // e.g. agent:main:telegram:jarvis:direct:7366450954:thread:21127
+  const threadIdx = parts.indexOf("thread");
+  if (threadIdx > 2 && parts[threadIdx + 1]) {
+    const channel = parts[2]; // telegram, signal, whatsapp, etc.
+    return { agentId, type: "thread", detail: parts[threadIdx + 1], channel };
+  }
+
+  // Channel-routed main: agent:{id}:{channel}:{bot}:{chatType}:{userId}
+  // (no :thread: suffix — treat as channel main)
+  if (parts.length >= 4 && !["main", "cron", "subagent", "agent"].includes(parts[2])) {
+    const channel = parts[2];
+    return { agentId, type: "main", channel };
+  }
+
   return { agentId, type: "unknown", detail: key };
 }
 
@@ -61,6 +78,16 @@ const TYPE_LABELS: Record<string, string> = {
   subagent: "서브에이전트",
   a2a: "A2A",
   unknown: "",
+};
+
+const CHANNEL_LABELS: Record<string, string> = {
+  telegram: "텔레그램",
+  signal: "시그널",
+  whatsapp: "왓츠앱",
+  discord: "디스코드",
+  slack: "슬랙",
+  webchat: "웹챗",
+  imessage: "iMessage",
 };
 
 /**
@@ -75,12 +102,14 @@ export function sessionDisplayName(session: {
 
   const parsed = parseSessionKey(session.key);
   const typeLabel = TYPE_LABELS[parsed.type] || "";
+  const channelLabel = parsed.channel ? CHANNEL_LABELS[parsed.channel] || parsed.channel : "";
+  const prefix = channelLabel ? `[${channelLabel}] ` : "";
 
   switch (parsed.type) {
     case "main":
-      return `${parsed.agentId} ${typeLabel}`;
+      return `${prefix}${parsed.agentId} ${typeLabel}`;
     case "thread":
-      return `${parsed.agentId} ${typeLabel} #${parsed.detail}`;
+      return `${prefix}${parsed.agentId} ${typeLabel} #${parsed.detail}`;
     case "cron":
       return `${parsed.agentId} ${typeLabel} ${parsed.detail}`;
     case "subagent":

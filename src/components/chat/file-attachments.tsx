@@ -240,17 +240,67 @@ export function useFileAttachments() {
 }
 
 /**
- * Convert a ChatAttachment to a base64 data URL for sending via gateway.
- * The gateway chat.send accepts attachments as unknown[] — we send objects
- * with {name, mimeType, data} where data is a base64 data URL.
+ * Gateway WebSocket maxPayload is 512 KB. The entire JSON frame (message +
+ * attachments + metadata) must fit, so we target ~350 KB of base64 per image
+ * (~262 KB decoded). Non-image files are sent as-is (will error if too large).
+ */
+const MAX_BASE64_BYTES = 350_000; // ~350 KB base64 ≈ 262 KB decoded
+
+/** Compress an image file via canvas until it fits within maxBase64 bytes. */
+async function compressImage(
+  file: File,
+  maxB64: number
+): Promise<{ base64: string; mimeType: string }> {
+  const bitmap = await createImageBitmap(file);
+  const { width: origW, height: origH } = bitmap;
+
+  // Try progressively smaller sizes and lower quality
+  const scales = [1, 0.75, 0.5, 0.35, 0.25];
+  const qualities = [0.85, 0.7, 0.5, 0.3];
+
+  for (const scale of scales) {
+    const w = Math.round(origW * scale);
+    const h = Math.round(origH * scale);
+    const canvas = new OffscreenCanvas(w, h);
+    const ctx = canvas.getContext("2d")!;
+    ctx.drawImage(bitmap, 0, 0, w, h);
+
+    for (const q of qualities) {
+      const blob = await canvas.convertToBlob({ type: "image/jpeg", quality: q });
+      if (blob.size * 1.37 <= maxB64) {
+        // 1.37 ≈ base64 overhead
+        const buf = await blob.arrayBuffer();
+        const bytes = new Uint8Array(buf);
+        let binary = "";
+        for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+        const base64 = btoa(binary);
+        bitmap.close();
+        return { base64, mimeType: "image/jpeg" };
+      }
+    }
+  }
+
+  bitmap.close();
+  throw new Error(`Image too large to compress within ${maxB64} bytes: ${file.name}`);
+}
+
+/**
+ * Convert a ChatAttachment to a payload for sending via gateway chat.send.
+ * Images are automatically compressed to fit within WebSocket frame limits.
  */
 export async function attachmentToPayload(
   att: ChatAttachment
 ): Promise<{ fileName: string; mimeType: string; content: string }> {
+  // For images, compress to fit within WS frame limit
+  if (att.type === "image") {
+    const { base64, mimeType } = await compressImage(att.file, MAX_BASE64_BYTES);
+    return { fileName: att.file.name, mimeType, content: base64 };
+  }
+
+  // Non-image: read as base64 directly
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
-      // Convert data URL to pure base64 (strip "data:...;base64," prefix)
       const dataUrl = reader.result as string;
       const base64 = dataUrl.includes(",") ? dataUrl.split(",")[1] : dataUrl;
       resolve({

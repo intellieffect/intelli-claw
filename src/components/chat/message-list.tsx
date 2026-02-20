@@ -57,8 +57,8 @@ export function MessageList({
   }
 
   return (
-    <div className="flex-1 overflow-y-auto overflow-x-hidden px-3 py-3 md:px-4 md:py-4" style={{ WebkitOverflowScrolling: "touch" }}>
-      <div className="mx-auto max-w-3xl space-y-3 md:space-y-4">
+    <div className="flex-1 overflow-y-auto overflow-x-hidden px-[5%] py-3 md:px-[8%] lg:px-[12%] md:py-4" style={{ WebkitOverflowScrolling: "touch" }}>
+      <div className="mx-auto space-y-3 md:space-y-4">
         {messages
           .filter((msg) => msg.content || msg.toolCalls.length > 0 || msg.streaming)
           .map((msg, idx, arr) => {
