@@ -327,7 +327,7 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true, initi
           />
         }
         toolbar={showHeader ? (
-          <>
+          <div className="flex w-full min-w-0 items-center gap-1.5">
             <SessionSettings
               sessionKey={effectiveSessionKey}
               onDelete={() => setSessionKey(undefined)}
@@ -358,7 +358,7 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true, initi
                 <span className="text-[10px] text-muted-foreground">{tokenStr}</span>
               )}
             </div>
-          </>
+          </div>
         ) : undefined}
       />
     </div>
