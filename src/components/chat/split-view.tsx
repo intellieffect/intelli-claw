@@ -297,11 +297,11 @@ export function SplitView() {
             style={!isMobile ? (
               panel.id === activePanelId
                 ? {
-                    border: "2px solid rgba(96, 165, 250, 0.6)",
-                    boxShadow: "0 0 12px rgba(59, 130, 246, 0.25), 0 0 24px rgba(59, 130, 246, 0.1), inset 0 0 12px rgba(59, 130, 246, 0.05)",
+                    border: "2px solid rgba(255, 107, 53, 0.5)",
+                    boxShadow: "0 0 10px rgba(255, 107, 53, 0.2), 0 0 25px rgba(255, 107, 53, 0.08), inset 0 0 10px rgba(255, 107, 53, 0.03)",
                   }
                 : {
-                    border: "1px solid rgba(63, 63, 70, 0.4)",
+                    border: "1px solid rgba(34, 34, 34, 0.8)",
                     boxShadow: "none",
                   }
             ) : undefined}
