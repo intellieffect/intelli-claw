@@ -7,7 +7,7 @@ import { ConnectionStatus } from "./connection-status";
 import { SplitView } from "./split-view";
 import { ShortcutHelpDialog } from "./shortcut-help-dialog";
 import { isShortcutHelp } from "@/lib/shortcuts";
-import { Zap, Plus, Keyboard } from "lucide-react";
+import { Plus, Keyboard } from "lucide-react";
 
 export function ChatView() {
   const { state } = useGateway();
@@ -44,8 +44,8 @@ export function ChatView() {
       <header className="relative z-20 flex items-center justify-between border-b border-border bg-background/80 px-3 py-2 md:px-4 md:py-2.5 backdrop-blur-sm">
         <div className="flex items-center gap-2 md:gap-3">
           <div className="flex items-center gap-2">
-            <Zap size={isMobile ? 18 : 20} className="text-primary" />
-            <span className="text-sm font-semibold text-foreground">AWF</span>
+            <img src="/logo.svg" alt="intelli-claw" className="h-5 w-5 md:h-6 md:w-6" />
+            <span className="text-sm font-semibold text-foreground">intelli-claw</span>
           </div>
         </div>
 

@@ -222,6 +222,21 @@ function MessageBubble({ message, showAvatar = true, onCancel }: { message: Disp
                 ))}
               </div>
             )}
+            {/* Assistant image attachments */}
+            {message.attachments && message.attachments.length > 0 && (
+              <div className="mb-2 flex flex-wrap gap-2">
+                {message.attachments.map((att, i) =>
+                  att.dataUrl && att.mimeType.startsWith("image/") ? (
+                    <img
+                      key={i}
+                      src={att.dataUrl}
+                      alt={att.fileName}
+                      className="max-h-80 max-w-full md:max-w-md rounded-lg border border-zinc-700 object-contain"
+                    />
+                  ) : null
+                )}
+              </div>
+            )}
             {message.content && (() => {
               const cleaned = stripTaskMemo(message.content);
               return cleaned ? <MarkdownRenderer content={cleaned} /> : null;
