@@ -25,6 +25,7 @@ export function ChatInput({
   panelId,
   toolbar,
   agentAvatar,
+  agentSlot: agentSlotProp,
 }: {
   onSend: (text: string) => void;
   onAbort: () => void;
@@ -38,8 +39,10 @@ export function ChatInput({
   toolbar?: React.ReactNode;
   /** Optional agent avatar badge */
   agentAvatar?: { emoji: string; color: string };
+  /** Custom agent slot node (overrides agentAvatar) */
+  agentSlot?: React.ReactNode;
 }) {
-  const agentSlot = agentAvatar ? (
+  const agentSlotFromAvatar = agentAvatar ? (
     <div
       className={cn(
         "flex size-7 shrink-0 items-center justify-center rounded-full text-sm",
@@ -50,6 +53,7 @@ export function ChatInput({
       {agentAvatar.emoji}
     </div>
   ) : null;
+  const agentSlot = agentSlotProp || agentSlotFromAvatar;
   const storageKey = panelId ? `awf:draft:${panelId}` : null;
   const [text, setText] = useState(() => {
     if (storageKey && typeof window !== "undefined") {
