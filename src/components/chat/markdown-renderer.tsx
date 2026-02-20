@@ -358,41 +358,37 @@ function MediaImage({ src }: { src: string }) {
 
   if (error) {
     return (
-      <div className="my-2 rounded-lg border border-zinc-700 bg-zinc-800/50 px-3 py-2 text-xs text-zinc-500">
-        이미지를 불러올 수 없습니다
+      <div className="flex h-48 w-48 items-center justify-center rounded-lg border border-zinc-700 bg-zinc-800/50 text-xs text-zinc-500">
+        ⚠️ 로드 실패
       </div>
     );
   }
 
   return (
-    <div className="my-2">
-      <img
-        src={src}
-        alt="media"
-        className={`rounded-lg border border-zinc-700 cursor-pointer transition-all ${expanded ? "max-w-full" : "max-h-80 max-w-full md:max-w-md"} object-contain`}
-        onClick={() => setExpanded(e => !e)}
-        onError={() => setError(true)}
-      />
-    </div>
+    <img
+      src={src}
+      alt="media"
+      className={`rounded-lg border border-zinc-700 cursor-pointer transition-all ${expanded ? "max-w-full" : "h-48 max-w-xs md:h-56 md:max-w-sm"} object-contain`}
+      onClick={() => setExpanded(e => !e)}
+      onError={() => setError(true)}
+    />
   );
 }
 
 function MediaVideo({ src }: { src: string }) {
   return (
-    <div className="my-2">
-      <video
-        src={src}
-        controls
-        className="max-h-96 max-w-full rounded-lg border border-zinc-700 md:max-w-lg"
-        preload="metadata"
-      />
-    </div>
+    <video
+      src={src}
+      controls
+      className="h-48 md:h-56 rounded-lg border border-zinc-700"
+      preload="metadata"
+    />
   );
 }
 
 function MediaAudio({ src, fileName }: { src: string; fileName: string }) {
   return (
-    <div className="my-2 flex items-center gap-3 rounded-lg border border-zinc-700 bg-zinc-800/80 p-3">
+    <div className="flex w-64 items-center gap-3 rounded-lg border border-zinc-700 bg-zinc-800/80 p-3">
       <FileAudio size={20} className="shrink-0 text-zinc-400" />
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm text-zinc-200">{fileName}</div>
@@ -404,16 +400,14 @@ function MediaAudio({ src, fileName }: { src: string; fileName: string }) {
 
 function MediaPdf({ src, fileName }: { src: string; fileName: string }) {
   return (
-    <div className="my-2">
-      <div className="overflow-hidden rounded-lg border border-zinc-700">
-        <object
-          data={src}
-          type="application/pdf"
-          className="h-96 w-full"
-        >
-          <FileCard url={src} fileName={fileName} type="pdf" />
-        </object>
-      </div>
+    <div className="w-72 overflow-hidden rounded-lg border border-zinc-700">
+      <object
+        data={src}
+        type="application/pdf"
+        className="h-48 md:h-56 w-full"
+      >
+        <FileCard url={src} fileName={fileName} type="pdf" />
+      </object>
     </div>
   );
 }
@@ -432,7 +426,7 @@ function FileCard({ url, fileName, type }: { url: string; fileName: string; type
   }, [url]);
 
   return (
-    <div className="my-2 flex items-center gap-3 rounded-lg border border-zinc-700 bg-zinc-800/80 px-4 py-3">
+    <div className="flex w-56 items-center gap-3 rounded-lg border border-zinc-700 bg-zinc-800/80 px-4 py-3">
       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-zinc-700/60">
         <Icon size={20} className="text-zinc-300" />
       </div>
@@ -481,9 +475,11 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
   return (
     <div className="prose">
       {mediaEntries.length > 0 && (
-        <div className="flex flex-col gap-2">
+        <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-thin">
           {mediaEntries.map((entry, i) => (
-            <MediaRenderer key={i} entry={entry} />
+            <div key={i} className="shrink-0">
+              <MediaRenderer entry={entry} />
+            </div>
           ))}
         </div>
       )}
