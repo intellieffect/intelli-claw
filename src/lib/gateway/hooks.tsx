@@ -279,7 +279,7 @@ export function useChat(sessionKey?: string) {
 
           return {
           id: `hist-${i}`,
-          role: (m.role === 'system' || (m.role === 'user' && /\[System Message\]|\[sessionId:/.test(textContent)))
+          role: (m.role === 'system' || (m.role === 'user' && /\[System Message\]|\[sessionId:|^System:\s*\[/.test(textContent)))
             ? 'system' as const
             : m.role as "user" | "assistant",
           content: textContent,
