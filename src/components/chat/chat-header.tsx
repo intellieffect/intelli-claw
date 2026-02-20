@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useRef, useEffect } from "react";
-import { Bot, MessageSquare, Plus } from "lucide-react";
+import { useMemo, useRef, useEffect, useState } from "react";
+import { Bot, MessageSquare, Plus, X } from "lucide-react";
 import { parseSessionKey } from "@/lib/gateway/session-utils";
 import type { Agent, Session } from "@/lib/gateway/protocol";
 import { cn } from "@/lib/utils";
@@ -13,6 +13,7 @@ interface ChatHeaderProps {
   messages: Array<Record<string, unknown>>;
   onSelectSession?: (key: string) => void;
   onNewSession?: () => void;
+  onDeleteSession?: (key: string) => void;
 }
 
 /**
@@ -80,7 +81,8 @@ function deriveTopic(
   return null;
 }
 
-export function ChatHeader({ sessionKey, agents, sessions, messages, onSelectSession, onNewSession }: ChatHeaderProps) {
+export function ChatHeader({ sessionKey, agents, sessions, messages, onSelectSession, onNewSession, onDeleteSession }: ChatHeaderProps) {
+  const [confirmDeleteKey, setConfirmDeleteKey] = useState<string | null>(null);
   if (!sessionKey) return null;
 
   const parsed = parseSessionKey(sessionKey);
@@ -155,22 +157,62 @@ export function ChatHeader({ sessionKey, agents, sessions, messages, onSelectSes
             const key = s.key as string;
             const isActive = key === sessionKey;
             const label = sessionTabLabel(s);
+            const isConfirming = confirmDeleteKey === key;
 
             return (
-              <button
-                key={key}
-                data-active={isActive}
-                onClick={() => onSelectSession?.(key)}
-                className={cn(
-                  "flex-shrink-0 rounded-md px-3 py-1.5 text-[11px] font-medium transition-all max-w-[180px] truncate",
-                  isActive
-                    ? "bg-amber-600/80 text-white shadow-sm"
-                    : "bg-zinc-800/70 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
+              <div key={key} className="group relative flex-shrink-0">
+                {isConfirming ? (
+                  /* Delete confirmation inline */
+                  <div className="flex items-center gap-1 rounded-md bg-red-900/40 border border-red-700/50 px-2 py-1">
+                    <span className="text-[10px] text-red-300 mr-1">삭제?</span>
+                    <button
+                      onClick={() => {
+                        onDeleteSession?.(key);
+                        setConfirmDeleteKey(null);
+                      }}
+                      className="rounded px-1.5 py-0.5 text-[10px] bg-red-600/80 text-white hover:bg-red-600"
+                    >
+                      확인
+                    </button>
+                    <button
+                      onClick={() => setConfirmDeleteKey(null)}
+                      className="rounded px-1.5 py-0.5 text-[10px] bg-zinc-700 text-zinc-300 hover:bg-zinc-600"
+                    >
+                      취소
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    data-active={isActive}
+                    onClick={() => onSelectSession?.(key)}
+                    className={cn(
+                      "flex items-center gap-1.5 flex-shrink-0 rounded-md px-3 py-1.5 text-[11px] font-medium transition-all max-w-[200px]",
+                      isActive
+                        ? "bg-amber-600/80 text-white shadow-sm"
+                        : "bg-zinc-800/70 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
+                    )}
+                    title={label}
+                  >
+                    <span className="truncate">{label}</span>
+                    {/* Close button — visible on hover */}
+                    <span
+                      role="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setConfirmDeleteKey(key);
+                      }}
+                      className={cn(
+                        "flex-shrink-0 rounded p-0.5 opacity-0 group-hover:opacity-100 transition-opacity",
+                        isActive
+                          ? "hover:bg-amber-700/80 text-white/70 hover:text-white"
+                          : "hover:bg-zinc-600 text-zinc-500 hover:text-zinc-200"
+                      )}
+                    >
+                      <X size={10} />
+                    </span>
+                  </button>
                 )}
-                title={label}
-              >
-                {label}
-              </button>
+              </div>
             );
           })}
           {onNewSession && (

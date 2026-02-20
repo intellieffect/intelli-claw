@@ -322,6 +322,7 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
           messages={messages as unknown as Array<Record<string, unknown>>}
           onSelectSession={setSessionKey}
           onNewSession={handleNewSession}
+          onDeleteSession={(key) => handleDelete(key)}
         />
       )}
 
