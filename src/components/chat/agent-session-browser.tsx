@@ -61,6 +61,7 @@ export interface AgentSessionBrowserProps {
   currentAgentId?: string;
   onSelect: (key: string) => void;
   onAgentChange: (agentId: string) => void;
+  onNewSession: (agentId: string) => void;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   portalContainer?: HTMLElement | null;
@@ -73,6 +74,7 @@ export function AgentSessionBrowser({
   currentAgentId,
   onSelect,
   onAgentChange,
+  onNewSession,
   open,
   onOpenChange,
   portalContainer,
@@ -225,7 +227,7 @@ export function AgentSessionBrowser({
   };
 
   const handleNewSession = (agentId: string) => {
-    onAgentChange(agentId);
+    onNewSession(agentId);
     setOpen(false);
   };
 

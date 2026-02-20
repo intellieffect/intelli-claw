@@ -410,6 +410,27 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true, initi
           handleAgentChange(id);
           setAgentBrowserOpen(false);
         }}
+        onNewSession={(id) => {
+          // Switch agent if different, then create new thread
+          if (id !== agentId) {
+            setAgentId(id);
+            onAgentChange?.(id);
+            if (typeof window !== "undefined") {
+              localStorage.setItem(`${storagePrefix}agentId`, id);
+            }
+          }
+          const threadId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+          const newKey = `agent:${id}:main:thread:${threadId}`;
+          setSessionKey(newKey);
+          if (client && isConnected) {
+            client.request("sessions.patch", {
+              key: newKey,
+              label: makeDefaultThreadLabel(id),
+            }).catch(() => {});
+          }
+          refreshSessions();
+          setAgentBrowserOpen(false);
+        }}
         open={agentBrowserOpen}
         onOpenChange={setAgentBrowserOpen}
         portalContainer={panelRef.current}
