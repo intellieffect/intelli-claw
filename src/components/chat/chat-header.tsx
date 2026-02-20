@@ -300,12 +300,22 @@ export function ChatHeader({
     <div className="flex-shrink-0 border-b border-zinc-700/50 bg-zinc-900/90">
       {/* Agent name row */}
       <div className="flex items-center gap-3 px-5 pt-3.5 pb-2">
+        <Bot size={22} className="text-amber-500 flex-shrink-0" />
         <span className="text-lg font-extrabold text-white truncate tracking-tight leading-tight">
           {agentName}
         </span>
         <span className="rounded-md bg-zinc-800 px-2 py-0.5 text-[10px] font-medium text-zinc-500 uppercase tracking-wide">
           {sessionType}
         </span>
+        {onOpenSessionManager && (
+          <button
+            onClick={onOpenSessionManager}
+            className="ml-auto rounded-md p-1.5 text-zinc-600 hover:bg-zinc-800 hover:text-zinc-300 transition"
+            title="세션 관리"
+          >
+            <Settings size={14} />
+          </button>
+        )}
       </div>
 
       {/* Topic */}
