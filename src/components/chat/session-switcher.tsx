@@ -363,6 +363,13 @@ export function SessionSwitcher({
                 {current.label.replace(new RegExp(`^${currentParsed?.agentId || ""}/`), "")}
               </>
             ) : sessionDisplayName(current)
+          ) : currentParsed ? (
+            <>
+              <strong className="font-semibold">{currentParsed.agentId}</strong>
+              {currentParsed.type === "thread" && (
+                <span className="text-muted-foreground"> / 새 세션</span>
+              )}
+            </>
           ) : "세션 선택"}
         </span>
       </button>
