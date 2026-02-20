@@ -30,7 +30,7 @@ export function AvatarAgentSelector({
   }, []);
 
   return (
-    <div ref={ref} className="relative flex flex-col items-center gap-1">
+    <div ref={ref} className="relative">
       <button
         type="button"
         onClick={() => setOpen(!open)}
@@ -42,9 +42,6 @@ export function AvatarAgentSelector({
       >
         {avatar.emoji}
       </button>
-      {selectedId && (
-        <span className="max-w-[5rem] truncate text-xs font-medium text-muted-foreground">{selectedId}</span>
-      )}
 
       {open && (
         <div className="absolute bottom-full left-0 z-50 mb-2 w-52 rounded-xl border border-border bg-popover py-1 shadow-xl">
