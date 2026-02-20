@@ -267,10 +267,9 @@ export function ChatInput({
             "focus-within:border-primary focus-within:ring-[3px] focus-within:ring-ring/20"
           )}
         >
-          {/* Toolbar: agent slot + controls */}
-          {(toolbar || agentSlot) && (
+          {/* Toolbar: controls */}
+          {toolbar && (
             <div className="flex items-center gap-2 px-2.5 pt-2 sm:px-3">
-              {agentSlot}
               {toolbar}
             </div>
           )}
@@ -287,6 +286,8 @@ export function ChatInput({
 
           {/* Textarea + inline actions row */}
           <div className="flex items-end gap-1 p-1.5 sm:p-2">
+            {/* Agent avatar */}
+            {agentSlot && <div className="shrink-0 mb-0.5">{agentSlot}</div>}
             {/* Attach button */}
             {onAttachFiles && (
               <Button
