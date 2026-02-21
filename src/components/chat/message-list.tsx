@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { User, Bot, Clock, X, Copy, Check } from "lucide-react";
+import { User, Bot, Clock, X, Copy, Check, ArrowDown } from "lucide-react";
 import { MarkdownRenderer } from "./markdown-renderer";
 import { ToolCallCard } from "./tool-call-card";
 import type { DisplayMessage, DisplayAttachment } from "@/lib/gateway/hooks";
@@ -47,6 +47,11 @@ export function MessageList({
     }
   }, [messages, userScrolledUp]);
 
+  const scrollToBottom = useCallback(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    setUserScrolledUp(false);
+  }, []);
+
   if (loading) {
     return (
       <div className="flex flex-1 items-center justify-center text-muted-foreground">
@@ -70,7 +75,8 @@ export function MessageList({
   }
 
   return (
-    <div ref={containerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto overflow-x-hidden px-[3%] py-3 md:px-[5%] lg:px-[7%] md:py-4" style={{ WebkitOverflowScrolling: "touch" }}>
+    <div className="relative flex-1 min-h-0">
+    <div ref={containerRef} onScroll={handleScroll} className="h-full overflow-y-auto overflow-x-hidden px-[3%] py-3 md:px-[5%] lg:px-[7%] md:py-4" style={{ WebkitOverflowScrolling: "touch" }}>
       <div className="mx-auto space-y-3 md:space-y-4">
         {messages
           .filter((msg) => msg.content || msg.toolCalls.length > 0 || msg.streaming)
@@ -84,6 +90,18 @@ export function MessageList({
         {streaming && !messages.some(m => m.streaming) && <ThinkingIndicator agentImageUrl={agentAv.imageUrl} />}
         <div ref={bottomRef} />
       </div>
+    </div>
+
+    {/* Scroll to bottom button */}
+    {userScrolledUp && (
+      <button
+        onClick={scrollToBottom}
+        className="absolute bottom-4 right-4 z-20 flex items-center justify-center rounded-full bg-zinc-800 border border-zinc-600 p-2.5 text-zinc-300 shadow-lg transition-all hover:bg-zinc-700 hover:text-white hover:scale-105 active:scale-95"
+        title="최근 메시지로 이동"
+      >
+        <ArrowDown size={18} />
+      </button>
+    )}
     </div>
   );
 }
