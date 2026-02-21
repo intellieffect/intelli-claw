@@ -329,12 +329,12 @@ export function ChatHeader({
         {(() => {
           const av = getAgentAvatar(parsed.agentId);
           return av.imageUrl ? (
-            <img src={av.imageUrl} alt={agentName} className="size-7 rounded-full object-cover flex-shrink-0" />
+            <img src={av.imageUrl} alt={agentName} className="size-9 rounded-full object-cover flex-shrink-0" />
           ) : (
-            <Bot size={22} className="text-amber-500 flex-shrink-0" />
+            <Bot size={28} className="text-amber-500 flex-shrink-0" />
           );
         })()}
-        <span className="text-lg font-extrabold text-white truncate tracking-tight leading-tight">
+        <span className="text-xl font-extrabold text-white truncate tracking-tight leading-tight">
           {agentName}
         </span>
         {onOpenSessionManager && (
@@ -371,14 +371,6 @@ export function ChatHeader({
           );
         })()}
       </div>
-
-      {/* Topic */}
-      {topic && (
-        <div className="flex items-center gap-2 px-5 pb-2 pl-[54px]">
-          <MessageSquare size={12} className="text-zinc-600 flex-shrink-0" />
-          <span className="text-[13px] text-zinc-400 truncate">{topic}</span>
-        </div>
-      )}
 
       {/* Session tabs */}
       {activeSessions.length > 0 && (
