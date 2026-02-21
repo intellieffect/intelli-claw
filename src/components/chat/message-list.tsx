@@ -136,11 +136,15 @@ export function MessageList({
   }, []);
 
   // Auto-scroll only when user is at the bottom
+  // Use message count + streaming state as trigger (not full messages array) to reduce jitter
+  const msgCount = messages.length;
+  const lastStreaming = messages[messages.length - 1]?.streaming;
   useEffect(() => {
     if (!userScrolledUp) {
       bottomRef.current?.scrollIntoView({ behavior: "smooth" });
     }
-  }, [messages, userScrolledUp]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [msgCount, lastStreaming, userScrolledUp]);
 
   const scrollToBottom = useCallback(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -348,7 +352,7 @@ function MessageBubble({ message, showAvatar = true, onCancel, agentImageUrl }: 
               <p className={`whitespace-pre-wrap break-words text-sm ${isQueued ? "opacity-70" : ""}`}>{message.content}</p>
             )}
             {time && !isQueued && (
-              <div className="mt-1 text-right text-[10px] text-muted-foreground/50">{time}</div>
+              <div className="mt-1 text-right text-[10px] text-zinc-400">{time}</div>
             )}
             {isQueued && (
               <div className="mt-1.5 flex items-center justify-end gap-2">
@@ -441,7 +445,7 @@ function MessageBubble({ message, showAvatar = true, onCancel, agentImageUrl }: 
             {!message.streaming && message.content && (
               <div className="mt-1 flex items-center gap-2">
                 <CopyButton text={stripTaskMemo(message.content)} />
-                {time && <span className="text-[10px] text-muted-foreground/40">{time}</span>}
+                {time && <span className="text-[10px] text-zinc-500">{time}</span>}
               </div>
             )}
           </div>
