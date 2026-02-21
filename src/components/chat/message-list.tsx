@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { User, Bot, Clock, X, Copy, Check, ArrowDown } from "lucide-react";
+import { User, Bot, Clock, X, Copy, Check, ArrowDown, Download, FileText, Music, Video, File } from "lucide-react";
 import { MarkdownRenderer } from "./markdown-renderer";
 import { ToolCallCard } from "./tool-call-card";
 import type { DisplayMessage, DisplayAttachment } from "@/lib/gateway/hooks";
@@ -268,19 +268,69 @@ function MessageBubble({ message, showAvatar = true, onCancel, agentImageUrl }: 
                 ))}
               </div>
             )}
-            {/* Assistant image attachments */}
+            {/* Assistant attachments (images + files) */}
             {message.attachments && message.attachments.length > 0 && (
               <div className="mb-2 flex flex-wrap gap-2">
-                {message.attachments.map((att, i) =>
-                  att.dataUrl && att.mimeType.startsWith("image/") ? (
-                    <img
-                      key={i}
-                      src={att.dataUrl}
-                      alt={att.fileName}
-                      className="max-h-80 max-w-full md:max-w-md rounded-lg border border-zinc-700 object-contain"
-                    />
-                  ) : null
-                )}
+                {message.attachments.map((att, i) => {
+                  const isImage = att.mimeType.startsWith("image/");
+                  const isAudio = att.mimeType.startsWith("audio/");
+                  const isVideo = att.mimeType.startsWith("video/");
+                  const url = att.downloadUrl || att.dataUrl;
+
+                  if (isImage && (att.dataUrl || url)) {
+                    return (
+                      <a key={i} href={url} target="_blank" rel="noopener noreferrer" className="block">
+                        <img
+                          src={att.dataUrl || url}
+                          alt={att.fileName}
+                          className="max-h-80 max-w-full md:max-w-md rounded-lg border border-zinc-700 object-contain hover:opacity-90 transition"
+                        />
+                      </a>
+                    );
+                  }
+
+                  if (isAudio && url) {
+                    return (
+                      <div key={i} className="w-full max-w-sm">
+                        <audio controls src={url} className="w-full rounded-lg" />
+                        <div className="mt-1 text-[10px] text-zinc-500">{att.fileName}</div>
+                      </div>
+                    );
+                  }
+
+                  if (isVideo && url) {
+                    return (
+                      <div key={i} className="w-full max-w-md">
+                        <video controls src={url} className="w-full rounded-lg border border-zinc-700" />
+                        <div className="mt-1 text-[10px] text-zinc-500">{att.fileName}</div>
+                      </div>
+                    );
+                  }
+
+                  // Generic file download
+                  if (url) {
+                    const FileIcon = att.mimeType.includes("pdf") ? FileText
+                      : isAudio ? Music
+                      : isVideo ? Video
+                      : File;
+                    return (
+                      <a
+                        key={i}
+                        href={url}
+                        download={att.fileName}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-800/50 px-3 py-2 text-xs text-zinc-300 transition hover:bg-zinc-700 hover:text-white"
+                      >
+                        <FileIcon size={16} className="flex-shrink-0 text-zinc-400" />
+                        <span className="truncate max-w-[180px]">{att.fileName}</span>
+                        <Download size={14} className="flex-shrink-0 text-zinc-500" />
+                      </a>
+                    );
+                  }
+
+                  return null;
+                })}
               </div>
             )}
             {message.content && (() => {

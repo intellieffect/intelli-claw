@@ -185,6 +185,41 @@ export interface DisplayAttachment {
   mimeType: string;
   /** data URL for local preview */
   dataUrl?: string;
+  /** URL for downloading the file (e.g. gateway-served MEDIA path) */
+  downloadUrl?: string;
+}
+
+/** Parse MEDIA:<path-or-url> lines from assistant content, returning attachments and cleaned text */
+function extractMediaAttachments(text: string): { cleanedText: string; attachments: DisplayAttachment[] } {
+  const MEDIA_RE = /^MEDIA:(.+)$/gm;
+  const attachments: DisplayAttachment[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = MEDIA_RE.exec(text)) !== null) {
+    const raw = match[1].trim();
+    const fileName = raw.split("/").pop() || raw;
+    const ext = fileName.split(".").pop()?.toLowerCase() || "";
+    const MIME_MAP: Record<string, string> = {
+      png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif",
+      webp: "image/webp", svg: "image/svg+xml",
+      pdf: "application/pdf", zip: "application/zip",
+      mp3: "audio/mpeg", wav: "audio/wav", ogg: "audio/ogg", m4a: "audio/mp4",
+      mp4: "video/mp4", webm: "video/webm", mov: "video/quicktime",
+      json: "application/json", csv: "text/csv", txt: "text/plain",
+      docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    };
+    const mimeType = MIME_MAP[ext] || "application/octet-stream";
+    const isImage = mimeType.startsWith("image/");
+    const url = raw.startsWith("http") ? raw : raw;
+    attachments.push({
+      fileName,
+      mimeType,
+      dataUrl: isImage ? url : undefined,
+      downloadUrl: url,
+    });
+  }
+  const cleanedText = text.replace(/^MEDIA:.+$/gm, "").replace(/\n{3,}/g, "\n\n").trim();
+  return { cleanedText, attachments };
 }
 
 export interface DisplayMessage {
@@ -277,6 +312,16 @@ export function useChat(sessionKey?: string) {
 
           if (m.role === 'user') textContent = stripInboundMeta(textContent);
 
+          // Extract MEDIA: attachments from assistant messages
+          let mediaAttachments: DisplayAttachment[] = [];
+          if (m.role === 'assistant' && textContent.includes('MEDIA:')) {
+            const extracted = extractMediaAttachments(textContent);
+            textContent = extracted.cleanedText;
+            mediaAttachments = extracted.attachments;
+          }
+
+          const allAttachments = [...imgAttachments, ...mediaAttachments];
+
           return {
           id: `hist-${i}`,
           role: (m.role === 'system' || (m.role === 'user' && /\[System Message\]|\[sessionId:|^System:\s*\[/.test(textContent)))
@@ -285,7 +330,7 @@ export function useChat(sessionKey?: string) {
           content: textContent,
           timestamp: m.timestamp || new Date().toISOString(),
           toolCalls: m.toolCalls || [],
-          attachments: imgAttachments.length > 0 ? imgAttachments : undefined,
+          attachments: allAttachments.length > 0 ? allAttachments : undefined,
         };});
       // Restore queued messages from localStorage
       const savedQueue = queueStorageKey ? localStorage.getItem(queueStorageKey) : null;
@@ -437,12 +482,19 @@ export function useChat(sessionKey?: string) {
           setStreaming(false);
           if (streamBuf.current) {
             const finalId = streamBuf.current.id;
-            const finalContent = streamBuf.current.content;
+            let finalContent = streamBuf.current.content;
             const finalTools = Array.from(streamBuf.current.toolCalls.values());
+            // Extract MEDIA: attachments from final content
+            let finalAttachments: DisplayAttachment[] | undefined;
+            if (finalContent.includes('MEDIA:')) {
+              const extracted = extractMediaAttachments(finalContent);
+              finalContent = extracted.cleanedText;
+              finalAttachments = extracted.attachments.length > 0 ? extracted.attachments : undefined;
+            }
             setMessages((prev) =>
               prev.map((m) =>
                 m.id === finalId
-                  ? { ...m, content: finalContent, toolCalls: finalTools, streaming: false }
+                  ? { ...m, content: finalContent, toolCalls: finalTools, streaming: false, attachments: finalAttachments || m.attachments }
                   : m
               )
             );
@@ -453,12 +505,18 @@ export function useChat(sessionKey?: string) {
           setStreaming(false);
           if (streamBuf.current) {
             const finalId = streamBuf.current.id;
-            const finalContent = (data?.text as string) || streamBuf.current.content;
+            let finalContent = (data?.text as string) || streamBuf.current.content;
             const finalTools = Array.from(streamBuf.current.toolCalls.values());
+            let finalAttachments: DisplayAttachment[] | undefined;
+            if (finalContent.includes('MEDIA:')) {
+              const extracted = extractMediaAttachments(finalContent);
+              finalContent = extracted.cleanedText;
+              finalAttachments = extracted.attachments.length > 0 ? extracted.attachments : undefined;
+            }
             setMessages((prev) =>
               prev.map((m) =>
                 m.id === finalId
-                  ? { ...m, content: finalContent, toolCalls: finalTools, streaming: false }
+                  ? { ...m, content: finalContent, toolCalls: finalTools, streaming: false, attachments: finalAttachments || m.attachments }
                   : m
               )
             );
