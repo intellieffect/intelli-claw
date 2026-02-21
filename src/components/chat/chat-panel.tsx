@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { useGateway, useChat, useAgents, useSessions } from "@/lib/gateway/hooks";
 import { MessageList } from "./message-list";
 import { ChatInput } from "./chat-input";
@@ -67,13 +67,21 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
   const [sessionManagerOpen, setSessionManagerOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
 
-  // Build ordered session list for current agent (for Tab cycling)
-  const agentSessions = (sessions as GatewaySession[])
-    .filter((s) => {
-      const parsed = parseSessionKey(s.key);
-      return parsed.agentId === agentId;
-    })
-    .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+  // Build ordered session list for current agent (matches header tab order: main first, then by updatedAt desc)
+  const agentSessions = useMemo(() => {
+    return (sessions as GatewaySession[])
+      .filter((s) => {
+        const p = parseSessionKey(s.key);
+        return p.agentId === agentId && (p.type === "main" || p.type === "thread");
+      })
+      .sort((a, b) => {
+        const aType = parseSessionKey(a.key).type;
+        const bType = parseSessionKey(b.key).type;
+        if (aType === "main" && bType !== "main") return -1;
+        if (bType === "main" && aType !== "main") return 1;
+        return (b.updatedAt || 0) - (a.updatedAt || 0);
+      });
+  }, [sessions, agentId]);
 
   // Shortcuts (active panel only)
   useEffect(() => {
@@ -87,8 +95,12 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
         e.preventDefault();
         setNewSessionPickerOpen(true);
       }
-      // Tab / Shift+Tab: cycle through sessions of current agent
-      if (e.key === "Tab" && e.ctrlKey && agentSessions.length > 1) {
+      // Tab: cycle forward through session tabs / Shift+Tab: cycle backward
+      if (e.key === "Tab" && !e.ctrlKey && !e.metaKey && !e.altKey && agentSessions.length > 1) {
+        // Only intercept when focus is on textarea (chat input) or panel root
+        const target = e.target as HTMLElement;
+        const isInput = target.tagName === "TEXTAREA" || target.closest("[data-chat-panel]");
+        if (!isInput) return;
         e.preventDefault();
         const currentIdx = agentSessions.findIndex((s) => s.key === effectiveSessionKey);
         const delta = e.shiftKey ? -1 : 1;
@@ -328,6 +340,7 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
   return (
     <div
       ref={panelRef}
+      data-chat-panel
       className="relative flex h-full flex-col bg-background"
       onClick={onFocus}
     >
