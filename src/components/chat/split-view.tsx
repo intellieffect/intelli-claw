@@ -327,7 +327,7 @@ export function SplitView() {
           >
             {/* Panel controls (desktop only, multi-panel) */}
             {!isMobile && panels.length > 1 && (
-              <div className="absolute right-2 top-2 z-30 flex items-center gap-0.5 rounded-md border border-border bg-background/80 p-0.5 backdrop-blur">
+              <div className="absolute right-14 top-2 z-30 flex items-center gap-0.5 rounded-md border border-border bg-background/80 p-0.5 backdrop-blur">
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
