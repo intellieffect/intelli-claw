@@ -117,7 +117,7 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
     setTimeout(() => {
       const textarea = panelRef.current?.querySelector("textarea");
       textarea?.focus();
-    }, 50);
+    }, 120);
   }, []);
 
   // Focus textarea when panel becomes active
