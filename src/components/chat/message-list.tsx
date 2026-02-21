@@ -1,11 +1,106 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { User, Bot, Clock, X, Copy, Check, ArrowDown, Download, FileText, Music, Video, File } from "lucide-react";
+import {
+  User, Bot, Clock, X, Copy, Check, ArrowDown, Download,
+  FileText, Music, Video, File, Image as ImageIcon,
+  FileSpreadsheet, FileCode, FileArchive, FileAudio, FileVideo,
+} from "lucide-react";
 import { MarkdownRenderer } from "./markdown-renderer";
 import { ToolCallCard } from "./tool-call-card";
 import type { DisplayMessage, DisplayAttachment } from "@/lib/gateway/hooks";
 import { getAgentAvatar } from "@/lib/agent-avatars";
+
+/** Append dl=1 to /api/media URLs to force download */
+function forceDownloadUrl(url: string): string {
+  if (url.startsWith("/api/media")) {
+    return url + (url.includes("?") ? "&" : "?") + "dl=1";
+  }
+  return url;
+}
+
+/** Blob-based download to bypass browser "unverified download" warnings on HTTP */
+async function blobDownload(url: string, fileName: string) {
+  try {
+    const res = await fetch(url);
+    const blob = await res.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = blobUrl;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(blobUrl);
+  } catch {
+    // Fallback to normal navigation
+    window.open(url, "_blank");
+  }
+}
+
+/** Get file extension from filename */
+function getExt(name: string): string {
+  const dot = name.lastIndexOf(".");
+  return dot >= 0 ? name.slice(dot + 1).toLowerCase() : "";
+}
+
+/** Get icon component by MIME type */
+function getFileIcon(mime: string, ext: string) {
+  if (mime.startsWith("image/")) return ImageIcon;
+  if (mime.startsWith("video/")) return FileVideo;
+  if (mime.startsWith("audio/")) return FileAudio;
+  if (mime.includes("pdf")) return FileText;
+  if (["xls", "xlsx", "csv"].includes(ext)) return FileSpreadsheet;
+  if (["zip", "tar", "gz", "7z", "rar"].includes(ext)) return FileArchive;
+  if (["js", "ts", "tsx", "jsx", "py", "rs", "go", "java", "c", "cpp", "sh", "html", "css"].includes(ext)) return FileCode;
+  if (["doc", "docx", "txt", "md", "json", "yaml", "yml"].includes(ext)) return FileText;
+  return File;
+}
+
+/** Get accent color by file type */
+function getFileAccent(mime: string, ext: string): string {
+  if (mime.includes("pdf")) return "bg-red-500/20 text-red-400";
+  if (mime.startsWith("image/")) return "bg-blue-500/20 text-blue-400";
+  if (mime.startsWith("video/")) return "bg-purple-500/20 text-purple-400";
+  if (mime.startsWith("audio/")) return "bg-green-500/20 text-green-400";
+  if (["xls", "xlsx", "csv"].includes(ext)) return "bg-emerald-500/20 text-emerald-400";
+  if (["zip", "tar", "gz", "7z", "rar"].includes(ext)) return "bg-yellow-500/20 text-yellow-400";
+  if (["js", "ts", "tsx", "jsx", "py", "rs", "go", "java", "c", "cpp", "sh", "html", "css"].includes(ext)) return "bg-cyan-500/20 text-cyan-400";
+  return "bg-zinc-500/20 text-zinc-400";
+}
+
+/** Vertical file attachment card */
+function FileAttachmentCard({ att, onDownload }: { att: DisplayAttachment; onDownload: () => void }) {
+  const ext = getExt(att.fileName);
+  const Icon = getFileIcon(att.mimeType, ext);
+  const accent = getFileAccent(att.mimeType, ext);
+  // Truncate filename but always show extension
+  const maxNameLen = 18;
+  const nameWithoutExt = att.fileName.slice(0, att.fileName.length - (ext ? ext.length + 1 : 0));
+  const displayName = nameWithoutExt.length > maxNameLen
+    ? nameWithoutExt.slice(0, maxNameLen) + "…"
+    : nameWithoutExt;
+
+  return (
+    <button
+      onClick={onDownload}
+      className="flex w-44 flex-col items-center gap-2 rounded-xl border border-zinc-700/80 bg-zinc-800/60 p-4 transition hover:bg-zinc-700/60 hover:border-zinc-600 cursor-pointer group"
+    >
+      <div className={`flex h-12 w-12 items-center justify-center rounded-xl ${accent}`}>
+        <Icon size={24} />
+      </div>
+      <div className="w-full text-center min-w-0">
+        <div className="text-xs font-medium text-zinc-200 truncate" title={att.fileName}>
+          {displayName}
+        </div>
+        {ext && (
+          <div className="text-[10px] text-zinc-500 uppercase mt-0.5">.{ext}</div>
+        )}
+      </div>
+      <Download size={14} className="text-zinc-500 group-hover:text-zinc-300 transition" />
+    </button>
+  );
+}
 
 /** Strip task-memo HTML comments from display text */
 const TASK_MEMO_STRIP_RE = /\s*<!--\s*task-memo:\s*\{[\s\S]*?\}\s*-->\s*/g;
@@ -307,25 +402,14 @@ function MessageBubble({ message, showAvatar = true, onCancel, agentImageUrl }: 
                     );
                   }
 
-                  // Generic file download
+                  // File card (vertical style)
                   if (url) {
-                    const FileIcon = att.mimeType.includes("pdf") ? FileText
-                      : isAudio ? Music
-                      : isVideo ? Video
-                      : File;
                     return (
-                      <a
+                      <FileAttachmentCard
                         key={i}
-                        href={url}
-                        download={att.fileName}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-800/50 px-3 py-2 text-xs text-zinc-300 transition hover:bg-zinc-700 hover:text-white"
-                      >
-                        <FileIcon size={16} className="flex-shrink-0 text-zinc-400" />
-                        <span className="truncate max-w-[180px]">{att.fileName}</span>
-                        <Download size={14} className="flex-shrink-0 text-zinc-500" />
-                      </a>
+                        att={att}
+                        onDownload={() => blobDownload(forceDownloadUrl(url), att.fileName)}
+                      />
                     );
                   }
 

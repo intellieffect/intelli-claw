@@ -417,9 +417,47 @@ function MediaPdf({ src, fileName }: { src: string; fileName: string }) {
   );
 }
 
+/** Get accent color by media type */
+function getMediaAccent(type: MediaType): string {
+  switch (type) {
+    case "pdf": return "bg-red-500/20 text-red-400";
+    case "image": return "bg-blue-500/20 text-blue-400";
+    case "video": return "bg-purple-500/20 text-purple-400";
+    case "audio": return "bg-green-500/20 text-green-400";
+    case "spreadsheet": return "bg-emerald-500/20 text-emerald-400";
+    case "archive": return "bg-yellow-500/20 text-yellow-400";
+    case "code": return "bg-cyan-500/20 text-cyan-400";
+    default: return "bg-zinc-500/20 text-zinc-400";
+  }
+}
+
+/** Blob-based download */
+async function blobDownload(url: string, name: string) {
+  try {
+    const dlUrl = url.startsWith("/api/media") ? url + (url.includes("?") ? "&" : "?") + "dl=1" : url;
+    const res = await fetch(dlUrl);
+    const blob = await res.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = blobUrl;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(blobUrl);
+  } catch {
+    window.open(url, "_blank");
+  }
+}
+
 function FileCard({ url, fileName, type }: { url: string; fileName: string; type: MediaType }) {
   const [fileInfo, setFileInfo] = useState<{ size: number } | null>(null);
   const Icon = getMediaTypeIcon(type);
+  const accent = getMediaAccent(type);
+  const ext = getExtension(fileName);
+  const nameWithoutExt = ext ? fileName.slice(0, -(ext.length + 1)) : fileName;
+  const maxLen = 18;
+  const displayName = nameWithoutExt.length > maxLen ? nameWithoutExt.slice(0, maxLen) + "…" : nameWithoutExt;
 
   useEffect(() => {
     const originalPath = extractOriginalPath(url);
@@ -431,25 +469,24 @@ function FileCard({ url, fileName, type }: { url: string; fileName: string; type
   }, [url]);
 
   return (
-    <div className="flex w-56 items-center gap-3 rounded-lg border border-zinc-700 bg-zinc-800/80 px-4 py-3">
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-zinc-700/60">
-        <Icon size={20} className="text-zinc-300" />
+    <button
+      onClick={() => blobDownload(url, fileName)}
+      className="flex w-44 flex-col items-center gap-2 rounded-xl border border-zinc-700/80 bg-zinc-800/60 p-4 transition hover:bg-zinc-700/60 hover:border-zinc-600 cursor-pointer group"
+    >
+      <div className={`flex h-12 w-12 items-center justify-center rounded-xl ${accent}`}>
+        <Icon size={24} />
       </div>
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-medium text-zinc-200">{fileName}</div>
-        {fileInfo && (
-          <div className="text-xs text-zinc-500">{formatFileSize(fileInfo.size)}</div>
-        )}
+      <div className="w-full text-center min-w-0">
+        <div className="text-xs font-medium text-zinc-200 truncate" title={fileName}>
+          {displayName}
+        </div>
+        <div className="flex items-center justify-center gap-1 mt-0.5">
+          {ext && <span className="text-[10px] text-zinc-500 uppercase">.{ext}</span>}
+          {fileInfo && <span className="text-[10px] text-zinc-600">· {formatFileSize(fileInfo.size)}</span>}
+        </div>
       </div>
-      <a
-        href={url}
-        download={fileName}
-        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-zinc-400 transition hover:bg-zinc-700 hover:text-zinc-200"
-        title="다운로드"
-      >
-        <Download size={16} />
-      </a>
-    </div>
+      <Download size={14} className="text-zinc-500 group-hover:text-zinc-300 transition" />
+    </button>
   );
 }
 

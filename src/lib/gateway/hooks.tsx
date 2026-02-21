@@ -210,12 +210,13 @@ function extractMediaAttachments(text: string): { cleanedText: string; attachmen
     };
     const mimeType = MIME_MAP[ext] || "application/octet-stream";
     const isImage = mimeType.startsWith("image/");
-    const url = raw.startsWith("http") ? raw : raw;
+    const isHttp = raw.startsWith("http://") || raw.startsWith("https://") || raw.startsWith("data:");
+    const downloadUrl = isHttp ? raw : `/api/media?path=${encodeURIComponent(raw)}`;
     attachments.push({
       fileName,
       mimeType,
-      dataUrl: isImage ? url : undefined,
-      downloadUrl: url,
+      dataUrl: isImage ? downloadUrl : undefined,
+      downloadUrl,
     });
   }
   const cleanedText = text.replace(/^MEDIA:.+$/gm, "").replace(/\n{3,}/g, "\n\n").trim();

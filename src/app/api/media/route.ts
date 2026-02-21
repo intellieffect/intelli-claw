@@ -117,7 +117,8 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "File too large" }, { status: 413 });
     }
 
-    const disposition = shouldInline(mime)
+    const forceDownload = req.nextUrl.searchParams.get("dl") === "1";
+    const disposition = (!forceDownload && shouldInline(mime))
       ? `inline; filename="${encodeURIComponent(fileName)}"`
       : `attachment; filename="${encodeURIComponent(fileName)}"`;
 
