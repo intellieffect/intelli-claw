@@ -321,7 +321,7 @@ function MessageBubble({ message, showAvatar = true, onCancel, agentImageUrl }: 
         className={`min-w-0 max-w-[90%] md:max-w-[85%] ${
           isUser
             ? `rounded-2xl rounded-br-md px-3.5 py-2 md:px-4 md:py-2.5 text-foreground ${isQueued ? "bg-primary/15 border border-primary/20" : "bg-primary/15 border border-primary/10"}`
-            : "flex-1"
+            : "rounded-2xl rounded-bl-md px-3.5 py-2 md:px-4 md:py-2.5 bg-zinc-800/60 border border-zinc-700/50 flex-1"
         }`}
       >
         {isUser ? (
