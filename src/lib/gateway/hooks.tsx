@@ -249,6 +249,11 @@ export function useChat(sessionKey?: string) {
   const [streaming, setStreaming] = useState(false);
   const [loading, setLoading] = useState(false);
   const [agentStatus, setAgentStatus] = useState<AgentStatus>({ phase: "idle" });
+  // Debug: log status changes
+  const setAgentStatusDebug = useCallback((s: AgentStatus) => {
+    console.log("[AWF] agentStatus →", s.phase, "toolName" in s ? (s as any).toolName : "");
+    setAgentStatus(s);
+  }, []);
   const streamBuf = useRef<{
     id: string;
     content: string;
@@ -265,6 +270,7 @@ export function useChat(sessionKey?: string) {
       sessionKeyRef.current = sessionKey;
       setMessages([]);
       setStreaming(false);
+      setAgentStatusDebug({ phase: "idle" });
       streamBuf.current = null;
     }
   }, [sessionKey]);
@@ -278,6 +284,13 @@ export function useChat(sessionKey?: string) {
         "chat.history",
         { sessionKey, limit: 100 }
       );
+      /** Internal system messages and empty agent replies to hide from UI */
+      const HIDDEN_PATTERNS = /^(NO_REPLY|HEARTBEAT_OK|NO_)\s*$|Pre-compaction memory flush|^Read HEARTBEAT\.md|reply with NO_REPLY|Store durable memories now/;
+      const isHiddenMessage = (role: string, text: string) => {
+        if (role === "system") return true; // hide all system-role messages
+        return HIDDEN_PATTERNS.test(text.trim());
+      };
+
       const histMsgs: DisplayMessage[] = (res?.messages || [])
         .filter((m) => m.role === "user" || m.role === "assistant" || m.role === "system")
         .map((m, i) => {
@@ -340,7 +353,8 @@ export function useChat(sessionKey?: string) {
           timestamp: m.timestamp || new Date().toISOString(),
           toolCalls: m.toolCalls || [],
           attachments: allAttachments.length > 0 ? allAttachments : undefined,
-        };});
+        };})
+        .filter((m) => !isHiddenMessage(m.role, m.content));
       // Restore queued messages from localStorage
       const savedQueue = queueStorageKey ? localStorage.getItem(queueStorageKey) : null;
       if (savedQueue) {
@@ -406,7 +420,7 @@ export function useChat(sessionKey?: string) {
         // Streamed delta or one-shot text
         const chunk = (data?.delta as string | undefined) ?? (data?.text as string);
           setStreaming(true);
-          setAgentStatus({ phase: "writing" });
+          setAgentStatusDebug({ phase: "writing" });
           if (!streamBuf.current) {
             const id = `stream-${Date.now()}`;
             streamBuf.current = { id, content: "", toolCalls: new Map() };
@@ -434,7 +448,7 @@ export function useChat(sessionKey?: string) {
         // tool-call-start
           const callId = (data.toolCallId || data.callId || "") as string;
           const name = (data.name || data.tool || "") as string;
-          setAgentStatus({ phase: "tool", toolName: name });
+          setAgentStatusDebug({ phase: "tool", toolName: name });
           const args = data.args as string | undefined;
           if (!streamBuf.current) {
             const id = `stream-${Date.now()}`;
@@ -468,7 +482,7 @@ export function useChat(sessionKey?: string) {
         // tool-call-end
           const callId = (data.toolCallId || data.callId || "") as string;
           const result = data.result as string | undefined;
-          setAgentStatus({ phase: "thinking" });
+          setAgentStatusDebug({ phase: "thinking" });
           if (streamBuf.current) {
             const tc = streamBuf.current.toolCalls.get(callId);
             if (tc) {
@@ -492,11 +506,11 @@ export function useChat(sessionKey?: string) {
       } else if (stream === "lifecycle" && data?.phase === "start") {
         // lifecycle start
           setStreaming(true);
-          setAgentStatus({ phase: "thinking" });
+          setAgentStatusDebug({ phase: "thinking" });
       } else if (stream === "lifecycle" && data?.phase === "end") {
         // lifecycle end = done
           setStreaming(false);
-          setAgentStatus({ phase: "waiting" });
+          setAgentStatusDebug({ phase: "waiting" });
           if (streamBuf.current) {
             const finalId = streamBuf.current.id;
             let finalContent = streamBuf.current.content;
@@ -520,7 +534,7 @@ export function useChat(sessionKey?: string) {
       } else if (stream === "done" || stream === "end" || stream === "finish") {
         // done
           setStreaming(false);
-          setAgentStatus({ phase: "waiting" });
+          setAgentStatusDebug({ phase: "waiting" });
           if (streamBuf.current) {
             const finalId = streamBuf.current.id;
             let finalContent = (data?.text as string) || streamBuf.current.content;
@@ -543,7 +557,7 @@ export function useChat(sessionKey?: string) {
       } else if (stream === "error") {
         // error
           setStreaming(false);
-          setAgentStatus({ phase: "idle" });
+          setAgentStatusDebug({ phase: "idle" });
           const errMsg = (data?.message || data?.error || "Unknown error") as string;
           if (streamBuf.current) {
             const errId = streamBuf.current.id;
@@ -594,6 +608,7 @@ export function useChat(sessionKey?: string) {
         prev.map((m) => (m.id === msgId ? { ...m, queued: false } : m))
       );
       setStreaming(true);
+      setAgentStatusDebug({ phase: "thinking" });
       try {
         await client.request("chat.send", {
           message: text,
@@ -694,6 +709,7 @@ export function useChat(sessionKey?: string) {
       // silently fail
     }
     setStreaming(false);
+    setAgentStatusDebug({ phase: "idle" });
   }, [client, state, sessionKey]);
 
   // Add a user message to the display (for external callers like attachment sends)
