@@ -67,6 +67,14 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
   const [sessionManagerOpen, setSessionManagerOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
 
+  // Build ordered session list for current agent (for Tab cycling)
+  const agentSessions = (sessions as GatewaySession[])
+    .filter((s) => {
+      const parsed = parseSessionKey(s.key);
+      return parsed.agentId === agentId;
+    })
+    .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+
   // Shortcuts (active panel only)
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -79,10 +87,18 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
         e.preventDefault();
         setNewSessionPickerOpen(true);
       }
+      // Tab / Shift+Tab: cycle through sessions of current agent
+      if (e.key === "Tab" && e.ctrlKey && agentSessions.length > 1) {
+        e.preventDefault();
+        const currentIdx = agentSessions.findIndex((s) => s.key === effectiveSessionKey);
+        const delta = e.shiftKey ? -1 : 1;
+        const nextIdx = (currentIdx + delta + agentSessions.length) % agentSessions.length;
+        setSessionKey(agentSessions[nextIdx].key);
+      }
     }
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [isActive, agentId, setSessionKey, refreshSessions]);
+  }, [isActive, agentId, setSessionKey, refreshSessions, agentSessions, effectiveSessionKey]);
 
   // Restore focus to this panel's textarea
   const refocusPanel = useCallback(() => {
