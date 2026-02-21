@@ -58,6 +58,7 @@ const AGENT_IMAGES: Record<string, string> = {
   odoo: "/agents/odoo.jpg",
   newscash: "/agents/newscash.jpg",
   seoa: "/agents/seoa.jpg",
+  rian: "/agents/rian.jpg",
 };
 
 export function getAgentAvatar(agentId?: string): AgentAvatar {
