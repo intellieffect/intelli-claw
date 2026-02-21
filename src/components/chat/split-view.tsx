@@ -72,6 +72,7 @@ export function SplitView() {
   const containerRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ index: number; startX: number; startWidths: number[] } | null>(null);
   const closedPanelsRef = useRef<PanelState[]>([]);
+  const navInProgressRef = useRef(false);
   const isMobile = useIsMobile();
 
   // Restore from localStorage after hydration
@@ -95,8 +96,11 @@ export function SplitView() {
       const newId = uid();
       const count = prev.panels.length + 1;
       const w = equalWidths(count);
-      const panels = [...prev.panels.map((p) => ({ ...p, width: w })), { id: newId, width: w }];
-      return { panels, activePanelId: newId };
+      const resized = prev.panels.map((p) => ({ ...p, width: w }));
+      const activeIdx = resized.findIndex((p) => p.id === prev.activePanelId);
+      const insertIdx = activeIdx >= 0 ? activeIdx + 1 : resized.length;
+      resized.splice(insertIdx, 0, { id: newId, width: w });
+      return { panels: resized, activePanelId: newId };
     });
   }, []);
 
@@ -131,14 +135,22 @@ export function SplitView() {
 
   /** Navigate focus to prev (-1) or next (+1) panel */
   const navPanel = useCallback((dir: -1 | 1) => {
+    navInProgressRef.current = true;
     setState((prev) => {
       const len = prev.panels.length;
       if (len <= 1) return prev;
       const idx = prev.panels.findIndex((p) => p.id === prev.activePanelId);
       const next = (idx + dir + len) % len; // wrap around
       if (next === idx) return prev;
-      return { ...prev, activePanelId: prev.panels[next].id };
+      // Explicitly focus the target panel's textarea after render
+      const targetId = prev.panels[next].id;
+      requestAnimationFrame(() => {
+        const el = document.querySelector(`[data-panel-id="${targetId}"] textarea`) as HTMLElement | null;
+        el?.focus();
+      });
+      return { ...prev, activePanelId: targetId };
     });
+    setTimeout(() => { navInProgressRef.current = false; }, 200);
   }, []);
 
   /** Move a panel's position left/right */
@@ -309,8 +321,9 @@ export function SplitView() {
                     boxShadow: "none",
                   }
             ) : undefined}
+            data-panel-id={panel.id}
             onClick={() => setActive(panel.id)}
-            onFocusCapture={() => setActive(panel.id)}
+            onFocusCapture={() => { if (!navInProgressRef.current) setActive(panel.id); }}
           >
             {/* Panel controls (desktop only, multi-panel) */}
             {!isMobile && panels.length > 1 && (
