@@ -270,10 +270,21 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
+/** Format timestamp to HH:MM */
+function formatTime(ts?: string): string | null {
+  if (!ts) return null;
+  try {
+    const d = new Date(ts);
+    if (isNaN(d.getTime())) return null;
+    return d.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false });
+  } catch { return null; }
+}
+
 function MessageBubble({ message, showAvatar = true, onCancel, agentImageUrl }: { message: DisplayMessage; showAvatar?: boolean; onCancel?: (id: string) => void; agentImageUrl?: string }) {
   const isUser = message.role === "user";
   const isSystem = message.role === "system";
   const isQueued = message.queued;
+  const time = formatTime(message.timestamp);
 
   // System messages: centered, muted style
   if (isSystem) {
@@ -335,6 +346,9 @@ function MessageBubble({ message, showAvatar = true, onCancel, agentImageUrl }: 
             )}
             {message.content && message.content === "(첨부 파일)" && !message.attachments?.length && (
               <p className={`whitespace-pre-wrap break-words text-sm ${isQueued ? "opacity-70" : ""}`}>{message.content}</p>
+            )}
+            {time && !isQueued && (
+              <div className="mt-1 text-right text-[10px] text-muted-foreground/50">{time}</div>
             )}
             {isQueued && (
               <div className="mt-1.5 flex items-center justify-end gap-2">
@@ -425,8 +439,9 @@ function MessageBubble({ message, showAvatar = true, onCancel, agentImageUrl }: 
               <span className="inline-block h-4 w-1.5 animate-pulse rounded-sm bg-primary" />
             )}
             {!message.streaming && message.content && (
-              <div className="mt-1">
+              <div className="mt-1 flex items-center gap-2">
                 <CopyButton text={stripTaskMemo(message.content)} />
+                {time && <span className="text-[10px] text-muted-foreground/40">{time}</span>}
               </div>
             )}
           </div>
