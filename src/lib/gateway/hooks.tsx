@@ -236,11 +236,19 @@ export interface DisplayMessage {
   attachments?: DisplayAttachment[];
 }
 
+export type AgentStatus =
+  | { phase: "idle" }
+  | { phase: "thinking" }
+  | { phase: "writing" }
+  | { phase: "tool"; toolName: string }
+  | { phase: "waiting" }; // agent finished, awaiting user input
+
 export function useChat(sessionKey?: string) {
   const { client, state } = useGateway();
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
   const [streaming, setStreaming] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [agentStatus, setAgentStatus] = useState<AgentStatus>({ phase: "idle" });
   const streamBuf = useRef<{
     id: string;
     content: string;
@@ -398,6 +406,7 @@ export function useChat(sessionKey?: string) {
         // Streamed delta or one-shot text
         const chunk = (data?.delta as string | undefined) ?? (data?.text as string);
           setStreaming(true);
+          setAgentStatus({ phase: "writing" });
           if (!streamBuf.current) {
             const id = `stream-${Date.now()}`;
             streamBuf.current = { id, content: "", toolCalls: new Map() };
@@ -425,6 +434,7 @@ export function useChat(sessionKey?: string) {
         // tool-call-start
           const callId = (data.toolCallId || data.callId || "") as string;
           const name = (data.name || data.tool || "") as string;
+          setAgentStatus({ phase: "tool", toolName: name });
           const args = data.args as string | undefined;
           if (!streamBuf.current) {
             const id = `stream-${Date.now()}`;
@@ -458,6 +468,7 @@ export function useChat(sessionKey?: string) {
         // tool-call-end
           const callId = (data.toolCallId || data.callId || "") as string;
           const result = data.result as string | undefined;
+          setAgentStatus({ phase: "thinking" });
           if (streamBuf.current) {
             const tc = streamBuf.current.toolCalls.get(callId);
             if (tc) {
@@ -478,9 +489,14 @@ export function useChat(sessionKey?: string) {
               return prev;
             });
           }
+      } else if (stream === "lifecycle" && data?.phase === "start") {
+        // lifecycle start
+          setStreaming(true);
+          setAgentStatus({ phase: "thinking" });
       } else if (stream === "lifecycle" && data?.phase === "end") {
         // lifecycle end = done
           setStreaming(false);
+          setAgentStatus({ phase: "waiting" });
           if (streamBuf.current) {
             const finalId = streamBuf.current.id;
             let finalContent = streamBuf.current.content;
@@ -504,6 +520,7 @@ export function useChat(sessionKey?: string) {
       } else if (stream === "done" || stream === "end" || stream === "finish") {
         // done
           setStreaming(false);
+          setAgentStatus({ phase: "waiting" });
           if (streamBuf.current) {
             const finalId = streamBuf.current.id;
             let finalContent = (data?.text as string) || streamBuf.current.content;
@@ -526,6 +543,7 @@ export function useChat(sessionKey?: string) {
       } else if (stream === "error") {
         // error
           setStreaming(false);
+          setAgentStatus({ phase: "idle" });
           const errMsg = (data?.message || data?.error || "Unknown error") as string;
           if (streamBuf.current) {
             const errId = streamBuf.current.id;
@@ -700,6 +718,7 @@ export function useChat(sessionKey?: string) {
     messages,
     streaming,
     loading,
+    agentStatus,
     sendMessage,
     addUserMessage,
     cancelQueued,

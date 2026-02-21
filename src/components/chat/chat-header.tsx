@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { parseSessionKey } from "@/lib/gateway/session-utils";
 import type { Agent, Session } from "@/lib/gateway/protocol";
+import type { AgentStatus } from "@/lib/gateway/hooks";
 import { getAgentAvatar } from "@/lib/agent-avatars";
 import { cn } from "@/lib/utils";
 
@@ -21,6 +22,7 @@ interface ChatHeaderProps {
   agents: Agent[];
   sessions: SessionEntry[];
   messages: Array<Record<string, unknown>>;
+  agentStatus?: AgentStatus;
   onSelectSession?: (key: string) => void;
   onNewSession?: () => void;
   onDeleteSession?: (key: string) => void;
@@ -123,11 +125,29 @@ function deriveTopic(
 
 // --- Main Component ---
 
+/** Format agent status for display */
+function formatAgentStatus(status?: AgentStatus): { text: string; dotColor: string } | null {
+  if (!status || status.phase === "idle") return null;
+  switch (status.phase) {
+    case "thinking":
+      return { text: "생각 중…", dotColor: "bg-yellow-400" };
+    case "writing":
+      return { text: "작성 중…", dotColor: "bg-green-400" };
+    case "tool":
+      return { text: `${status.toolName}`, dotColor: "bg-blue-400" };
+    case "waiting":
+      return { text: "응답 대기 중", dotColor: "bg-zinc-500" };
+    default:
+      return null;
+  }
+}
+
 export function ChatHeader({
   sessionKey,
   agents,
   sessions,
   messages,
+  agentStatus,
   onSelectSession,
   onNewSession,
   onDeleteSession,
@@ -320,6 +340,27 @@ export function ChatHeader({
         <span className="rounded-md bg-zinc-800 px-2 py-0.5 text-[10px] font-medium text-zinc-500 uppercase tracking-wide">
           {sessionType}
         </span>
+        {(() => {
+          const status = formatAgentStatus(agentStatus);
+          if (!status) return null;
+          const isAnimating = agentStatus?.phase !== "waiting";
+          return (
+            <span className="flex items-center gap-1.5 ml-1">
+              <span className="relative flex h-2 w-2">
+                {isAnimating && (
+                  <span className={cn("absolute inline-flex h-full w-full animate-ping rounded-full opacity-75", status.dotColor)} />
+                )}
+                <span className={cn("relative inline-flex h-2 w-2 rounded-full", status.dotColor)} />
+              </span>
+              <span className={cn(
+                "text-[11px] font-medium",
+                agentStatus?.phase === "waiting" ? "text-zinc-500" : "text-zinc-300"
+              )}>
+                {status.text}
+              </span>
+            </span>
+          );
+        })()}
         {onOpenSessionManager && (
           <button
             onClick={onOpenSessionManager}
