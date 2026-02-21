@@ -1,13 +1,13 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
-import { Paperclip, X, FileText, Image as ImageIcon, File } from "lucide-react";
+import { Paperclip, X, FileText, Image as ImageIcon, File, Video } from "lucide-react";
 
 export interface ChatAttachment {
   id: string;
   file: File;
-  preview?: string; // data URL for images
-  type: "image" | "file";
+  preview?: string; // data URL for images/video thumbnails
+  type: "image" | "video" | "file";
 }
 
 function formatSize(bytes: number): string {
@@ -16,10 +16,48 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
 }
 
-function fileToAttachment(file: File): Promise<ChatAttachment> {
+/** Generate a thumbnail from a video file using the first frame. */
+function videoThumbnail(file: File): Promise<string | undefined> {
   return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const video = document.createElement("video");
+    video.muted = true;
+    video.playsInline = true;
+    video.preload = "metadata";
+    video.src = url;
+
+    const cleanup = () => { URL.revokeObjectURL(url); video.remove(); };
+
+    video.onloadeddata = () => {
+      // Seek to 1s or 0 for short videos
+      video.currentTime = Math.min(1, video.duration / 2);
+    };
+    video.onseeked = () => {
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.min(video.videoWidth, 480);
+        canvas.height = Math.round(canvas.width * (video.videoHeight / video.videoWidth));
+        const ctx = canvas.getContext("2d");
+        ctx?.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.7);
+        cleanup();
+        resolve(dataUrl);
+      } catch {
+        cleanup();
+        resolve(undefined);
+      }
+    };
+    video.onerror = () => { cleanup(); resolve(undefined); };
+    // Timeout fallback
+    setTimeout(() => { cleanup(); resolve(undefined); }, 5000);
+  });
+}
+
+function fileToAttachment(file: File): Promise<ChatAttachment> {
+  return new Promise(async (resolve) => {
     const id = `att-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const isImage = file.type.startsWith("image/");
+    const isVideo = file.type.startsWith("video/");
 
     if (isImage) {
       const reader = new FileReader();
@@ -32,6 +70,9 @@ function fileToAttachment(file: File): Promise<ChatAttachment> {
         });
       };
       reader.readAsDataURL(file);
+    } else if (isVideo) {
+      const thumbnail = await videoThumbnail(file);
+      resolve({ id, file, preview: thumbnail, type: "video" });
     } else {
       resolve({ id, file, type: "file" });
     }
@@ -56,15 +97,22 @@ export function AttachmentPreview({
           key={att.id}
           className="group relative flex items-center gap-2 rounded-lg border border-border bg-muted p-2 text-xs text-foreground"
         >
-          {att.type === "image" && att.preview ? (
-            <img
-              src={att.preview}
-              alt={att.file.name}
-              className="h-10 w-10 md:h-12 md:w-12 rounded object-cover"
-            />
+          {(att.type === "image" || att.type === "video") && att.preview ? (
+            <div className="relative h-10 w-10 md:h-12 md:w-12">
+              <img
+                src={att.preview}
+                alt={att.file.name}
+                className="h-full w-full rounded object-cover"
+              />
+              {att.type === "video" && (
+                <div className="absolute inset-0 flex items-center justify-center rounded bg-black/30">
+                  <Video size={14} className="text-white" />
+                </div>
+              )}
+            </div>
           ) : (
             <div className="flex h-10 w-10 md:h-12 md:w-12 items-center justify-center rounded bg-muted">
-              <FileText size={20} className="text-muted-foreground" />
+              {att.type === "video" ? <Video size={20} className="text-muted-foreground" /> : <FileText size={20} className="text-muted-foreground" />}
             </div>
           )}
           <div className="min-w-0 max-w-[100px] md:max-w-[120px]">
@@ -240,11 +288,11 @@ export function useFileAttachments() {
 }
 
 /**
- * Gateway WebSocket maxPayload is 512 KB. The entire JSON frame (message +
- * attachments + metadata) must fit, so we target ~350 KB of base64 per image
- * (~262 KB decoded). Non-image files are sent as-is (will error if too large).
+ * Gateway WebSocket maxPayload has been raised to 512 MB.
+ * We set a generous limit per attachment (~100 MB base64 ≈ 75 MB decoded).
+ * Images are still compressed for efficiency; videos and other files pass through.
  */
-const MAX_BASE64_BYTES = 350_000; // ~350 KB base64 ≈ 262 KB decoded
+const MAX_BASE64_BYTES = 100_000_000; // ~100 MB base64
 
 /** Compress an image file via canvas until it fits within maxBase64 bytes. */
 async function compressImage(
@@ -284,32 +332,44 @@ async function compressImage(
   throw new Error(`Image too large to compress within ${maxB64} bytes: ${file.name}`);
 }
 
-/**
- * Convert a ChatAttachment to a payload for sending via gateway chat.send.
- * Images are automatically compressed to fit within WebSocket frame limits.
- */
-export async function attachmentToPayload(
-  att: ChatAttachment
-): Promise<{ fileName: string; mimeType: string; content: string }> {
-  // For images, compress to fit within WS frame limit
-  if (att.type === "image") {
-    const { base64, mimeType } = await compressImage(att.file, MAX_BASE64_BYTES);
-    return { fileName: att.file.name, mimeType, content: base64 };
-  }
-
-  // Non-image: read as base64 directly
+/** Read a File as base64 string (without data URL prefix). */
+function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
       const dataUrl = reader.result as string;
-      const base64 = dataUrl.includes(",") ? dataUrl.split(",")[1] : dataUrl;
-      resolve({
-        fileName: att.file.name,
-        mimeType: att.file.type || "application/octet-stream",
-        content: base64,
-      });
+      resolve(dataUrl.includes(",") ? dataUrl.split(",")[1] : dataUrl);
     };
-    reader.onerror = () => reject(new Error("Failed to read file"));
-    reader.readAsDataURL(att.file);
+    reader.onerror = () => reject(new Error(`Failed to read file: ${file.name}`));
+    reader.readAsDataURL(file);
   });
+}
+
+/** Max image base64 for compression target (5 MB — keeps images reasonable). */
+const IMAGE_COMPRESS_TARGET = 5_000_000;
+
+/**
+ * Convert a ChatAttachment to a payload for sending via gateway chat.send.
+ * Images are compressed for efficiency. Videos and other files are sent as-is.
+ */
+export async function attachmentToPayload(
+  att: ChatAttachment
+): Promise<{ fileName: string; mimeType: string; content: string }> {
+  // Images: compress to a reasonable size
+  if (att.type === "image") {
+    const target = Math.min(MAX_BASE64_BYTES, IMAGE_COMPRESS_TARGET);
+    const { base64, mimeType } = await compressImage(att.file, target);
+    return { fileName: att.file.name, mimeType, content: base64 };
+  }
+
+  // Videos & other files: read as base64 directly
+  const base64 = await fileToBase64(att.file);
+  if (base64.length > MAX_BASE64_BYTES) {
+    throw new Error(`파일이 너무 큽니다 (${formatSize(att.file.size)}). 최대 약 75MB까지 지원됩니다.`);
+  }
+  return {
+    fileName: att.file.name,
+    mimeType: att.file.type || "application/octet-stream",
+    content: base64,
+  };
 }
