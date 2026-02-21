@@ -40,16 +40,16 @@ export function MessageList({
 
   if (messages.length === 0) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-3 text-muted-foreground">
-        <Bot size={48} strokeWidth={1.5} className="text-muted-foreground" />
-        <p className="text-lg">무엇을 도와드릴까요?</p>
-        <p className="text-sm text-muted-foreground">메시지를 입력하여 대화를 시작하세요</p>
+      <div className="flex flex-1 flex-col items-center justify-center gap-2 md:gap-3 px-4 text-muted-foreground">
+        <Bot size={40} strokeWidth={1.5} className="text-muted-foreground md:size-12" />
+        <p className="text-base md:text-lg">무엇을 도와드릴까요?</p>
+        <p className="text-xs md:text-sm text-muted-foreground text-center">메시지를 입력하여 대화를 시작하세요</p>
       </div>
     );
   }
 
   return (
-    <div className="flex-1 overflow-y-auto overflow-x-hidden px-3 py-3 md:px-4 md:py-4" style={{ WebkitOverflowScrolling: "touch" }}>
+    <div className="flex-1 overflow-y-auto overflow-x-hidden px-2 py-2 sm:px-3 sm:py-3 md:px-4 md:py-4" style={{ WebkitOverflowScrolling: "touch", overscrollBehavior: "contain" }}>
       <div className="mx-auto max-w-3xl space-y-3 md:space-y-4">
         {messages
           .filter((msg) => msg.content || msg.toolCalls.length > 0 || msg.streaming)
@@ -69,9 +69,9 @@ export function MessageList({
 
 function ThinkingIndicator() {
   return (
-    <div className="flex gap-3">
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-        <Bot size={18} />
+    <div className="flex gap-2 md:gap-3">
+      <div className="flex size-7 md:size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+        <Bot size={16} />
       </div>
       <div className="flex items-center gap-1.5 rounded-2xl bg-muted/60 px-4 py-3">
         <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground" style={{ animationDelay: "0ms" }} />
@@ -144,7 +144,7 @@ function MessageBubble({ message, showAvatar = true, onCancel }: { message: Disp
   }
 
   return (
-    <div className={`group flex gap-3 ${isUser ? "justify-end" : ""}`}>
+    <div className={`group flex gap-2 md:gap-3 ${isUser ? "justify-end" : ""}`}>
       {/* Copy button for user messages (left of bubble) */}
       {isUser && message.content && (
         <div className="flex items-start pt-2">
@@ -153,16 +153,17 @@ function MessageBubble({ message, showAvatar = true, onCancel }: { message: Disp
       )}
       {!isUser && (
         showAvatar ? (
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-            <Bot size={18} />
+          <div className="flex size-7 md:size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+            <Bot size={16} className="md:hidden" />
+            <Bot size={18} className="hidden md:block" />
           </div>
         ) : (
-          <div className="w-8 shrink-0" />
+          <div className="w-7 md:w-8 shrink-0" />
         )
       )}
 
       <div
-        className={`min-w-0 max-w-[90%] md:max-w-[85%] ${
+        className={`min-w-0 max-w-[95%] sm:max-w-[90%] md:max-w-[85%] ${
           isUser
             ? `rounded-2xl rounded-br-md px-3.5 py-2 md:px-4 md:py-2.5 text-foreground ${isQueued ? "bg-primary/15 border border-primary/20" : "bg-primary/15 border border-primary/10"}`
             : "flex-1"
@@ -254,8 +255,9 @@ function MessageBubble({ message, showAvatar = true, onCancel }: { message: Disp
       </div>
 
       {isUser && (
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-accent-foreground">
-          <User size={18} />
+        <div className="flex size-7 md:size-8 shrink-0 items-center justify-center rounded-full bg-muted text-accent-foreground">
+          <User size={16} className="md:hidden" />
+          <User size={18} className="hidden md:block" />
         </div>
       )}
     </div>

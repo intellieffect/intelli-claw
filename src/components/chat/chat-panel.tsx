@@ -12,6 +12,8 @@ import { DropZone, useFileAttachments, attachmentToPayload } from "./file-attach
 import { parseSessionKey, sessionDisplayName, type GatewaySession } from "@/lib/gateway/session-utils";
 import { TaskMemo } from "./task-memo";
 import { SessionSettings } from "@/components/settings/session-settings";
+import { useIsMobile } from "@/lib/hooks/use-mobile";
+import { useKeyboardHeight } from "@/lib/hooks/use-keyboard-height";
 
 export interface ChatPanelProps {
   /** Panel id for focus management */
@@ -74,6 +76,15 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true, initi
   const [sessionSwitcherOpen, setSessionSwitcherOpen] = useState(false);
   const [agentBrowserOpen, setAgentBrowserOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
+  const isMobile = useIsMobile();
+  const keyboardHeight = useKeyboardHeight();
+
+  // Expose mobile session toggle globally (for header hamburger button)
+  useEffect(() => {
+    if (!isMobile) return;
+    (window as any).__awfMobileSessionToggle = () => setAgentBrowserOpen((v) => !v);
+    return () => { delete (window as any).__awfMobileSessionToggle; };
+  }, [isMobile]);
 
   // Shortcuts (active panel only)
   useEffect(() => {
@@ -321,6 +332,7 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true, initi
     <div
       ref={panelRef}
       className="relative flex h-full flex-col bg-background"
+      style={isMobile && keyboardHeight > 0 ? { paddingBottom: keyboardHeight } : undefined}
       onClick={onFocus}
     >
       {/* Task Memo */}
@@ -371,20 +383,20 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true, initi
               onOpenChange={setSessionSwitcherOpen}
               portalContainer={panelRef.current}
             />
-            <div className="ml-auto flex shrink-0 items-center gap-2">
-              <kbd className="hidden rounded border border-border bg-muted px-1 py-0.5 text-[10px] leading-none text-muted-foreground sm:inline-flex">⌘K</kbd>
+            <div className="ml-auto flex shrink-0 items-center gap-1 md:gap-2">
+              <kbd className="hidden rounded border border-border bg-muted px-1 py-0.5 text-[10px] leading-none text-muted-foreground md:inline-flex">⌘K</kbd>
               <kbd
-                className="hidden cursor-pointer rounded border border-border bg-muted px-1 py-0.5 text-[10px] leading-none text-muted-foreground hover:text-foreground sm:inline-flex"
+                className="hidden cursor-pointer rounded border border-border bg-muted px-1 py-0.5 text-[10px] leading-none text-muted-foreground hover:text-foreground md:inline-flex"
                 onClick={() => setAgentBrowserOpen(true)}
                 title="에이전트별 세션 브라우저"
               >⌘O</kbd>
               {currentSession?.model && (
-                <span className="text-[10px] text-muted-foreground" title={currentSession.model}>
+                <span className="hidden text-[10px] text-muted-foreground md:inline" title={currentSession.model}>
                   {currentSession.model.split("/").pop()}
                 </span>
               )}
               {tokenStr && (
-                <span className="text-[10px] text-muted-foreground">{tokenStr}</span>
+                <span className="hidden text-[10px] text-muted-foreground md:inline">{tokenStr}</span>
               )}
             </div>
           </div>

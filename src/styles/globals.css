@@ -47,15 +47,63 @@ body {
   -webkit-overflow-scrolling: touch;
 }
 
-/* iOS safe area padding helper */
+/* iOS safe area padding helpers */
 .safe-bottom {
   padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.safe-top {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+.safe-left {
+  padding-left: env(safe-area-inset-left, 0px);
+}
+
+.safe-right {
+  padding-right: env(safe-area-inset-right, 0px);
 }
 
 /* Prevent iOS auto-zoom on input focus */
 @media (max-width: 767px) {
   input, textarea, select {
     font-size: 16px !important;
+  }
+}
+
+/* Mobile: visualViewport-aware input positioning */
+.mobile-input-container {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  background-color: var(--color-background);
+  transition: transform 0.1s ease-out;
+}
+
+/* Mobile: keyboard height CSS variable (set by useKeyboardHeight) */
+:root {
+  --keyboard-height: 0px;
+}
+
+/* Mobile code blocks: ensure horizontal scroll */
+@media (max-width: 767px) {
+  .prose pre {
+    max-width: calc(100vw - 4rem);
+    -webkit-overflow-scrolling: touch;
+  }
+  .prose .table-wrapper {
+    max-width: calc(100vw - 4rem);
+  }
+  .prose img {
+    max-width: 100%;
+    height: auto;
+  }
+  /* Larger touch targets for action buttons */
+  .mobile-touch-target {
+    min-width: 44px;
+    min-height: 44px;
   }
 }
 

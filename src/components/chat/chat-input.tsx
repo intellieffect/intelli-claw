@@ -13,6 +13,8 @@ import {
 } from "./file-attachments";
 import { SkillPicker, BUILTIN_COMMANDS } from "./skill-picker";
 import { useSkills } from "@/lib/gateway/use-skills";
+import { useKeyboardHeight } from "@/lib/hooks/use-keyboard-height";
+import { useIsMobile } from "@/lib/hooks/use-mobile";
 
 export function ChatInput({
   onSend,
@@ -42,6 +44,9 @@ export function ChatInput({
   /** Custom agent slot node (overrides agentAvatar) */
   agentSlot?: React.ReactNode;
 }) {
+  const keyboardHeight = useKeyboardHeight();
+  const isMobile = useIsMobile();
+
   const agentSlotFromAvatar = agentAvatar ? (
     <div
       className={cn(
@@ -250,7 +255,10 @@ export function ChatInput({
   const showAttachments = onRemoveAttachment && attachments.length > 0;
 
   return (
-    <div className="relative px-2 py-2 sm:px-3 sm:py-3 md:px-4 safe-bottom">
+    <div
+      className="relative px-2 py-1.5 sm:px-3 sm:py-2 md:px-4 md:py-3 safe-bottom"
+      style={isMobile && keyboardHeight > 0 ? { paddingBottom: `max(4px, env(safe-area-inset-bottom, 0px))` } : undefined}
+    >
       {/* Skill picker */}
       <SkillPicker
         inputText={text}
@@ -299,7 +307,7 @@ export function ChatInput({
                 type="button"
                 variant="ghost"
                 size="icon-sm"
-                className="shrink-0 rounded-lg text-muted-foreground hover:text-foreground"
+                className="shrink-0 rounded-lg text-muted-foreground hover:text-foreground min-w-[44px] min-h-[44px] md:min-w-0 md:min-h-0"
                 aria-label="파일 첨부"
                 onClick={() => {
                   const input = document.createElement("input");
@@ -335,12 +343,12 @@ export function ChatInput({
               className="min-w-0 flex-1 resize-none bg-transparent px-1 py-1.5 text-sm text-foreground placeholder:text-muted-foreground outline-none disabled:cursor-not-allowed disabled:opacity-50"
             />
 
-            {/* Send / Stop button */}
+            {/* Send / Stop button — 44px min touch target on mobile */}
             {streaming ? (
               <Button
                 type="button"
                 size="icon-sm"
-                className="shrink-0 rounded-lg"
+                className="shrink-0 rounded-lg min-w-[44px] min-h-[44px] md:min-w-0 md:min-h-0"
                 aria-label="중단"
                 onClick={onAbort}
               >
@@ -350,7 +358,7 @@ export function ChatInput({
               <Button
                 type="button"
                 size="icon-sm"
-                className="shrink-0 rounded-lg transition-opacity"
+                className="shrink-0 rounded-lg transition-opacity min-w-[44px] min-h-[44px] md:min-w-0 md:min-h-0"
                 aria-label="전송"
                 onClick={handleSend}
                 disabled={disabled || !canSend}
@@ -379,9 +387,11 @@ export function ChatInput({
 
         </div>
       </div>
-      <p className="mt-1 text-center text-[10px] sm:text-[11px] text-muted-foreground/50">
-        Shift+Enter로 줄바꿈 · 에이전트는 실수할 수 있습니다
-      </p>
+      {!isMobile && (
+        <p className="mt-1 text-center text-[10px] sm:text-[11px] text-muted-foreground/50">
+          Shift+Enter로 줄바꿈 · 에이전트는 실수할 수 있습니다
+        </p>
+      )}
     </div>
   );
 }

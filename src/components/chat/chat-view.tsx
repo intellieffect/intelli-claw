@@ -7,7 +7,7 @@ import { ConnectionStatus } from "./connection-status";
 import { SplitView } from "./split-view";
 import { ShortcutHelpDialog } from "./shortcut-help-dialog";
 import { isShortcutHelp } from "@/lib/shortcuts";
-import { Plus, Keyboard } from "lucide-react";
+import { Plus, Keyboard, Menu } from "lucide-react";
 
 export function ChatView() {
   const { state } = useGateway();
@@ -41,24 +41,35 @@ export function ChatView() {
 
   return (
     <div className="flex h-dvh flex-col bg-background overflow-x-hidden max-w-[100vw]">
-      <header className="relative z-20 flex items-center justify-between border-b border-border bg-background/80 px-3 py-2 md:px-4 md:py-2.5 backdrop-blur-sm">
+      <header className="safe-top relative z-20 flex items-center justify-between border-b border-border bg-background/80 px-3 py-1.5 md:px-4 md:py-2.5 backdrop-blur-sm">
         <div className="flex items-center gap-2 md:gap-3">
-          <div className="flex items-center gap-2">
+          {isMobile && (
+            <button
+              onClick={() => (window as any).__awfMobileSessionToggle?.()}
+              className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition active:bg-muted"
+              aria-label="세션 목록"
+            >
+              <Menu size={18} />
+            </button>
+          )}
+          <div className="flex items-center gap-1.5 md:gap-2">
             <img src="/logo.svg" alt="intelli-claw" className="h-5 w-5 md:h-6 md:w-6" />
-            <span className="text-sm font-semibold text-foreground">intelli-claw</span>
+            {!isMobile && <span className="text-sm font-semibold text-foreground">intelli-claw</span>}
           </div>
         </div>
 
-        <div className="flex items-center gap-2 md:gap-3">
+        <div className="flex items-center gap-1.5 md:gap-3">
           <ConnectionStatus state={state} />
-          <button
-            onClick={() => setShortcutOpen(true)}
-            className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground"
-            title="단축키 (Cmd+/)"
-          >
-            <Keyboard size={14} />
-            <span className="hidden sm:inline">단축키</span>
-          </button>
+          {!isMobile && (
+            <button
+              onClick={() => setShortcutOpen(true)}
+              className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground"
+              title="단축키 (Cmd+/)"
+            >
+              <Keyboard size={14} />
+              <span className="hidden sm:inline">단축키</span>
+            </button>
+          )}
           {!isMobile && (
             <button
               onClick={() => (window as any).__awfSplitAddPanel?.()}

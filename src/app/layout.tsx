@@ -33,7 +33,7 @@ export default function RootLayout({
       <head>
         <link rel="apple-touch-icon" href="/icon-192.png" />
       </head>
-      <body className="antialiased">
+      <body className="antialiased safe-left safe-right">
         <GatewayProvider>
           <TooltipProvider>{children}</TooltipProvider>
         </GatewayProvider>

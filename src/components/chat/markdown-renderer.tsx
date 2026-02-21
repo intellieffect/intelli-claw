@@ -169,11 +169,11 @@ function CodeBlock({ className, children, rawChildren }: { className?: string; c
 
   return (
     <div className="group relative my-3">
-      <div className="flex items-center justify-between rounded-t-lg bg-muted px-4 py-1.5 text-xs text-muted-foreground">
-        <span>{lang}</span>
+      <div className="flex items-center justify-between rounded-t-lg bg-muted px-3 py-1.5 md:px-4 text-xs text-muted-foreground">
+        <span className="truncate">{lang}</span>
         <button
           onClick={handleCopy}
-          className="flex items-center gap-1 rounded px-2 py-0.5 transition hover:bg-muted hover:text-foreground"
+          className="flex shrink-0 items-center gap-1 rounded px-2 py-1 min-h-[32px] md:min-h-0 md:py-0.5 transition hover:bg-muted hover:text-foreground"
         >
           {copied ? (
             <>
