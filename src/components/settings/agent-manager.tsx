@@ -32,19 +32,43 @@ export function NewSessionPicker({
   onManageAgents: () => void;
 }) {
   const { agents, refresh } = useAgents();
+  const [focusIndex, setFocusIndex] = useState(0);
 
   useEffect(() => {
-    if (open) refresh();
+    if (open) { refresh(); setFocusIndex(0); }
   }, [open, refresh]);
 
   useEffect(() => {
     if (!open) return;
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") { onClose(); return; }
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setFocusIndex((prev) => (prev + 1) % (agents.length || 1));
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setFocusIndex((prev) => (prev - 1 + (agents.length || 1)) % (agents.length || 1));
+        return;
+      }
+      if (e.key === "Enter" && agents.length > 0) {
+        e.preventDefault();
+        onSelect(agents[focusIndex].id);
+        onClose();
+        return;
+      }
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [open, onClose]);
+  }, [open, onClose, onSelect, agents, focusIndex]);
+
+  // Scroll focused item into view
+  useEffect(() => {
+    if (!open) return;
+    const el = document.querySelector(`[data-agent-index="${focusIndex}"]`);
+    el?.scrollIntoView({ block: "nearest" });
+  }, [focusIndex, open]);
 
   if (!open) return null;
 
@@ -54,16 +78,26 @@ export function NewSessionPicker({
       <div className="absolute left-1/2 top-1/2 w-[min(92vw,480px)] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl">
         <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
           <h3 className="text-sm font-semibold text-zinc-100">새 세션 — 에이전트 선택</h3>
-          <button onClick={onClose} className="rounded px-2 py-1 text-xs text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200">ESC</button>
+          <div className="flex items-center gap-2 text-[10px] text-zinc-500">
+            <span>↑↓ 이동</span>
+            <span>Enter 선택</span>
+            <button onClick={onClose} className="rounded px-2 py-1 text-xs text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200">ESC</button>
+          </div>
         </div>
         <div className="max-h-[60vh] overflow-y-auto p-2">
-          {agents.map((agent) => {
+          {agents.map((agent, index) => {
             const av = getAgentAvatar(agent.id);
+            const isFocused = index === focusIndex;
             return (
               <button
                 key={agent.id}
+                data-agent-index={index}
                 onClick={() => { onSelect(agent.id); onClose(); }}
-                className="flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left transition hover:bg-zinc-800"
+                onMouseEnter={() => setFocusIndex(index)}
+                className={cn(
+                  "flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left transition",
+                  isFocused ? "bg-zinc-800 ring-1 ring-zinc-600" : "hover:bg-zinc-800"
+                )}
               >
                 {av.imageUrl ? (
                   <img src={av.imageUrl} alt={agent.id} className="size-9 rounded-full object-cover shrink-0" />
@@ -81,7 +115,7 @@ export function NewSessionPicker({
                     <div className="text-[10px] text-zinc-600 truncate">{agent.model}</div>
                   )}
                 </div>
-                <ChevronRight size={14} className="text-zinc-600" />
+                <ChevronRight size={14} className={isFocused ? "text-zinc-300" : "text-zinc-600"} />
               </button>
             );
           })}
