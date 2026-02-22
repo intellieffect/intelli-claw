@@ -249,6 +249,13 @@ const components: Partial<Components> = {
     }
     return <a>{children}</a>;
   },
+  table({ children }) {
+    return (
+      <div className="table-wrapper">
+        <table>{children}</table>
+      </div>
+    );
+  },
 };
 
 // ---- Media file type detection ----
