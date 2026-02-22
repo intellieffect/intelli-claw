@@ -106,6 +106,28 @@ function FileAttachmentCard({ att, onDownload }: { att: DisplayAttachment; onDow
   );
 }
 
+/** Assistant image with error fallback */
+function AssistantImage({ src, fileName }: { src: string; fileName: string }) {
+  const [error, setError] = useState(false);
+  if (error) {
+    return (
+      <div className="flex h-48 w-48 items-center justify-center rounded-lg border border-zinc-700 bg-zinc-800/50 text-xs text-zinc-500">
+        <span>⚠️ {fileName}</span>
+      </div>
+    );
+  }
+  return (
+    <a href={src} target="_blank" rel="noopener noreferrer" className="block">
+      <img
+        src={src}
+        alt={fileName}
+        className="max-h-80 max-w-full md:max-w-md rounded-lg border border-zinc-700 object-contain hover:opacity-90 transition"
+        onError={() => setError(true)}
+      />
+    </a>
+  );
+}
+
 /** Strip task-memo HTML comments from display text */
 const TASK_MEMO_STRIP_RE = /\s*<!--\s*task-memo:\s*\{[\s\S]*?\}\s*-->\s*/g;
 function stripTaskMemo(text: string): string {
@@ -397,13 +419,7 @@ function MessageBubble({ message, showAvatar = true, onCancel, agentImageUrl }: 
 
                   if (isImage && (att.dataUrl || url)) {
                     return (
-                      <a key={i} href={url} target="_blank" rel="noopener noreferrer" className="block">
-                        <img
-                          src={att.dataUrl || url}
-                          alt={att.fileName}
-                          className="max-h-80 max-w-full md:max-w-md rounded-lg border border-zinc-700 object-contain hover:opacity-90 transition"
-                        />
-                      </a>
+                      <AssistantImage key={i} src={(att.dataUrl || url)!} fileName={att.fileName} />
                     );
                   }
 
