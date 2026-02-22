@@ -332,8 +332,9 @@ function extractMediaLines(text: string): [string, MediaEntry[]] {
   // Only match MEDIA: lines with actual file paths (starting with /) or URLs
   const cleaned = text.replace(/^MEDIA:\s*(.+)$/gm, (_match, path: string) => {
     const trimmed = path.trim();
-    // Skip if it doesn't look like a path or URL
-    if (!trimmed.startsWith("/") && !trimmed.startsWith("http://") && !trimmed.startsWith("https://") && !trimmed.startsWith("data:")) {
+    // Allow absolute paths, URLs, data URIs, and relative paths with file extensions
+    const hasExt = /\.\w{2,5}$/.test(trimmed);
+    if (!trimmed.startsWith("/") && !trimmed.startsWith("http://") && !trimmed.startsWith("https://") && !trimmed.startsWith("data:") && !hasExt) {
       return _match; // Leave as-is, not a real MEDIA marker
     }
     let url: string;
