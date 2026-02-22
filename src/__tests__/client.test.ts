@@ -1,6 +1,17 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { GatewayClient } from "@/lib/gateway/client";
 
+// Mock device-identity module so signChallenge resolves immediately
+vi.mock("@/lib/gateway/device-identity", () => ({
+  signChallenge: vi.fn(async (nonce: string) => ({
+    id: "test-device-id",
+    publicKey: '{"kty":"EC","crv":"P-256"}',
+    signature: "dGVzdC1zaWduYXR1cmU=",
+    signedAt: 1700000000000,
+    nonce,
+  })),
+}));
+
 // Mock WebSocket
 class MockWebSocket {
   static OPEN = 1;
@@ -65,7 +76,7 @@ describe("GatewayClient", () => {
     expect(states).toContain("authenticating");
   });
 
-  it("sends connect frame on challenge event", async () => {
+  it("sends connect frame with device identity on challenge event", async () => {
     const client = new GatewayClient("ws://localhost:18789", "test-token");
     client.connect();
 
@@ -82,6 +93,9 @@ describe("GatewayClient", () => {
       payload: { nonce: "abc123" },
     }));
 
+    // handleEvent is async, wait for signChallenge to resolve
+    await new Promise((r) => setTimeout(r, 10));
+
     // Should have sent a connect request
     expect(ws.sent.length).toBe(1);
     const sent = JSON.parse(ws.sent[0]);
@@ -89,6 +103,11 @@ describe("GatewayClient", () => {
     expect(sent.method).toBe("connect");
     expect(sent.params.auth.token).toBe("test-token");
     expect(sent.params.client.id).toBe("openclaw-control-ui");
+    // Device identity should be included
+    expect(sent.params.device).toBeDefined();
+    expect(sent.params.device.id).toBe("test-device-id");
+    expect(sent.params.device.nonce).toBe("abc123");
+    expect(sent.params.device.signature).toBeTruthy();
   });
 
   it("transitions to connected on hello-ok response", async () => {
@@ -108,6 +127,9 @@ describe("GatewayClient", () => {
       event: "connect.challenge",
       payload: { nonce: "abc" },
     }));
+
+    // Wait for async handleEvent
+    await new Promise((r) => setTimeout(r, 10));
 
     // Get the connect request id
     const connectReq = JSON.parse(ws.sent[0]);
@@ -151,6 +173,7 @@ describe("GatewayClient", () => {
 
     // Complete handshake (spec-aligned hello-ok)
     ws.simulateMessage(JSON.stringify({ type: "event", event: "connect.challenge", payload: { nonce: "n1", ts: Date.now() } }));
+    await new Promise((r) => setTimeout(r, 10));
     const connectReq = JSON.parse(ws.sent[0]);
     ws.simulateMessage(JSON.stringify({
       type: "res", id: connectReq.id, ok: true,
@@ -190,6 +213,7 @@ describe("GatewayClient", () => {
 
     // Complete handshake (spec-aligned hello-ok)
     ws.simulateMessage(JSON.stringify({ type: "event", event: "connect.challenge", payload: { nonce: "n2", ts: Date.now() } }));
+    await new Promise((r) => setTimeout(r, 10));
     const connectReq = JSON.parse(ws.sent[0]);
     ws.simulateMessage(JSON.stringify({
       type: "res", id: connectReq.id, ok: true,
