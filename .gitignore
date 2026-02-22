@@ -14,3 +14,4 @@ node_modules/
 *.log
 firebase-debug.log
 public/agents/
+.serena/
