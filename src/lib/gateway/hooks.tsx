@@ -185,6 +185,42 @@ export interface DisplayAttachment {
   mimeType: string;
   /** data URL for local preview */
   dataUrl?: string;
+  /** URL for downloading the file (e.g. gateway-served MEDIA path) */
+  downloadUrl?: string;
+}
+
+/** Parse MEDIA:<path-or-url> lines from assistant content, returning attachments and cleaned text */
+function extractMediaAttachments(text: string): { cleanedText: string; attachments: DisplayAttachment[] } {
+  const MEDIA_RE = /^MEDIA:(.+)$/gm;
+  const attachments: DisplayAttachment[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = MEDIA_RE.exec(text)) !== null) {
+    const raw = match[1].trim();
+    const fileName = raw.split("/").pop() || raw;
+    const ext = fileName.split(".").pop()?.toLowerCase() || "";
+    const MIME_MAP: Record<string, string> = {
+      png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif",
+      webp: "image/webp", svg: "image/svg+xml",
+      pdf: "application/pdf", zip: "application/zip",
+      mp3: "audio/mpeg", wav: "audio/wav", ogg: "audio/ogg", m4a: "audio/mp4",
+      mp4: "video/mp4", webm: "video/webm", mov: "video/quicktime",
+      json: "application/json", csv: "text/csv", txt: "text/plain",
+      docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    };
+    const mimeType = MIME_MAP[ext] || "application/octet-stream";
+    const isImage = mimeType.startsWith("image/");
+    const isHttp = raw.startsWith("http://") || raw.startsWith("https://") || raw.startsWith("data:");
+    const downloadUrl = isHttp ? raw : `/api/media?path=${encodeURIComponent(raw)}`;
+    attachments.push({
+      fileName,
+      mimeType,
+      dataUrl: isImage ? downloadUrl : undefined,
+      downloadUrl,
+    });
+  }
+  const cleanedText = text.replace(/^MEDIA:.+$/gm, "").replace(/\n{3,}/g, "\n\n").trim();
+  return { cleanedText, attachments };
 }
 
 export interface DisplayMessage {
@@ -200,11 +236,24 @@ export interface DisplayMessage {
   attachments?: DisplayAttachment[];
 }
 
+export type AgentStatus =
+  | { phase: "idle" }
+  | { phase: "thinking" }
+  | { phase: "writing" }
+  | { phase: "tool"; toolName: string }
+  | { phase: "waiting" }; // agent finished, awaiting user input
+
 export function useChat(sessionKey?: string) {
   const { client, state } = useGateway();
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
   const [streaming, setStreaming] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [agentStatus, setAgentStatus] = useState<AgentStatus>({ phase: "idle" });
+  // Debug: log status changes
+  const setAgentStatusDebug = useCallback((s: AgentStatus) => {
+    console.log("[AWF] agentStatus →", s.phase, "toolName" in s ? (s as any).toolName : "");
+    setAgentStatus(s);
+  }, []);
   const streamBuf = useRef<{
     id: string;
     content: string;
@@ -221,6 +270,7 @@ export function useChat(sessionKey?: string) {
       sessionKeyRef.current = sessionKey;
       setMessages([]);
       setStreaming(false);
+      setAgentStatusDebug({ phase: "idle" });
       streamBuf.current = null;
     }
   }, [sessionKey]);
@@ -234,6 +284,13 @@ export function useChat(sessionKey?: string) {
         "chat.history",
         { sessionKey, limit: 100 }
       );
+      /** Internal system messages and empty agent replies to hide from UI */
+      const HIDDEN_PATTERNS = /^(NO_REPLY|HEARTBEAT_OK|NO_)\s*$|Pre-compaction memory flush|^Read HEARTBEAT\.md|reply with NO_REPLY|Store durable memories now/;
+      const isHiddenMessage = (role: string, text: string) => {
+        if (role === "system") return true; // hide all system-role messages
+        return HIDDEN_PATTERNS.test(text.trim());
+      };
+
       const histMsgs: DisplayMessage[] = (res?.messages || [])
         .filter((m) => m.role === "user" || m.role === "assistant" || m.role === "system")
         .map((m, i) => {
@@ -277,6 +334,16 @@ export function useChat(sessionKey?: string) {
 
           if (m.role === 'user') textContent = stripInboundMeta(textContent);
 
+          // Extract MEDIA: attachments from assistant messages
+          let mediaAttachments: DisplayAttachment[] = [];
+          if (m.role === 'assistant' && textContent.includes('MEDIA:')) {
+            const extracted = extractMediaAttachments(textContent);
+            textContent = extracted.cleanedText;
+            mediaAttachments = extracted.attachments;
+          }
+
+          const allAttachments = [...imgAttachments, ...mediaAttachments];
+
           return {
           id: `hist-${i}`,
           role: (m.role === 'system' || (m.role === 'user' && /\[System Message\]|\[sessionId:|^System:\s*\[/.test(textContent)))
@@ -285,8 +352,9 @@ export function useChat(sessionKey?: string) {
           content: textContent,
           timestamp: m.timestamp || new Date().toISOString(),
           toolCalls: m.toolCalls || [],
-          attachments: imgAttachments.length > 0 ? imgAttachments : undefined,
-        };});
+          attachments: allAttachments.length > 0 ? allAttachments : undefined,
+        };})
+        .filter((m) => !isHiddenMessage(m.role, m.content));
       // Restore queued messages from localStorage
       const savedQueue = queueStorageKey ? localStorage.getItem(queueStorageKey) : null;
       if (savedQueue) {
@@ -352,6 +420,7 @@ export function useChat(sessionKey?: string) {
         // Streamed delta or one-shot text
         const chunk = (data?.delta as string | undefined) ?? (data?.text as string);
           setStreaming(true);
+          setAgentStatusDebug({ phase: "writing" });
           if (!streamBuf.current) {
             const id = `stream-${Date.now()}`;
             streamBuf.current = { id, content: "", toolCalls: new Map() };
@@ -379,6 +448,7 @@ export function useChat(sessionKey?: string) {
         // tool-call-start
           const callId = (data.toolCallId || data.callId || "") as string;
           const name = (data.name || data.tool || "") as string;
+          setAgentStatusDebug({ phase: "tool", toolName: name });
           const args = data.args as string | undefined;
           if (!streamBuf.current) {
             const id = `stream-${Date.now()}`;
@@ -412,6 +482,7 @@ export function useChat(sessionKey?: string) {
         // tool-call-end
           const callId = (data.toolCallId || data.callId || "") as string;
           const result = data.result as string | undefined;
+          setAgentStatusDebug({ phase: "thinking" });
           if (streamBuf.current) {
             const tc = streamBuf.current.toolCalls.get(callId);
             if (tc) {
@@ -432,17 +503,29 @@ export function useChat(sessionKey?: string) {
               return prev;
             });
           }
+      } else if (stream === "lifecycle" && data?.phase === "start") {
+        // lifecycle start
+          setStreaming(true);
+          setAgentStatusDebug({ phase: "thinking" });
       } else if (stream === "lifecycle" && data?.phase === "end") {
         // lifecycle end = done
           setStreaming(false);
+          setAgentStatusDebug({ phase: "waiting" });
           if (streamBuf.current) {
             const finalId = streamBuf.current.id;
-            const finalContent = streamBuf.current.content;
+            let finalContent = streamBuf.current.content;
             const finalTools = Array.from(streamBuf.current.toolCalls.values());
+            // Extract MEDIA: attachments from final content
+            let finalAttachments: DisplayAttachment[] | undefined;
+            if (finalContent.includes('MEDIA:')) {
+              const extracted = extractMediaAttachments(finalContent);
+              finalContent = extracted.cleanedText;
+              finalAttachments = extracted.attachments.length > 0 ? extracted.attachments : undefined;
+            }
             setMessages((prev) =>
               prev.map((m) =>
                 m.id === finalId
-                  ? { ...m, content: finalContent, toolCalls: finalTools, streaming: false }
+                  ? { ...m, content: finalContent, toolCalls: finalTools, streaming: false, attachments: finalAttachments || m.attachments }
                   : m
               )
             );
@@ -451,14 +534,21 @@ export function useChat(sessionKey?: string) {
       } else if (stream === "done" || stream === "end" || stream === "finish") {
         // done
           setStreaming(false);
+          setAgentStatusDebug({ phase: "waiting" });
           if (streamBuf.current) {
             const finalId = streamBuf.current.id;
-            const finalContent = (data?.text as string) || streamBuf.current.content;
+            let finalContent = (data?.text as string) || streamBuf.current.content;
             const finalTools = Array.from(streamBuf.current.toolCalls.values());
+            let finalAttachments: DisplayAttachment[] | undefined;
+            if (finalContent.includes('MEDIA:')) {
+              const extracted = extractMediaAttachments(finalContent);
+              finalContent = extracted.cleanedText;
+              finalAttachments = extracted.attachments.length > 0 ? extracted.attachments : undefined;
+            }
             setMessages((prev) =>
               prev.map((m) =>
                 m.id === finalId
-                  ? { ...m, content: finalContent, toolCalls: finalTools, streaming: false }
+                  ? { ...m, content: finalContent, toolCalls: finalTools, streaming: false, attachments: finalAttachments || m.attachments }
                   : m
               )
             );
@@ -467,6 +557,7 @@ export function useChat(sessionKey?: string) {
       } else if (stream === "error") {
         // error
           setStreaming(false);
+          setAgentStatusDebug({ phase: "idle" });
           const errMsg = (data?.message || data?.error || "Unknown error") as string;
           if (streamBuf.current) {
             const errId = streamBuf.current.id;
@@ -517,6 +608,7 @@ export function useChat(sessionKey?: string) {
         prev.map((m) => (m.id === msgId ? { ...m, queued: false } : m))
       );
       setStreaming(true);
+      setAgentStatusDebug({ phase: "thinking" });
       try {
         await client.request("chat.send", {
           message: text,
@@ -617,6 +709,7 @@ export function useChat(sessionKey?: string) {
       // silently fail
     }
     setStreaming(false);
+    setAgentStatusDebug({ phase: "idle" });
   }, [client, state, sessionKey]);
 
   // Add a user message to the display (for external callers like attachment sends)
@@ -641,6 +734,7 @@ export function useChat(sessionKey?: string) {
     messages,
     streaming,
     loading,
+    agentStatus,
     sendMessage,
     addUserMessage,
     cancelQueued,

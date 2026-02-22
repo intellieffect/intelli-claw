@@ -13,3 +13,4 @@ node_modules/
 # logs
 *.log
 firebase-debug.log
+public/agents/
