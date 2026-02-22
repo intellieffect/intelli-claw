@@ -85,9 +85,9 @@ export function useSessionSettings(sessionKey?: string) {
     fetchModels();
   }, [fetchSession, fetchModels]);
 
-  // Patch session
+  // Patch session (model/label only — fields supported by sessions.patch)
   const patchSession = useCallback(
-    async (patch: { model?: string; thinking?: string; verbose?: boolean; label?: string }) => {
+    async (patch: { model?: string; label?: string }) => {
       if (!client || !isConnected || !sessionKey) return;
       setLoading(true);
       try {
@@ -96,6 +96,48 @@ export function useSessionSettings(sessionKey?: string) {
         setSession((prev) => (prev ? { ...prev, ...patch } : prev));
       } catch (err) {
         console.error("[AWF] sessions.patch error:", err);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [client, isConnected, sessionKey]
+  );
+
+  // Set thinking level via chat directive (not sessions.patch)
+  const setThinking = useCallback(
+    async (level: string) => {
+      if (!client || !isConnected || !sessionKey) return;
+      setLoading(true);
+      try {
+        await client.request("chat.send", {
+          sessionKey,
+          body: `/think:${level}`,
+        });
+        // Optimistic update
+        setSession((prev) => (prev ? { ...prev, thinking: level } : prev));
+      } catch (err) {
+        console.error("[AWF] setThinking error:", err);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [client, isConnected, sessionKey]
+  );
+
+  // Set verbose via chat directive (not sessions.patch)
+  const setVerbose = useCallback(
+    async (enabled: boolean) => {
+      if (!client || !isConnected || !sessionKey) return;
+      setLoading(true);
+      try {
+        await client.request("chat.send", {
+          sessionKey,
+          body: `/verbose ${enabled ? "on" : "off"}`,
+        });
+        // Optimistic update
+        setSession((prev) => (prev ? { ...prev, verbose: enabled } : prev));
+      } catch (err) {
+        console.error("[AWF] setVerbose error:", err);
       } finally {
         setLoading(false);
       }
@@ -138,6 +180,8 @@ export function useSessionSettings(sessionKey?: string) {
     models,
     loading,
     patchSession,
+    setThinking,
+    setVerbose,
     resetSession,
     deleteSession,
     refresh: fetchSession,

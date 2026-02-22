@@ -212,24 +212,24 @@ export function AgentSessionBrowser({
     return () => document.removeEventListener("keydown", handler, true);
   }, [open, setOpen, expandedAgent]);
 
-  const handleAgentClick = (agentId: string) => {
+  const handleAgentClick = useCallback((agentId: string) => {
     if (expandedAgent === agentId) {
       onAgentChange(agentId);
       setOpen(false);
     } else {
       setExpandedAgent(agentId);
     }
-  };
+  }, [expandedAgent, onAgentChange, setOpen]);
 
-  const handleSessionClick = (key: string) => {
+  const handleSessionClick = useCallback((key: string) => {
     onSelect(key);
     setOpen(false);
-  };
+  }, [onSelect, setOpen]);
 
-  const handleNewSession = (agentId: string) => {
+  const handleNewSession = useCallback((agentId: string) => {
     onNewSession(agentId);
     setOpen(false);
-  };
+  }, [onNewSession, setOpen]);
 
   // Keyboard handler
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {

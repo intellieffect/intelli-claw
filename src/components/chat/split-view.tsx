@@ -4,6 +4,7 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { ChatPanel } from "./chat-panel";
 import { useIsMobile } from "@/lib/hooks/use-mobile";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
+import { matchesShortcutId } from "@/lib/shortcuts";
 
 function uid() {
   return Math.random().toString(36).slice(2, 8);
@@ -15,8 +16,6 @@ interface PanelState {
   id: string;
   /** Flex-basis width in fractions (not percentages). All panels sum to 1. */
   width: number;
-  /** Agent to pre-select when this panel first mounts (inherited from source panel). */
-  initialAgentId?: string;
 }
 
 interface SplitState {
@@ -73,8 +72,7 @@ export function SplitView() {
   const containerRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ index: number; startX: number; startWidths: number[] } | null>(null);
   const closedPanelsRef = useRef<PanelState[]>([]);
-  /** Tracks each panel's current agentId so addPanel can inherit it. */
-  const panelAgentRef = useRef<Record<string, string>>({});
+  const navInProgressRef = useRef(false);
   const isMobile = useIsMobile();
 
   // Restore from localStorage after hydration
@@ -84,9 +82,11 @@ export function SplitView() {
     setHydrated(true);
   }, []);
 
-  // Persist on every change (only after hydration)
+  // Persist on change (debounced to avoid thrashing on rapid switches)
   useEffect(() => {
-    if (hydrated) saveState(state);
+    if (!hydrated) return;
+    const timer = setTimeout(() => saveState(state), 200);
+    return () => clearTimeout(timer);
   }, [state, hydrated]);
 
   // --- Panel management ---
@@ -96,13 +96,11 @@ export function SplitView() {
       const newId = uid();
       const count = prev.panels.length + 1;
       const w = equalWidths(count);
-      // Inherit the active panel's current agent
-      const sourceAgent = panelAgentRef.current[prev.activePanelId];
-      const panels = [
-        ...prev.panels.map((p) => ({ ...p, width: w })),
-        { id: newId, width: w, initialAgentId: sourceAgent },
-      ];
-      return { panels, activePanelId: newId };
+      const resized = prev.panels.map((p) => ({ ...p, width: w }));
+      const activeIdx = resized.findIndex((p) => p.id === prev.activePanelId);
+      const insertIdx = activeIdx >= 0 ? activeIdx + 1 : resized.length;
+      resized.splice(insertIdx, 0, { id: newId, width: w });
+      return { panels: resized, activePanelId: newId };
     });
   }, []);
 
@@ -133,26 +131,30 @@ export function SplitView() {
 
   const setActive = useCallback((id: string) => {
     // Skip if keyboard navigation is in progress (prevents focus ping-pong)
-    if (navLockRef.current) return;
+    if (navInProgressRef.current) return;
     setState((prev) => (prev.activePanelId === id ? prev : { ...prev, activePanelId: id }));
   }, []);
 
   /** True while keyboard navigation is in progress (suppresses focus-based setActive) */
-  const navLockRef = useRef(false);
-  const navLockTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   /** Navigate focus to prev (-1) or next (+1) panel */
   const navPanel = useCallback((dir: -1 | 1) => {
-    // Lock to prevent onFocusCapture from overriding keyboard nav
-    navLockRef.current = true;
-    clearTimeout(navLockTimer.current);
-    navLockTimer.current = setTimeout(() => { navLockRef.current = false; }, 200);
+    navInProgressRef.current = true;
     setState((prev) => {
+      const len = prev.panels.length;
+      if (len <= 1) return prev;
       const idx = prev.panels.findIndex((p) => p.id === prev.activePanelId);
-      const next = idx + dir;
-      if (next < 0 || next >= prev.panels.length) return prev;
-      return { ...prev, activePanelId: prev.panels[next].id };
+      const next = (idx + dir + len) % len; // wrap around
+      if (next === idx) return prev;
+      // Explicitly focus the target panel's textarea after render
+      const targetId = prev.panels[next].id;
+      requestAnimationFrame(() => {
+        const el = document.querySelector(`[data-panel-id="${targetId}"] textarea`) as HTMLElement | null;
+        el?.focus();
+      });
+      return { ...prev, activePanelId: targetId };
     });
+    setTimeout(() => { navInProgressRef.current = false; }, 200);
   }, []);
 
   /** Move a panel's position left/right */
@@ -185,43 +187,52 @@ export function SplitView() {
     (window as any).__awfSplitNavPanel = navPanel;
     (window as any).__awfSplitCloseActivePanel = () => removePanel(state.activePanelId);
     (window as any).__awfSplitReopenLastPanel = reopenLastClosedPanel;
+    (window as any).__awfSplitFocusPanel = (index: number) => {
+      setState((prev) => {
+        if (index < 0 || index >= prev.panels.length) return prev;
+        return { ...prev, activePanelId: prev.panels[index].id };
+      });
+    };
     return () => {
       delete (window as any).__awfSplitAddPanel;
       delete (window as any).__awfSplitNavPanel;
       delete (window as any).__awfSplitCloseActivePanel;
       delete (window as any).__awfSplitReopenLastPanel;
+      delete (window as any).__awfSplitFocusPanel;
     };
   });
 
-  // Aerospace-style shortcuts:
-  // - Ctrl+H/L: focus prev/next panel
-  // - Ctrl+Shift+H/L: move current panel left/right
-  // - Ctrl+X: close active panel
-  // - Ctrl+Shift+X: reopen last closed panel
+  // Customizable shortcuts — resolved via matchesShortcutId
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (!e.ctrlKey || e.metaKey || e.altKey) return;
-
-      if (e.code === "KeyH") {
-        e.preventDefault();
-        e.stopPropagation();
-        if (e.shiftKey) moveActivePanel(-1);
-        else navPanel(-1);
-      } else if (e.code === "KeyL") {
-        e.preventDefault();
-        e.stopPropagation();
-        if (e.shiftKey) moveActivePanel(1);
-        else navPanel(1);
-      } else if (e.code === "KeyX") {
-        e.preventDefault();
-        e.stopPropagation();
-        if (e.shiftKey) reopenLastClosedPanel();
-        else removePanel(state.activePanelId);
+      if (matchesShortcutId(e, "focus-left")) {
+        e.preventDefault(); e.stopPropagation();
+        if (!e.repeat) navPanel(-1);
+      } else if (matchesShortcutId(e, "focus-right")) {
+        e.preventDefault(); e.stopPropagation();
+        if (!e.repeat) navPanel(1);
+      } else if (matchesShortcutId(e, "swap-panels")) {
+        e.preventDefault(); e.stopPropagation();
+        // Swap active panel with the next one (wraps around)
+        setState((prev) => {
+          if (prev.panels.length < 2) return prev;
+          const idx = prev.panels.findIndex((p) => p.id === prev.activePanelId);
+          const next = (idx + 1) % prev.panels.length;
+          const panels = [...prev.panels];
+          [panels[idx], panels[next]] = [panels[next], panels[idx]];
+          return { ...prev, panels };
+        });
+      } else if (matchesShortcutId(e, "close-panel")) {
+        e.preventDefault(); e.stopPropagation();
+        removePanel(state.activePanelId);
+      } else if (matchesShortcutId(e, "reopen-panel")) {
+        e.preventDefault(); e.stopPropagation();
+        reopenLastClosedPanel();
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [navPanel, moveActivePanel, removePanel, reopenLastClosedPanel, state.activePanelId]);
+  }, [navPanel, removePanel, reopenLastClosedPanel, state.activePanelId]);
 
   // --- Resize ---
 
@@ -297,24 +308,26 @@ export function SplitView() {
   return (
     <div ref={containerRef} className="flex h-full">
       {visiblePanels.map((panel, i) => (
-        <div key={panel.id} className="flex h-full min-w-0" style={{
-          flex: isMobile ? "1 0 0%" : `${panel.width} 0 0%`,
-          border: !isMobile && panels.length > 1
-            ? panel.id === activePanelId
-              ? "2px solid #f97316"
-              : "1px solid #3f3f46"
-            : "none",
-          borderRadius: !isMobile && panels.length > 1 ? "12px" : undefined,
-          overflow: !isMobile && panels.length > 1 ? "hidden" : undefined,
-        }}
-        onClick={() => setActive(panel.id)}
-        onFocusCapture={() => setActive(panel.id)}
-        >
+        <div key={panel.id} className={`flex h-full min-w-0 ${!isMobile ? "px-1 first:pl-2 last:pr-2" : ""}`} style={{ flex: isMobile ? "1 0 0%" : `${panel.width} 0 0%` }}>
           {/* Panel */}
           <div
-            className="relative h-full min-w-0 flex-1"
+            className={`relative h-full min-w-0 flex-1 overflow-hidden ${
+              !isMobile ? "rounded-lg transition-all duration-300" : ""
+            }`}
+            style={!isMobile ? (
+              panel.id === activePanelId
+                ? {
+                    border: "2px solid rgba(255, 107, 53, 0.5)",
+                    boxShadow: "0 0 10px rgba(255, 107, 53, 0.2), 0 0 25px rgba(255, 107, 53, 0.08), inset 0 0 10px rgba(255, 107, 53, 0.03)",
+                  }
+                : {
+                    border: "1px solid rgba(34, 34, 34, 0.8)",
+                    boxShadow: "none",
+                  }
+            ) : undefined}
+            data-panel-id={panel.id}
             onClick={() => setActive(panel.id)}
-            onFocusCapture={() => setActive(panel.id)}
+            onFocusCapture={() => { if (!navInProgressRef.current) setActive(panel.id); }}
           >
             {/* Panel controls (desktop only, multi-panel) */}
             {!isMobile && panels.length > 1 && (
@@ -358,8 +371,6 @@ export function SplitView() {
               isActive={panel.id === activePanelId}
               onFocus={() => setActive(panel.id)}
               showHeader={true}
-              initialAgentId={panel.initialAgentId}
-              onAgentChange={(agentId) => { panelAgentRef.current[panel.id] = agentId; }}
             />
           </div>
 

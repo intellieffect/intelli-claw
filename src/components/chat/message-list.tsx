@@ -1,11 +1,110 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import { useState as useStateCopy } from "react";
-import { User, Bot, Clock, X, Copy, Check } from "lucide-react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import {
+  User, Bot, Clock, X, Copy, Check, ArrowDown, Download,
+  FileText, Music, Video, File, Image as ImageIcon,
+  FileSpreadsheet, FileCode, FileArchive, FileAudio, FileVideo,
+} from "lucide-react";
 import { MarkdownRenderer } from "./markdown-renderer";
 import { ToolCallCard } from "./tool-call-card";
 import type { DisplayMessage, DisplayAttachment } from "@/lib/gateway/hooks";
+import { getAgentAvatar } from "@/lib/agent-avatars";
+
+/** Append dl=1 to /api/media URLs to force download */
+function forceDownloadUrl(url: string): string {
+  if (url.startsWith("/api/media")) {
+    return url + (url.includes("?") ? "&" : "?") + "dl=1";
+  }
+  return url;
+}
+
+/** Blob-based download to bypass browser "unverified download" warnings on HTTP */
+async function blobDownload(url: string, fileName: string) {
+  try {
+    const res = await fetch(url);
+    const blob = await res.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = blobUrl;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(blobUrl);
+  } catch {
+    // Fallback to normal navigation
+    window.open(url, "_blank");
+  }
+}
+
+/** Get file extension from filename */
+function getExt(name: string): string {
+  const dot = name.lastIndexOf(".");
+  return dot >= 0 ? name.slice(dot + 1).toLowerCase() : "";
+}
+
+/** Render file icon by MIME type */
+function renderFileIcon(mime: string, ext: string, size: number) {
+  if (mime.startsWith("image/")) return <ImageIcon size={size} />;
+  if (mime.startsWith("video/")) return <FileVideo size={size} />;
+  if (mime.startsWith("audio/")) return <FileAudio size={size} />;
+  if (mime.includes("pdf")) return <FileText size={size} />;
+  if (["xls", "xlsx", "csv"].includes(ext)) return <FileSpreadsheet size={size} />;
+  if (["zip", "tar", "gz", "7z", "rar"].includes(ext)) return <FileArchive size={size} />;
+  if (["js", "ts", "tsx", "jsx", "py", "rs", "go", "java", "c", "cpp", "sh", "html", "css"].includes(ext)) return <FileCode size={size} />;
+  if (["doc", "docx", "txt", "md", "json", "yaml", "yml"].includes(ext)) return <FileText size={size} />;
+  return <File size={size} />;
+}
+
+/** Get accent color by file type */
+function getFileAccent(mime: string, ext: string): string {
+  if (mime.includes("pdf")) return "bg-red-500/20 text-red-400";
+  if (mime.startsWith("image/")) return "bg-blue-500/20 text-blue-400";
+  if (mime.startsWith("video/")) return "bg-purple-500/20 text-purple-400";
+  if (mime.startsWith("audio/")) return "bg-green-500/20 text-green-400";
+  if (["xls", "xlsx", "csv"].includes(ext)) return "bg-emerald-500/20 text-emerald-400";
+  if (["zip", "tar", "gz", "7z", "rar"].includes(ext)) return "bg-yellow-500/20 text-yellow-400";
+  if (["js", "ts", "tsx", "jsx", "py", "rs", "go", "java", "c", "cpp", "sh", "html", "css"].includes(ext)) return "bg-cyan-500/20 text-cyan-400";
+  return "bg-zinc-500/20 text-zinc-400";
+}
+
+/** Render file icon inline — avoids dynamic component creation */
+function FileIconDisplay({ mime, ext, size }: { mime: string; ext: string; size: number }) {
+  return renderFileIcon(mime, ext, size);
+}
+
+/** Vertical file attachment card */
+function FileAttachmentCard({ att, onDownload }: { att: DisplayAttachment; onDownload: () => void }) {
+  const ext = getExt(att.fileName);
+  const accent = getFileAccent(att.mimeType, ext);
+  // Truncate filename but always show extension
+  const maxNameLen = 18;
+  const nameWithoutExt = att.fileName.slice(0, att.fileName.length - (ext ? ext.length + 1 : 0));
+  const displayName = nameWithoutExt.length > maxNameLen
+    ? nameWithoutExt.slice(0, maxNameLen) + "…"
+    : nameWithoutExt;
+
+  return (
+    <button
+      onClick={onDownload}
+      className="flex w-44 flex-col items-center gap-2 rounded-xl border border-zinc-700/80 bg-zinc-800/60 p-4 transition hover:bg-zinc-700/60 hover:border-zinc-600 cursor-pointer group"
+    >
+      <div className={`flex h-12 w-12 items-center justify-center rounded-xl ${accent}`}>
+        <FileIconDisplay mime={att.mimeType} ext={ext} size={24} />
+      </div>
+      <div className="w-full text-center min-w-0">
+        <div className="text-xs font-medium text-zinc-200 truncate" title={att.fileName}>
+          {displayName}
+        </div>
+        {ext && (
+          <div className="text-[10px] text-zinc-500 uppercase mt-0.5">.{ext}</div>
+        )}
+      </div>
+      <Download size={14} className="text-zinc-500 group-hover:text-zinc-300 transition" />
+    </button>
+  );
+}
 
 /** Strip task-memo HTML comments from display text */
 const TASK_MEMO_STRIP_RE = /\s*<!--\s*task-memo:\s*\{[\s\S]*?\}\s*-->\s*/g;
@@ -18,17 +117,43 @@ export function MessageList({
   loading,
   streaming,
   onCancelQueued,
+  agentId,
 }: {
   messages: DisplayMessage[];
   loading: boolean;
   streaming: boolean;
   onCancelQueued?: (id: string) => void;
+  agentId?: string;
 }) {
+  const agentAv = getAgentAvatar(agentId);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [userScrolledUp, setUserScrolledUp] = useState(false);
 
+  // Detect if user has scrolled up from bottom
+  const handleScroll = useCallback(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    // Consider "at bottom" if within 80px of the bottom
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    setUserScrolledUp(!atBottom);
+  }, []);
+
+  // Auto-scroll only when user is at the bottom
+  // Use message count + streaming state as trigger (not full messages array) to reduce jitter
+  const msgCount = messages.length;
+  const lastStreaming = messages[messages.length - 1]?.streaming;
   useEffect(() => {
+    if (!userScrolledUp) {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [msgCount, lastStreaming, userScrolledUp]);
+
+  const scrollToBottom = useCallback(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    setUserScrolledUp(false);
+  }, []);
 
   if (loading) {
     return (
@@ -40,39 +165,65 @@ export function MessageList({
 
   if (messages.length === 0) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-2 md:gap-3 px-4 text-muted-foreground">
-        <Bot size={40} strokeWidth={1.5} className="text-muted-foreground md:size-12" />
-        <p className="text-base md:text-lg">무엇을 도와드릴까요?</p>
-        <p className="text-xs md:text-sm text-muted-foreground text-center">메시지를 입력하여 대화를 시작하세요</p>
+      <div className="flex flex-1 flex-col items-center justify-center gap-3 text-muted-foreground">
+        {agentAv.imageUrl ? (
+          <img src={agentAv.imageUrl} alt="" className="size-12 rounded-full object-cover opacity-50" />
+        ) : (
+          <Bot size={48} strokeWidth={1.5} className="text-muted-foreground" />
+        )}
+        <p className="text-lg">무엇을 도와드릴까요?</p>
+        <p className="text-sm text-muted-foreground">메시지를 입력하여 대화를 시작하세요</p>
       </div>
     );
   }
 
   return (
-    <div className="flex-1 overflow-y-auto overflow-x-hidden px-2 py-2 sm:px-3 sm:py-3 md:px-4 md:py-4" style={{ WebkitOverflowScrolling: "touch", overscrollBehavior: "contain" }}>
-      <div className="mx-auto max-w-3xl space-y-3 md:space-y-4">
+    <div className="relative flex-1 min-h-0">
+    <div ref={containerRef} onScroll={handleScroll} className="h-full overflow-y-auto overflow-x-hidden px-[3%] py-3 md:px-[5%] lg:px-[7%] md:py-4" style={{ WebkitOverflowScrolling: "touch" }}>
+      <div className="mx-auto space-y-3 md:space-y-4">
         {messages
           .filter((msg) => msg.content || msg.toolCalls.length > 0 || msg.streaming)
           .map((msg, idx, arr) => {
             const prevRole = idx > 0 ? arr[idx - 1].role : null;
             const showAvatar = msg.role !== "assistant" || prevRole !== "assistant";
             return (
-              <MessageBubble key={msg.id} message={msg} showAvatar={showAvatar} onCancel={msg.queued ? onCancelQueued : undefined} />
+              <MessageBubble key={msg.id} message={msg} showAvatar={showAvatar} onCancel={msg.queued ? onCancelQueued : undefined} agentImageUrl={agentAv.imageUrl} />
             );
           })}
-        {streaming && !messages.some(m => m.streaming) && <ThinkingIndicator />}
+        {streaming && !messages.some(m => m.streaming) && <ThinkingIndicator agentImageUrl={agentAv.imageUrl} />}
         <div ref={bottomRef} />
       </div>
+    </div>
+
+    {/* Scroll to bottom button */}
+    {userScrolledUp && (
+      <button
+        onClick={scrollToBottom}
+        className="absolute bottom-4 right-4 z-20 flex items-center justify-center rounded-full bg-zinc-800 border border-zinc-600 p-2.5 text-zinc-300 shadow-lg transition-all hover:bg-zinc-700 hover:text-white hover:scale-105 active:scale-95"
+        title="최근 메시지로 이동"
+      >
+        <ArrowDown size={18} />
+      </button>
+    )}
     </div>
   );
 }
 
-function ThinkingIndicator() {
+function AgentAvatarBubble({ imageUrl, size = 18 }: { imageUrl?: string; size?: number }) {
+  if (imageUrl) {
+    return <img src={imageUrl} alt="" className="h-8 w-8 shrink-0 rounded-full object-cover" />;
+  }
   return (
-    <div className="flex gap-2 md:gap-3">
-      <div className="flex size-7 md:size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-        <Bot size={16} />
-      </div>
+    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+      <Bot size={size} />
+    </div>
+  );
+}
+
+function ThinkingIndicator({ agentImageUrl }: { agentImageUrl?: string }) {
+  return (
+    <div className="flex gap-3">
+      <AgentAvatarBubble imageUrl={agentImageUrl} />
       <div className="flex items-center gap-1.5 rounded-2xl bg-muted/60 px-4 py-3">
         <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground" style={{ animationDelay: "0ms" }} />
         <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground" style={{ animationDelay: "150ms" }} />
@@ -107,7 +258,7 @@ function copyToClipboard(text: string): Promise<void> {
 }
 
 function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useStateCopy(false);
+  const [copied, setCopied] = useState(false);
   const handleCopy = async (e: React.MouseEvent) => {
     e.stopPropagation();
     try {
@@ -127,10 +278,21 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
-function MessageBubble({ message, showAvatar = true, onCancel }: { message: DisplayMessage; showAvatar?: boolean; onCancel?: (id: string) => void }) {
+/** Format timestamp to HH:MM */
+function formatTime(ts?: string): string | null {
+  if (!ts) return null;
+  try {
+    const d = new Date(ts);
+    if (isNaN(d.getTime())) return null;
+    return d.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false });
+  } catch { return null; }
+}
+
+function MessageBubble({ message, showAvatar = true, onCancel, agentImageUrl }: { message: DisplayMessage; showAvatar?: boolean; onCancel?: (id: string) => void; agentImageUrl?: string }) {
   const isUser = message.role === "user";
   const isSystem = message.role === "system";
   const isQueued = message.queued;
+  const time = formatTime(message.timestamp);
 
   // System messages: centered, muted style
   if (isSystem) {
@@ -144,7 +306,7 @@ function MessageBubble({ message, showAvatar = true, onCancel }: { message: Disp
   }
 
   return (
-    <div className={`group flex gap-2 md:gap-3 ${isUser ? "justify-end" : ""}`}>
+    <div className={`group flex gap-3 ${isUser ? "justify-end" : ""}`}>
       {/* Copy button for user messages (left of bubble) */}
       {isUser && message.content && (
         <div className="flex items-start pt-2">
@@ -153,20 +315,17 @@ function MessageBubble({ message, showAvatar = true, onCancel }: { message: Disp
       )}
       {!isUser && (
         showAvatar ? (
-          <div className="flex size-7 md:size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-            <Bot size={16} className="md:hidden" />
-            <Bot size={18} className="hidden md:block" />
-          </div>
+          <AgentAvatarBubble imageUrl={agentImageUrl} />
         ) : (
-          <div className="w-7 md:w-8 shrink-0" />
+          <div className="w-8 shrink-0" />
         )
       )}
 
       <div
-        className={`min-w-0 max-w-[95%] sm:max-w-[90%] md:max-w-[85%] ${
+        className={`min-w-0 max-w-[90%] md:max-w-[85%] ${
           isUser
             ? `rounded-2xl rounded-br-md px-3.5 py-2 md:px-4 md:py-2.5 text-foreground ${isQueued ? "bg-primary/15 border border-primary/20" : "bg-primary/15 border border-primary/10"}`
-            : "flex-1"
+            : "rounded-2xl rounded-bl-md px-3.5 py-2 md:px-4 md:py-2.5 bg-zinc-800/60 border border-zinc-700/50 flex-1"
         }`}
       >
         {isUser ? (
@@ -196,6 +355,9 @@ function MessageBubble({ message, showAvatar = true, onCancel }: { message: Disp
             {message.content && message.content === "(첨부 파일)" && !message.attachments?.length && (
               <p className={`whitespace-pre-wrap break-words text-sm ${isQueued ? "opacity-70" : ""}`}>{message.content}</p>
             )}
+            {time && !isQueued && (
+              <div className="mt-1 text-right text-[10px] text-zinc-400">{time}</div>
+            )}
             {isQueued && (
               <div className="mt-1.5 flex items-center justify-end gap-2">
                 <span className="flex items-center gap-1 text-[10px] text-primary/70">
@@ -223,19 +385,58 @@ function MessageBubble({ message, showAvatar = true, onCancel }: { message: Disp
                 ))}
               </div>
             )}
-            {/* Assistant image attachments */}
+            {/* Assistant attachments (images + files) */}
             {message.attachments && message.attachments.length > 0 && (
               <div className="mb-2 flex flex-wrap gap-2">
-                {message.attachments.map((att, i) =>
-                  att.dataUrl && att.mimeType.startsWith("image/") ? (
-                    <img
-                      key={i}
-                      src={att.dataUrl}
-                      alt={att.fileName}
-                      className="max-h-80 max-w-full md:max-w-md rounded-lg border border-zinc-700 object-contain"
-                    />
-                  ) : null
-                )}
+                {message.attachments.map((att, i) => {
+                  const isImage = att.mimeType.startsWith("image/");
+                  const isAudio = att.mimeType.startsWith("audio/");
+                  const isVideo = att.mimeType.startsWith("video/");
+                  const url = att.downloadUrl || att.dataUrl;
+
+                  if (isImage && (att.dataUrl || url)) {
+                    return (
+                      <a key={i} href={url} target="_blank" rel="noopener noreferrer" className="block">
+                        <img
+                          src={att.dataUrl || url}
+                          alt={att.fileName}
+                          className="max-h-80 max-w-full md:max-w-md rounded-lg border border-zinc-700 object-contain hover:opacity-90 transition"
+                        />
+                      </a>
+                    );
+                  }
+
+                  if (isAudio && url) {
+                    return (
+                      <div key={i} className="w-full max-w-sm">
+                        <audio controls src={url} className="w-full rounded-lg" />
+                        <div className="mt-1 text-[10px] text-zinc-500">{att.fileName}</div>
+                      </div>
+                    );
+                  }
+
+                  if (isVideo && url) {
+                    return (
+                      <div key={i} className="w-full max-w-md">
+                        <video controls src={url} className="w-full rounded-lg border border-zinc-700" />
+                        <div className="mt-1 text-[10px] text-zinc-500">{att.fileName}</div>
+                      </div>
+                    );
+                  }
+
+                  // File card (vertical style)
+                  if (url) {
+                    return (
+                      <FileAttachmentCard
+                        key={i}
+                        att={att}
+                        onDownload={() => blobDownload(forceDownloadUrl(url), att.fileName)}
+                      />
+                    );
+                  }
+
+                  return null;
+                })}
               </div>
             )}
             {message.content && (() => {
@@ -246,8 +447,9 @@ function MessageBubble({ message, showAvatar = true, onCancel }: { message: Disp
               <span className="inline-block h-4 w-1.5 animate-pulse rounded-sm bg-primary" />
             )}
             {!message.streaming && message.content && (
-              <div className="mt-1">
+              <div className="mt-1 flex items-center gap-2">
                 <CopyButton text={stripTaskMemo(message.content)} />
+                {time && <span className="text-[10px] text-zinc-500">{time}</span>}
               </div>
             )}
           </div>
@@ -255,9 +457,8 @@ function MessageBubble({ message, showAvatar = true, onCancel }: { message: Disp
       </div>
 
       {isUser && (
-        <div className="flex size-7 md:size-8 shrink-0 items-center justify-center rounded-full bg-muted text-accent-foreground">
-          <User size={16} className="md:hidden" />
-          <User size={18} className="hidden md:block" />
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-accent-foreground">
+          <User size={18} />
         </div>
       )}
     </div>

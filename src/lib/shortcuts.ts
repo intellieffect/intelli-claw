@@ -1,26 +1,166 @@
+// --- Shortcut types ---
+
 export type ShortcutDef = {
   id: string;
+  /** Default key combo (display string) */
   keys: string;
   description: string;
   scope?: "global" | "panel";
 };
 
-export const SHORTCUTS: ShortcutDef[] = [
-  { id: "help", keys: "Cmd+/", description: "단축키 도움말 열기", scope: "global" },
-  { id: "add-panel", keys: "Cmd+\\", description: "패널 추가", scope: "global" },
-  { id: "focus-left", keys: "Ctrl+H", description: "왼쪽 패널 포커스", scope: "global" },
-  { id: "focus-right", keys: "Ctrl+L", description: "오른쪽 패널 포커스", scope: "global" },
-  { id: "move-left", keys: "Ctrl+Shift+H", description: "현재 패널 왼쪽으로 이동", scope: "global" },
-  { id: "move-right", keys: "Ctrl+Shift+L", description: "현재 패널 오른쪽으로 이동", scope: "global" },
+// --- OS detection ---
+
+const isMac = typeof navigator !== "undefined" ? /Mac|iPhone|iPad|iPod/.test(navigator.userAgent) : true;
+
+// --- Default shortcuts ---
+// On Windows/Linux: Cmd → Ctrl, and browser-conflicting Ctrl combos → Alt
+
+export const DEFAULT_SHORTCUTS: ShortcutDef[] = [
+  { id: "help", keys: isMac ? "Cmd+/" : "Ctrl+/", description: "단축키 도움말 열기", scope: "global" },
+  { id: "add-panel", keys: isMac ? "Cmd+\\" : "Ctrl+\\", description: "패널 추가", scope: "global" },
+  { id: "focus-left", keys: isMac ? "Ctrl+H" : "Ctrl+ArrowLeft", description: "왼쪽 패널 포커스", scope: "global" },
+  { id: "focus-right", keys: isMac ? "Ctrl+L" : "Ctrl+ArrowRight", description: "오른쪽 패널 포커스", scope: "global" },
+  { id: "swap-panels", keys: isMac ? "Cmd+Ctrl+Shift+S" : "Ctrl+Alt+Shift+S", description: "패널 위치 스왑", scope: "global" },
   { id: "close-panel", keys: "Ctrl+X", description: "현재 패널 닫기", scope: "global" },
   { id: "reopen-panel", keys: "Ctrl+Shift+X", description: "닫은 패널 다시 열기", scope: "global" },
-  { id: "new-session", keys: "Ctrl+N", description: "현재 패널 새 세션", scope: "panel" },
+  { id: "new-session", keys: isMac ? "Ctrl+N" : "Alt+N", description: "현재 패널 새 세션", scope: "panel" },
   { id: "abort-stream", keys: "Ctrl+C", description: "스트리밍 중지", scope: "panel" },
-  { id: "session-switcher", keys: "Cmd+K", description: "세션 스위처 열기", scope: "panel" },
-  { id: "agent-browser", keys: "Cmd+O", description: "에이전트별 세션 브라우저", scope: "panel" },
+  { id: "next-session", keys: "Tab", description: "다음 세션 탭으로 이동", scope: "panel" },
+  { id: "prev-session", keys: "Shift+Tab", description: "이전 세션 탭으로 이동", scope: "panel" },
+  { id: "session-switcher", keys: isMac ? "Cmd+K" : "Ctrl+K", description: "세션 스위처 열기", scope: "panel" },
+  { id: "agent-browser", keys: isMac ? "Cmd+O" : "Ctrl+O", description: "에이전트별 세션 브라우저", scope: "panel" },
+  { id: "focus-panel-1", keys: "Ctrl+1", description: "패널 1 포커스", scope: "global" },
+  { id: "focus-panel-2", keys: "Ctrl+2", description: "패널 2 포커스", scope: "global" },
+  { id: "focus-panel-3", keys: "Ctrl+3", description: "패널 3 포커스", scope: "global" },
+  { id: "focus-panel-4", keys: "Ctrl+4", description: "패널 4 포커스", scope: "global" },
+  { id: "focus-panel-5", keys: "Ctrl+5", description: "패널 5 포커스", scope: "global" },
 ];
 
+// Re-export for backward compat
+export const SHORTCUTS = DEFAULT_SHORTCUTS;
+
+// --- Storage ---
+
+const STORAGE_KEY = "awf:custom-shortcuts";
+
+export type CustomBindings = Record<string, string>; // id → keys
+
+export function loadCustomBindings(): CustomBindings {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+export function saveCustomBindings(bindings: CustomBindings) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(bindings));
+}
+
+/** Get effective shortcuts (defaults + user overrides merged) */
+export function getEffectiveShortcuts(): ShortcutDef[] {
+  const custom = loadCustomBindings();
+  return DEFAULT_SHORTCUTS.map((s) => ({
+    ...s,
+    keys: custom[s.id] || s.keys,
+  }));
+}
+
+// --- Key matching ---
+
+/**
+ * Parse a display key string like "Cmd+Shift+K" into a normalized set.
+ * Supports: Cmd, Ctrl, Shift, Opt/Alt, plus a main key.
+ */
+export function parseKeys(keys: string): { meta: boolean; ctrl: boolean; shift: boolean; alt: boolean; key: string } {
+  const parts = keys.split("+").map((p) => p.trim().toLowerCase());
+  return {
+    meta: parts.includes("cmd") || parts.includes("meta"),
+    ctrl: parts.includes("ctrl") || parts.includes("control"),
+    shift: parts.includes("shift"),
+    alt: parts.includes("opt") || parts.includes("alt") || parts.includes("option"),
+    key: parts.filter((p) => !["cmd", "meta", "ctrl", "control", "shift", "opt", "alt", "option"].includes(p))[0] || "",
+  };
+}
+
+/** Check if a KeyboardEvent matches a key combo string */
+export function matchesShortcut(e: KeyboardEvent, keys: string): boolean {
+  const combo = parseKeys(keys);
+
+  if (combo.meta !== e.metaKey) return false;
+  if (combo.ctrl !== e.ctrlKey) return false;
+  if (combo.shift !== e.shiftKey) return false;
+  if (combo.alt !== e.altKey) return false;
+
+  // Normalize the event key
+  const eventKey = e.key.toLowerCase();
+  const eventCode = e.code.toLowerCase();
+
+  // Match by key name or code
+  const target = combo.key.toLowerCase();
+  if (!target) return false;
+
+  // Special key mappings
+  const keyMap: Record<string, string[]> = {
+    "/": ["/", "?", "slash"],
+    "?": ["/", "?"],
+    "\\": ["\\", "backslash"],
+    "-": ["-", "minus"],
+    "=": ["=", "equal"],
+    "[": ["[", "bracketleft"],
+    "]": ["]", "bracketright"],
+  };
+
+  if (keyMap[target]) {
+    return keyMap[target].some((k) => eventKey === k || eventCode === `key${k}` || eventCode === k);
+  }
+
+  // Letter keys
+  if (target.length === 1 && target >= "a" && target <= "z") {
+    return eventCode === `key${target}` || eventKey === target;
+  }
+
+  // Number keys
+  if (target.length === 1 && target >= "0" && target <= "9") {
+    return eventKey === target || eventCode === `digit${target}`;
+  }
+
+  return eventKey === target;
+}
+
+/** Find a shortcut by id and check if event matches it */
+export function matchesShortcutId(e: KeyboardEvent, id: string): boolean {
+  const shortcuts = getEffectiveShortcuts();
+  const shortcut = shortcuts.find((s) => s.id === id);
+  if (!shortcut) return false;
+  return matchesShortcut(e, shortcut.keys);
+}
+
+/** Convert a KeyboardEvent to a display string for recording custom shortcuts */
+export function eventToKeyString(e: KeyboardEvent): string | null {
+  const parts: string[] = [];
+  if (e.metaKey) parts.push("Cmd");
+  if (e.ctrlKey) parts.push("Ctrl");
+  if (e.shiftKey) parts.push("Shift");
+  if (e.altKey) parts.push("Opt");
+
+  // Ignore modifier-only presses
+  if (["Meta", "Control", "Shift", "Alt"].includes(e.key)) return null;
+
+  // Normalize key display
+  let key = e.key;
+  if (key.length === 1) key = key.toUpperCase();
+  else if (key === "Escape") key = "Esc";
+  else if (key === "Backspace") key = "Backspace";
+  else if (key === "Enter") key = "Enter";
+
+  parts.push(key);
+  return parts.join("+");
+}
+
 export function isShortcutHelp(e: KeyboardEvent) {
-  // Cmd+/ on mac, Ctrl+/ on others (some layouts emit '?')
-  return (e.metaKey || e.ctrlKey) && (e.key === "/" || e.key === "?");
+  return matchesShortcutId(e, "help");
 }
