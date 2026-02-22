@@ -1,4 +1,5 @@
-import { makeReq, parseFrame, type Frame, type ResFrame, type EventFrame, type ErrorShape } from "./protocol";
+import { makeReq, parseFrame, type Frame, type ResFrame, type EventFrame, type ErrorShape, type DeviceIdentity } from "./protocol";
+import { signChallenge } from "./device-identity";
 
 export type ConnectionState = "disconnected" | "connecting" | "authenticating" | "connected";
 type EventHandler = (event: EventFrame) => void;
@@ -127,8 +128,19 @@ export class GatewayClient {
     }
   }
 
-  private handleEvent(frame: EventFrame): void {
+  private async handleEvent(frame: EventFrame): Promise<void> {
     if (frame.event === "connect.challenge") {
+      // Resolve device identity from Web Crypto + IndexedDB
+      const payload = frame.payload as { nonce?: string } | undefined;
+      const nonce = payload?.nonce || "";
+
+      let device: DeviceIdentity | undefined;
+      try {
+        device = await signChallenge(nonce);
+      } catch (err) {
+        console.warn("[AWF] device identity unavailable, connecting without it:", err);
+      }
+
       // Respond with Protocol v3 connect handshake
       const authFrame = makeReq("connect", {
         minProtocol: 3,
@@ -141,6 +153,7 @@ export class GatewayClient {
         },
         role: "operator",
         scopes: ["operator.read", "operator.write", "operator.admin"],
+        device,
         auth: { token: this.token },
       });
       this.send(authFrame);
