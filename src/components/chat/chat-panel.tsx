@@ -194,11 +194,25 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
         return;
       }
 
-      // /status, /reasoning, /model, /help — pass to gateway as chat.send
-      if (trimmed === "/status" || trimmed === "/reasoning" || trimmed === "/help" ||
-          trimmed.startsWith("/model ") || trimmed === "/model") {
+      // /model <name> — optimistic update via sessions.patch (same path as Settings UI)
+      // Don't use sendMessage — gateway may not stream a response for slash commands,
+      // which would leave streaming=true and the UI stuck in loading state.
+      if (trimmed.startsWith("/model ")) {
+        const modelArg = text.trim().slice(7).trim();
+        if (modelArg && client && isConnected) {
+          try {
+            await client.request("sessions.patch", { key: effectiveSessionKey, model: modelArg });
+          } catch (err) {
+            console.error("[AWF] model patch error:", err);
+          }
+          refreshSessions();
+        }
+        return;
+      }
+
+      // /status, /reasoning, /help, /model (no args) — pass to gateway as chat.send
+      if (trimmed === "/status" || trimmed === "/reasoning" || trimmed === "/help" || trimmed === "/model") {
         sendMessage(text);
-        // Force quick metadata refresh for header badge (model/tokens)
         setTimeout(() => refreshSessions(), 400);
         setTimeout(() => refreshSessions(), 1200);
         return;
