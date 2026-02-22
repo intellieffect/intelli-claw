@@ -180,7 +180,7 @@ export function MessageList({
   return (
     <div className="relative flex-1 min-h-0">
     <div ref={containerRef} onScroll={handleScroll} className="h-full overflow-y-auto overflow-x-hidden px-[3%] py-3 md:px-[5%] lg:px-[7%] md:py-4" style={{ WebkitOverflowScrolling: "touch" }}>
-      <div className="mx-auto space-y-3 md:space-y-4">
+      <div className="mx-auto max-w-[1200px] space-y-3 md:space-y-4">
         {messages
           .filter((msg) => msg.content || msg.toolCalls.length > 0 || msg.streaming)
           .map((msg, idx, arr) => {

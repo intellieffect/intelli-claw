@@ -268,7 +268,7 @@ export function ChatInput({
       />
 
       <div
-        className="mx-auto w-full"
+        className="mx-auto w-full max-w-[1200px]"
       >
         <div
           className="flex-1"
