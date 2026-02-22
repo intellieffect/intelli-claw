@@ -340,6 +340,14 @@ export function ChatInput({
               placeholder="메시지를 입력하세요..."
               disabled={disabled}
               rows={1}
+              autoComplete="off"
+              autoCapitalize="off"
+              autoCorrect="off"
+              spellCheck={false}
+              data-form-type="other"
+              data-lpignore="true"
+              name="chat-message-input"
+              enterKeyHint="send"
               className="min-w-0 flex-1 resize-none bg-transparent px-1 py-1.5 text-sm text-foreground placeholder:text-muted-foreground outline-none disabled:cursor-not-allowed disabled:opacity-50"
             />
 
