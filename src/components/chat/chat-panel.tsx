@@ -195,6 +195,8 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
       }
 
       // /model <name> — optimistic update via sessions.patch (same path as Settings UI)
+      // Don't use sendMessage — gateway may not stream a response for slash commands,
+      // which would leave streaming=true and the UI stuck in loading state.
       if (trimmed.startsWith("/model ")) {
         const modelArg = text.trim().slice(7).trim();
         if (modelArg && client && isConnected) {
@@ -203,7 +205,6 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
           } catch (err) {
             console.error("[AWF] model patch error:", err);
           }
-          sendMessage(text);
           refreshSessions();
         }
         return;
