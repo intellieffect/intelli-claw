@@ -178,6 +178,11 @@ function stripInboundMeta(text: string): string {
   return cleaned.trim();
 }
 
+/** Strip unresolved gateway template variables like [[reply_to_current]] */
+function stripTemplateVars(text: string): string {
+  return text.replace(/\[\[[^\]]+\]\]\s*/g, "").trim();
+}
+
 // --- useChat ---
 
 export interface DisplayAttachment {
@@ -344,6 +349,9 @@ export function useChat(sessionKey?: string) {
 
           const allAttachments = [...imgAttachments, ...mediaAttachments];
 
+          // Strip unresolved template variables from assistant messages
+          if (m.role === 'assistant') textContent = stripTemplateVars(textContent);
+
           return {
           id: `hist-${i}`,
           role: (m.role === 'system' || (m.role === 'user' && /\[System Message\]|\[sessionId:|^System:\s*\[/.test(textContent)))
@@ -427,15 +435,24 @@ export function useChat(sessionKey?: string) {
           }
           streamBuf.current.content += chunk;
           const snap = streamBuf.current;
+          // Extract MEDIA: during streaming for stable image rendering
+          let displayContent = snap.content;
+          let streamAttachments: DisplayAttachment[] | undefined;
+          if (displayContent.includes('MEDIA:')) {
+            const extracted = extractMediaAttachments(displayContent);
+            displayContent = extracted.cleanedText;
+            streamAttachments = extracted.attachments.length > 0 ? extracted.attachments : undefined;
+          }
           setMessages((prev) => {
             const existing = prev.findIndex((m) => m.id === snap.id);
             const msg: DisplayMessage = {
               id: snap.id,
               role: "assistant",
-              content: snap.content,
+              content: displayContent,
               timestamp: new Date().toISOString(),
               toolCalls: Array.from(snap.toolCalls.values()),
               streaming: true,
+              attachments: streamAttachments,
             };
             if (existing >= 0) {
               const next = [...prev];
@@ -514,6 +531,7 @@ export function useChat(sessionKey?: string) {
           if (streamBuf.current) {
             const finalId = streamBuf.current.id;
             let finalContent = streamBuf.current.content;
+            finalContent = stripTemplateVars(finalContent);
             const finalTools = Array.from(streamBuf.current.toolCalls.values());
             // Extract MEDIA: attachments from final content
             let finalAttachments: DisplayAttachment[] | undefined;
@@ -538,6 +556,7 @@ export function useChat(sessionKey?: string) {
           if (streamBuf.current) {
             const finalId = streamBuf.current.id;
             let finalContent = (data?.text as string) || streamBuf.current.content;
+            finalContent = stripTemplateVars(finalContent);
             const finalTools = Array.from(streamBuf.current.toolCalls.values());
             let finalAttachments: DisplayAttachment[] | undefined;
             if (finalContent.includes('MEDIA:')) {
