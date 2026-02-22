@@ -54,7 +54,7 @@ export function parseSessionKey(key: string): ParsedSessionKey {
   }
 
   // Channel-routed sessions: agent:{id}:{channel}:{bot}:{chatType}:{userId}:thread:{threadId}
-  // e.g. agent:main:telegram:jarvis:direct:7366450954:thread:21127
+  // e.g. agent:main:telegram:mybot:direct:123456789:thread:001
   const threadIdx = parts.indexOf("thread");
   if (threadIdx > 2 && parts[threadIdx + 1]) {
     const channel = parts[2]; // telegram, signal, whatsapp, etc.

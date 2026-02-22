@@ -44,22 +44,9 @@ const cache: Map<string, AgentAvatar> = _g.__agentAvatarCache;
 cache.clear();
 
 /**
- * Known agent profile images (from Telegram bot avatars).
- * Falls back to hash-based initials if not listed here.
+ * Agent profile images — dynamically resolved from /agents/<id>.jpg.
+ * No hardcoded mapping needed; images are discovered at runtime.
  */
-const AGENT_IMAGES: Record<string, string> = {
-  main: "/agents/jarvis.jpg",
-  jarvis: "/agents/jarvis.jpg",
-  murim: "/agents/murim.jpg",
-  mobidic: "/agents/mobidic.jpg",
-  brxce: "/agents/brxce.jpg",
-  tcscms: "/agents/tcscms.jpg",
-  hongdon: "/agents/hongdon.jpg",
-  odoo: "/agents/odoo.jpg",
-  newscash: "/agents/newscash.jpg",
-  seoa: "/agents/seoa.jpg",
-  rian: "/agents/rian.jpg",
-};
 
 export function getAgentAvatar(agentId?: string): AgentAvatar {
   if (!agentId) return DEFAULT_AVATAR;
@@ -70,11 +57,12 @@ export function getAgentAvatar(agentId?: string): AgentAvatar {
 
   const h = hashCode(key);
   const initials = key.slice(0, 2).toUpperCase();
-  const imageUrl = AGENT_IMAGES[key];
+  // Try /agents/<id>.jpg — image will 404 gracefully if not present
+  const imageUrl = `/agents/${key}.jpg`;
   const result: AgentAvatar = {
     emoji: initials,
     color: COLORS[h % COLORS.length],
-    ...(imageUrl ? { imageUrl } : {}),
+    imageUrl,
   };
   cache.set(key, result);
   return result;
