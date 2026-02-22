@@ -749,6 +749,19 @@ export function useChat(sessionKey?: string) {
     }
   }, [streaming]);
 
+  // Add a local-only message (not sent to gateway)
+  const addLocalMessage = useCallback((content: string, role: "assistant" | "system" = "system") => {
+    const msgId = `local-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const msg: DisplayMessage = {
+      id: msgId,
+      role,
+      content,
+      timestamp: new Date().toISOString(),
+      toolCalls: [],
+    };
+    setMessages((prev) => [...prev, msg]);
+  }, []);
+
   return {
     messages,
     streaming,
@@ -756,6 +769,7 @@ export function useChat(sessionKey?: string) {
     agentStatus,
     sendMessage,
     addUserMessage,
+    addLocalMessage,
     cancelQueued,
     abort,
     reload: loadHistory,
