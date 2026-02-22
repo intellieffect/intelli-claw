@@ -210,8 +210,9 @@ export function MessageList({
 }
 
 function AgentAvatarBubble({ imageUrl, size = 18 }: { imageUrl?: string; size?: number }) {
-  if (imageUrl) {
-    return <img src={imageUrl} alt="" className="h-8 w-8 shrink-0 rounded-full object-cover" />;
+  const [imgError, setImgError] = useState(false);
+  if (imageUrl && !imgError) {
+    return <img src={imageUrl} alt="" className="h-8 w-8 shrink-0 rounded-full object-cover" onError={() => setImgError(true)} />;
   }
   return (
     <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
