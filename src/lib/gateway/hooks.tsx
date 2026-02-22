@@ -164,7 +164,12 @@ export function useSessions() {
     return () => clearInterval(id);
   }, [state, refreshThrottled]);
 
-  return { sessions, loading, refresh: fetchSessions };
+  // Optimistic local patch — update a session field immediately without waiting for gateway refresh
+  const patchSession = useCallback((key: string, patch: Record<string, unknown>) => {
+    setSessions((prev) => prev.map((s) => (s.key === key ? { ...s, ...patch } : s)));
+  }, []);
+
+  return { sessions, loading, refresh: fetchSessions, patchSession };
 }
 
 // --- Helpers ---
