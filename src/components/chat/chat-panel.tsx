@@ -287,15 +287,19 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
         }));
         addUserMessage(userMsg || "(첨부 파일)", displayAtts);
         if (client && isConnected) {
-          try {
-            await client.request("chat.send", {
-              message: userMsg,
-              idempotencyKey: `awf-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-              sessionKey: effectiveSessionKey,
-              attachments: payloads,
-            });
-          } catch (err) {
-            console.error("[AWF] chat.send with attachments error:", err);
+          // Send attachments one-by-one to avoid exceeding WS maxPayload
+          // First request carries the text message; subsequent ones are attachment-only
+          for (let i = 0; i < payloads.length; i++) {
+            try {
+              await client.request("chat.send", {
+                message: i === 0 ? userMsg : "",
+                idempotencyKey: `awf-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                sessionKey: effectiveSessionKey,
+                attachments: [payloads[i]],
+              });
+            } catch (err) {
+              console.error(`[AWF] chat.send attachment ${i + 1}/${payloads.length} error:`, err);
+            }
           }
         }
         clearAttachments();
