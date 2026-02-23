@@ -257,6 +257,7 @@ export function useChat(sessionKey?: string) {
   const { client, state } = useGateway();
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
   const [streaming, setStreaming] = useState(false);
+  const streamingRef = useRef(false);
   const [loading, setLoading] = useState(false);
   const [agentStatus, setAgentStatus] = useState<AgentStatus>({ phase: "idle" });
   // Debug: log status changes
@@ -270,7 +271,40 @@ export function useChat(sessionKey?: string) {
     toolCalls: Map<string, ToolCall>;
   } | null>(null);
   const runIdRef = useRef<string | null>(null);
+  const streamingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sessionKeyRef = useRef(sessionKey);
+
+  // Streaming timeout constants & helpers
+  const STREAMING_TIMEOUT_MS = 45_000;
+
+  const clearStreamingTimeout = useCallback(() => {
+    if (streamingTimeoutRef.current) {
+      clearTimeout(streamingTimeoutRef.current);
+      streamingTimeoutRef.current = null;
+    }
+  }, []);
+
+  const startStreamingTimeout = useCallback(() => {
+    clearStreamingTimeout();
+    streamingTimeoutRef.current = setTimeout(() => {
+      console.warn("[AWF] streaming timeout — force reset");
+      if (streamBuf.current) {
+        const id = streamBuf.current.id;
+        setMessages((prev) =>
+          prev.map((m) => m.id === id ? { ...m, streaming: false } : m)
+        );
+        streamBuf.current = null;
+      }
+      runIdRef.current = null;
+      setStreaming(false);
+      setAgentStatusDebug({ phase: "idle" });
+    }, STREAMING_TIMEOUT_MS);
+  }, [clearStreamingTimeout]);
+
+  // Sync streamingRef with streaming state
+  useEffect(() => {
+    streamingRef.current = streaming;
+  }, [streaming]);
 
   // Queue storage key (must be before loadHistory which references it)
   const queueStorageKey = sessionKey ? `awf:queue:${sessionKey}` : null;
@@ -281,10 +315,29 @@ export function useChat(sessionKey?: string) {
       sessionKeyRef.current = sessionKey;
       setMessages([]);
       setStreaming(false);
+      clearStreamingTimeout();
       setAgentStatusDebug({ phase: "idle" });
       streamBuf.current = null;
     }
-  }, [sessionKey]);
+  }, [sessionKey, clearStreamingTimeout]);
+
+  // Reset streaming on disconnect
+  useEffect(() => {
+    if (state === "disconnected" && streaming) {
+      console.warn("[AWF] connection lost — resetting streaming state");
+      clearStreamingTimeout();
+      if (streamBuf.current) {
+        const id = streamBuf.current.id;
+        setMessages((prev) =>
+          prev.map((m) => m.id === id ? { ...m, streaming: false } : m)
+        );
+        streamBuf.current = null;
+      }
+      runIdRef.current = null;
+      setStreaming(false);
+      setAgentStatusDebug({ phase: "idle" });
+    }
+  }, [state]);
 
   // Load history
   const loadHistory = useCallback(async () => {
@@ -434,6 +487,7 @@ export function useChat(sessionKey?: string) {
         // Streamed delta or one-shot text
         const chunk = (data?.delta as string | undefined) ?? (data?.text as string);
           setStreaming(true);
+          startStreamingTimeout();
           setAgentStatusDebug({ phase: "writing" });
           if (!streamBuf.current) {
             const id = `stream-${Date.now()}`;
@@ -529,10 +583,12 @@ export function useChat(sessionKey?: string) {
       } else if (stream === "lifecycle" && data?.phase === "start") {
         // lifecycle start
           setStreaming(true);
+          startStreamingTimeout();
           runIdRef.current = (raw.runId as string) ?? null;
           setAgentStatusDebug({ phase: "thinking" });
       } else if (stream === "lifecycle" && data?.phase === "end") {
         // lifecycle end = done
+          clearStreamingTimeout();
           setStreaming(false);
           setAgentStatusDebug({ phase: "waiting" });
           if (streamBuf.current) {
@@ -558,6 +614,7 @@ export function useChat(sessionKey?: string) {
           }
       } else if (stream === "done" || stream === "end" || stream === "finish") {
         // done
+          clearStreamingTimeout();
           setStreaming(false);
           setAgentStatusDebug({ phase: "waiting" });
           if (streamBuf.current) {
@@ -582,6 +639,7 @@ export function useChat(sessionKey?: string) {
           }
       } else if (stream === "error") {
         // error
+          clearStreamingTimeout();
           setStreaming(false);
           setAgentStatusDebug({ phase: "idle" });
           const errMsg = (data?.message || data?.error || "Unknown error") as string;
@@ -634,6 +692,7 @@ export function useChat(sessionKey?: string) {
         prev.map((m) => (m.id === msgId ? { ...m, queued: false } : m))
       );
       setStreaming(true);
+      startStreamingTimeout();
       setAgentStatusDebug({ phase: "thinking" });
       try {
         await client.request("chat.send", {
@@ -643,6 +702,7 @@ export function useChat(sessionKey?: string) {
         });
       } catch (err) {
         console.error("[AWF] chat.send error:", String(err));
+        clearStreamingTimeout();
         setStreaming(false);
       }
     },
@@ -653,36 +713,41 @@ export function useChat(sessionKey?: string) {
   const processQueue = useCallback(async () => {
     if (processingQueue.current) return;
     processingQueue.current = true;
-    while (queueRef.current.length > 0) {
-      const next = queueRef.current.shift()!;
-      persistQueue();
-      // Check if message was cancelled (removed from messages)
-      const stillExists = await new Promise<boolean>((resolve) => {
-        setMessages((prev) => {
-          resolve(prev.some((m) => m.id === next.id));
-          return prev;
+    try {
+      while (queueRef.current.length > 0) {
+        const next = queueRef.current.shift()!;
+        persistQueue();
+        const stillExists = await new Promise<boolean>((resolve) => {
+          setMessages((prev) => {
+            resolve(prev.some((m) => m.id === next.id));
+            return prev;
+          });
         });
-      });
-      if (stillExists) {
-        await doSend(next.text, next.id);
-        // Wait for streaming to finish before sending next
-        await new Promise<void>((resolve) => {
-          const check = () => {
-            // Poll streaming state - resolve when not streaming
-            setTimeout(() => {
-              setStreaming((s) => {
-                if (!s) resolve();
-                else check();
-                return s;
-              });
-            }, 200);
-          };
-          check();
-        });
+        if (stillExists) {
+          await doSend(next.text, next.id);
+          // Wait for streaming to finish (ref-based polling + timeout)
+          await new Promise<void>((resolve) => {
+            const start = Date.now();
+            const check = () => {
+              setTimeout(() => {
+                if (!streamingRef.current) {
+                  resolve();
+                } else if (Date.now() - start > 60_000) {
+                  console.warn("[AWF] processQueue streaming wait timeout");
+                  resolve();
+                } else {
+                  check();
+                }
+              }, 300);
+            };
+            check();
+          });
+        }
       }
+    } finally {
+      processingQueue.current = false;
     }
-    processingQueue.current = false;
-  }, [doSend]);
+  }, [doSend, persistQueue]);
 
   // Send message (queues if currently streaming)
   const sendMessage = useCallback(
@@ -738,6 +803,7 @@ export function useChat(sessionKey?: string) {
       console.warn("[AWF] chat.abort failed:", String(err));
     }
     // 부분 메시지 마무리
+    clearStreamingTimeout();
     if (streamBuf.current) {
       const abortedId = streamBuf.current.id;
       setMessages((prev) =>
@@ -748,7 +814,7 @@ export function useChat(sessionKey?: string) {
     runIdRef.current = null;
     setStreaming(false);
     setAgentStatusDebug({ phase: "idle" });
-  }, [client, state, sessionKey]);
+  }, [client, state, sessionKey, clearStreamingTimeout]);
 
   // Add a user message to the display (for external callers like attachment sends)
   const addUserMessage = useCallback((text: string, attachments?: DisplayAttachment[]) => {

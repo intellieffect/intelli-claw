@@ -296,6 +296,7 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
             });
           } catch (err) {
             console.error("[AWF] chat.send with attachments error:", err);
+            abort();
           }
         }
         clearAttachments();
