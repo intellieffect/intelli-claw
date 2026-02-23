@@ -91,8 +91,10 @@ function formatTokens(n?: number): string | null {
 }
 
 /** Format relative time */
-function relativeTime(ts?: number): string | null {
+function relativeTime(ts?: number | string): string | null {
   if (!ts) return null;
+  if (typeof ts === "string") ts = new Date(ts).getTime();
+  if (isNaN(ts)) return null;
   const diff = Date.now() - ts;
   if (diff < 60_000) return "방금";
   if (diff < 3600_000) return `${Math.floor(diff / 60_000)}분`;
@@ -180,7 +182,9 @@ export function ChatHeader({
         const bType = parseSessionKey((b.key || "") as string).type;
         if (aType === "main" && bType !== "main") return -1;
         if (bType === "main" && aType !== "main") return 1;
-        return ((b as any).updatedAt || 0) - ((a as any).updatedAt || 0);
+        const aTime = typeof (a as any).updatedAt === "string" ? new Date((a as any).updatedAt).getTime() : ((a as any).updatedAt || 0);
+        const bTime = typeof (b as any).updatedAt === "string" ? new Date((b as any).updatedAt).getTime() : ((b as any).updatedAt || 0);
+        return bTime - aTime;
       });
   }, [sessions, agentId]);
 
