@@ -284,13 +284,19 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
-/** Format timestamp to HH:MM */
+/** Format timestamp to HH:MM (today) or MM/DD HH:MM (other days), KST */
 function formatTime(ts?: string): string | null {
   if (!ts) return null;
   try {
     const d = new Date(ts);
     if (isNaN(d.getTime())) return null;
-    return d.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false });
+    const tz = { timeZone: "Asia/Seoul" as const };
+    const time = d.toLocaleTimeString("ko-KR", { ...tz, hour: "2-digit", minute: "2-digit", hour12: false });
+    const kstDate = d.toLocaleDateString("fr-CA", { ...tz, year: "numeric", month: "2-digit", day: "2-digit" }); // YYYY-MM-DD
+    const kstToday = new Date().toLocaleDateString("fr-CA", { ...tz, year: "numeric", month: "2-digit", day: "2-digit" });
+    if (kstDate === kstToday) return time;
+    const short = d.toLocaleDateString("ko-KR", { ...tz, month: "2-digit", day: "2-digit" });
+    return `${short} ${time}`;
   } catch { return null; }
 }
 
