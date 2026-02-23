@@ -269,6 +269,7 @@ export function useChat(sessionKey?: string) {
     content: string;
     toolCalls: Map<string, ToolCall>;
   } | null>(null);
+  const runIdRef = useRef<string | null>(null);
   const sessionKeyRef = useRef(sessionKey);
 
   // Queue storage key (must be before loadHistory which references it)
@@ -528,6 +529,7 @@ export function useChat(sessionKey?: string) {
       } else if (stream === "lifecycle" && data?.phase === "start") {
         // lifecycle start
           setStreaming(true);
+          runIdRef.current = (raw.runId as string) ?? null;
           setAgentStatusDebug({ phase: "thinking" });
       } else if (stream === "lifecycle" && data?.phase === "end") {
         // lifecycle end = done
@@ -728,10 +730,22 @@ export function useChat(sessionKey?: string) {
   const abort = useCallback(async () => {
     if (!client || state !== "connected") return;
     try {
-      await client.request("chat.abort", { sessionKey });
-    } catch {
-      // silently fail
+      await client.request("chat.abort", {
+        sessionKey,
+        runId: runIdRef.current ?? undefined,
+      });
+    } catch (err) {
+      console.warn("[AWF] chat.abort failed:", String(err));
     }
+    // 부분 메시지 마무리
+    if (streamBuf.current) {
+      const abortedId = streamBuf.current.id;
+      setMessages((prev) =>
+        prev.map((m) => m.id === abortedId ? { ...m, streaming: false } : m)
+      );
+      streamBuf.current = null;
+    }
+    runIdRef.current = null;
     setStreaming(false);
     setAgentStatusDebug({ phase: "idle" });
   }, [client, state, sessionKey]);
