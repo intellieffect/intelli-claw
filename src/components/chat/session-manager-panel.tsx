@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 import { parseSessionKey, type GatewaySession } from "@/lib/gateway/session-utils";
 import type { Agent } from "@/lib/gateway/protocol";
-import { getAgentAvatar } from "@/lib/agent-avatars";
+import { AgentAvatar } from "@/components/ui/agent-avatar";
 import { cn } from "@/lib/utils";
 
 interface SessionManagerPanelProps {
@@ -178,7 +178,6 @@ export function SessionManagerPanel({
         <div className="flex-1 overflow-y-auto">
           {groups.map((group) => {
             const isExpanded = effectiveExpanded.has(group.agentId);
-            const av = getAgentAvatar(group.agentId);
             const totalTokens = group.sessions.reduce((sum, s) => sum + (s.totalTokens || 0), 0);
             const idleCount = group.sessions.filter(
               (s) => s.parsed.type !== "main" && s.updatedAt && Date.now() - s.updatedAt > 24 * 60 * 60 * 1000
@@ -192,13 +191,7 @@ export function SessionManagerPanel({
                   className="flex w-full items-center gap-2.5 px-4 py-2.5 hover:bg-zinc-800/30 transition"
                 >
                   {isExpanded ? <ChevronDown size={12} className="text-zinc-500" /> : <ChevronRight size={12} className="text-zinc-500" />}
-                  {av.imageUrl ? (
-                    <img src={av.imageUrl} alt={group.agentId} className="size-6 rounded-full object-cover shrink-0" />
-                  ) : (
-                    <div className={cn("flex size-6 shrink-0 items-center justify-center rounded-full text-xs", av.color)}>
-                      {av.emoji}
-                    </div>
-                  )}
+                  <AgentAvatar agentId={group.agentId} size={24} />
                   <span className="text-sm font-medium text-zinc-200 flex-1 text-left truncate">
                     {group.agent?.name || group.agentId}
                   </span>

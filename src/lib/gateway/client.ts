@@ -11,6 +11,7 @@ type PendingReq = {
 };
 
 const REQUEST_TIMEOUT = 30_000;
+const AUTH_TIMEOUT = 10_000;
 const RECONNECT_DELAYS = [1000, 2000, 4000, 8000, 16000];
 
 export class GatewayClient {
@@ -23,8 +24,11 @@ export class GatewayClient {
   private stateHandlers = new Set<StateHandler>();
   private reconnectAttempt = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private authTimer: ReturnType<typeof setTimeout> | null = null;
   private intentionalClose = false;
   public mainSessionKey = "";
+  public serverVersion = "";
+  public serverCommit = "";
 
   constructor(url: string, token: string) {
     this.url = url;
@@ -52,6 +56,7 @@ export class GatewayClient {
   disconnect(): void {
     this.intentionalClose = true;
     this.clearReconnect();
+    this.clearAuthTimer();
     if (this.ws) {
       this.ws.onclose = null;
       this.ws.close();
@@ -111,7 +116,11 @@ export class GatewayClient {
 
   private handleOpen(): void {
     this.setState("authenticating");
-    // Wait for connect.challenge
+    this.clearAuthTimer();
+    this.authTimer = setTimeout(() => {
+      console.warn("[AWF] Auth timeout – closing and reconnecting");
+      this.ws?.close();
+    }, AUTH_TIMEOUT);
   }
 
   private handleMessage(e: MessageEvent): void {
@@ -169,10 +178,14 @@ export class GatewayClient {
     // Check if this is the connect response (hello-ok)
     const payload = frame.payload as Record<string, unknown> | undefined;
     if (frame.ok && payload?.type === "hello-ok") {
+      this.clearAuthTimer();
       const snapshot = payload.snapshot as Record<string, unknown> | undefined;
       const sessionDefaults = snapshot?.sessionDefaults as Record<string, unknown> | undefined;
       this.mainSessionKey = (sessionDefaults?.mainSessionKey as string) || "";
-      console.log("[AWF] hello-ok: mainSessionKey=", this.mainSessionKey, "auth=", JSON.stringify(payload.auth));
+      const server = payload.server as Record<string, unknown> | undefined;
+      this.serverVersion = (server?.version as string) || "";
+      this.serverCommit = (server?.commit as string) || "";
+      console.log("[AWF] hello-ok: mainSessionKey=", this.mainSessionKey, "version=", this.serverVersion, "commit=", this.serverCommit);
       this.reconnectAttempt = 0;
       this.setState("connected");
     }
@@ -194,6 +207,7 @@ export class GatewayClient {
   }
 
   private handleClose(): void {
+    this.clearAuthTimer();
     this.ws = null;
     this.rejectAll("Connection closed");
     this.setState("disconnected");
@@ -214,6 +228,13 @@ export class GatewayClient {
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
+    }
+  }
+
+  private clearAuthTimer(): void {
+    if (this.authTimer) {
+      clearTimeout(this.authTimer);
+      this.authTimer = null;
     }
   }
 
