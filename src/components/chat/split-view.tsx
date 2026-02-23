@@ -168,7 +168,7 @@ export function SplitView() {
       [panels[idx], panels[next]] = [panels[next], panels[idx]];
       return { ...prev, panels };
     });
-    setTimeout(() => { navInProgressRef.current = false; }, 300);
+    setTimeout(() => { navInProgressRef.current = false; }, 50);
   }, []);
 
   /** Move currently focused panel */
@@ -182,7 +182,7 @@ export function SplitView() {
       [panels[idx], panels[next]] = [panels[next], panels[idx]];
       return { ...prev, panels };
     });
-    setTimeout(() => { navInProgressRef.current = false; }, 300);
+    setTimeout(() => { navInProgressRef.current = false; }, 50);
   }, []);
 
   // Expose functions globally so chat-view can call them
