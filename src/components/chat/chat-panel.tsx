@@ -299,17 +299,18 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
             });
           } catch (bulkErr) {
             console.warn("[AWF] bulk chat.send failed, falling back to sequential:", bulkErr);
-            for (let i = 0; i < payloads.length; i++) {
-              try {
+            try {
+              for (let i = 0; i < payloads.length; i++) {
                 await client.request("chat.send", {
                   message: i === 0 ? (userMsg || `(첨부 이미지 ${i + 1}/${payloads.length})`) : `(첨부 이미지 ${i + 1}/${payloads.length})`,
                   idempotencyKey: `awf-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
                   sessionKey: effectiveSessionKey,
                   attachments: [payloads[i]],
                 });
-              } catch (err) {
-                console.error(`[AWF] sequential send ${i + 1}/${payloads.length} error:`, err);
               }
+            } catch (err) {
+              console.error("[AWF] sequential send error:", err);
+              abort();
             }
           }
         }
