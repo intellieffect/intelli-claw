@@ -159,6 +159,7 @@ export function SplitView() {
 
   /** Move a panel's position left/right */
   const movePanel = useCallback((id: string, dir: -1 | 1) => {
+    navInProgressRef.current = true;
     setState((prev) => {
       const idx = prev.panels.findIndex((p) => p.id === id);
       const next = idx + dir;
@@ -167,10 +168,12 @@ export function SplitView() {
       [panels[idx], panels[next]] = [panels[next], panels[idx]];
       return { ...prev, panels };
     });
+    setTimeout(() => { navInProgressRef.current = false; }, 50);
   }, []);
 
   /** Move currently focused panel */
   const moveActivePanel = useCallback((dir: -1 | 1) => {
+    navInProgressRef.current = true;
     setState((prev) => {
       const idx = prev.panels.findIndex((p) => p.id === prev.activePanelId);
       const next = idx + dir;
@@ -179,6 +182,7 @@ export function SplitView() {
       [panels[idx], panels[next]] = [panels[next], panels[idx]];
       return { ...prev, panels };
     });
+    setTimeout(() => { navInProgressRef.current = false; }, 50);
   }, []);
 
   // Expose functions globally so chat-view can call them

@@ -287,16 +287,31 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
         }));
         addUserMessage(userMsg || "(첨부 파일)", displayAtts);
         if (client && isConnected) {
+          // Send all attachments in a single request.
+          // If the single request fails (e.g. payload too large), fall back to
+          // sending each attachment individually with a descriptive message.
           try {
             await client.request("chat.send", {
               message: userMsg,
-              idempotencyKey: `awf-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+              idempotencyKey: `awf-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
               sessionKey: effectiveSessionKey,
               attachments: payloads,
             });
-          } catch (err) {
-            console.error("[AWF] chat.send with attachments error:", err);
-            abort();
+          } catch (bulkErr) {
+            console.warn("[AWF] bulk chat.send failed, falling back to sequential:", bulkErr);
+            try {
+              for (let i = 0; i < payloads.length; i++) {
+                await client.request("chat.send", {
+                  message: i === 0 ? (userMsg || `(첨부 이미지 ${i + 1}/${payloads.length})`) : `(첨부 이미지 ${i + 1}/${payloads.length})`,
+                  idempotencyKey: `awf-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                  sessionKey: effectiveSessionKey,
+                  attachments: [payloads[i]],
+                });
+              }
+            } catch (err) {
+              console.error("[AWF] sequential send error:", err);
+              abort();
+            }
           }
         }
         clearAttachments();
