@@ -61,7 +61,7 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
 
   const { messages, streaming, loading, sendMessage, addUserMessage, cancelQueued, abort } = useChat(effectiveSessionKey);
   const { agents } = useAgents();
-  const { sessions, loading: sessionsLoading, refresh: refreshSessions } = useSessions();
+  const { sessions, loading: sessionsLoading, refresh: refreshSessions, patchSession } = useSessions();
 
   const { attachments, addFiles, removeAttachment, clearAttachments } = useFileAttachments();
 
@@ -200,6 +200,10 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
       if (trimmed.startsWith("/model ")) {
         const modelArg = text.trim().slice(7).trim();
         if (modelArg && client && isConnected) {
+          // Optimistic: update UI immediately before gateway roundtrip
+          if (effectiveSessionKey) {
+            patchSession(effectiveSessionKey, { model: modelArg });
+          }
           try {
             await client.request("sessions.patch", { key: effectiveSessionKey, model: modelArg });
           } catch (err) {
