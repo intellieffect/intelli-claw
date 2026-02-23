@@ -99,6 +99,10 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
         e.preventDefault();
         setNewSessionPickerOpen(true);
       }
+      if (matchesShortcutId(e, "abort-stream") && streaming) {
+        e.preventDefault();
+        abort();
+      }
       // Tab: cycle forward through session tabs / Shift+Tab: cycle backward
       if (e.key === "Tab" && !e.ctrlKey && !e.metaKey && !e.altKey && agentSessions.length > 1) {
         // Only intercept when focus is on textarea (chat input) or panel root
@@ -114,7 +118,7 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
     }
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [isActive, agentId, setSessionKey, refreshSessions, agentSessions, effectiveSessionKey]);
+  }, [isActive, agentId, setSessionKey, refreshSessions, agentSessions, effectiveSessionKey, streaming, abort]);
 
   // Restore focus to this panel's textarea
   const refocusPanel = useCallback(() => {
