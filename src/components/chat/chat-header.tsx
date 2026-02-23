@@ -2,8 +2,8 @@
 
 import { useMemo, useRef, useEffect, useState, useCallback } from "react";
 import {
-  MessageSquare, Plus, X, Pin, Clock, Zap,
-  MessageCircle, Bot, Settings, ChevronDown,
+  MessageSquare, Plus, X, Pin, Zap,
+  MessageCircle, Bot, Settings,
 } from "lucide-react";
 import { parseSessionKey } from "@/lib/gateway/session-utils";
 import type { Agent, Session } from "@/lib/gateway/protocol";
@@ -32,7 +32,7 @@ interface ChatHeaderProps {
 
 // --- Constants ---
 
-const IDLE_THRESHOLD_MS = 24 * 60 * 60 * 1000; // 24 hours
+// idle threshold removed — all sessions shown inline
 
 const TYPE_ICONS: Record<string, React.ReactNode> = {
   main: <Pin size={10} className="text-amber-400" />,
@@ -157,7 +157,7 @@ export function ChatHeader({
   const [confirmDeleteKey, setConfirmDeleteKey] = useState<string | null>(null);
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [editLabel, setEditLabel] = useState("");
-  const [showIdle, setShowIdle] = useState(false);
+  
 
   const parsed = sessionKey ? parseSessionKey(sessionKey) : null;
   const agent = parsed ? agents.find((a) => a.id === parsed.agentId) : undefined;
@@ -184,23 +184,8 @@ export function ChatHeader({
       });
   }, [sessions, agentId]);
 
-  // Split into active and idle
-  const now = Date.now();
-  const { activeSessions, idleSessions } = useMemo(() => {
-    const active: SessionEntry[] = [];
-    const idle: SessionEntry[] = [];
-    for (const s of allAgentSessions) {
-      const updatedAt = (s as any).updatedAt as number | undefined;
-      const p = parseSessionKey((s.key || "") as string);
-      // Main is always active
-      if (p.type === "main" || !updatedAt || now - updatedAt < IDLE_THRESHOLD_MS) {
-        active.push(s);
-      } else {
-        idle.push(s);
-      }
-    }
-    return { activeSessions: active, idleSessions: idle };
-  }, [allAgentSessions, now]);
+  // Show all sessions (no active/idle split)
+  const activeSessions = allAgentSessions;
 
   const sessionType = !parsed ? "" : parsed.type === "main" ? "Main" : parsed.type === "thread" ? "Thread" : parsed.type === "subagent" ? "Sub-agent" : parsed.type === "cron" ? "Cron" : parsed.type === "a2a" ? "A2A" : "";
 
@@ -280,7 +265,7 @@ export function ChatHeader({
             }
           }}
           className={cn(
-            "flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-medium transition-all max-w-[220px]",
+            "flex items-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-medium transition-all w-[120px]",
             isIdle && "opacity-50",
             isActive
               ? "bg-amber-600/80 text-white shadow-sm"
@@ -294,15 +279,6 @@ export function ChatHeader({
           {/* Label */}
           <span className="truncate">{label}</span>
 
-          {/* Token or time badge */}
-          {(tokens || time) && (
-            <span className={cn(
-              "flex-shrink-0 text-[9px] ml-0.5",
-              isActive ? "text-white/60" : "text-zinc-600"
-            )}>
-              {tokens || time}
-            </span>
-          )}
 
           {/* Close button (not for main, visible on hover) */}
           {!isMain && (
@@ -379,22 +355,6 @@ export function ChatHeader({
         <div ref={tabsRef} className="flex items-center gap-1 overflow-x-auto px-4 pb-2.5 scrollbar-none">
           {/* Active sessions */}
           {activeSessions.map((s) => renderTab(s))}
-
-          {/* Idle sessions toggle */}
-          {idleSessions.length > 0 && (
-            <button
-              onClick={() => setShowIdle(!showIdle)}
-              className="flex-shrink-0 flex items-center gap-1 rounded-md bg-zinc-800/40 px-2 py-1.5 text-[10px] text-zinc-600 hover:bg-zinc-700 hover:text-zinc-400 transition"
-              title={`${idleSessions.length}개 비활성 세션`}
-            >
-              <Clock size={10} />
-              <span>+{idleSessions.length}</span>
-              <ChevronDown size={10} className={cn("transition-transform", showIdle && "rotate-180")} />
-            </button>
-          )}
-
-          {/* Idle sessions (expanded) */}
-          {showIdle && idleSessions.map((s) => renderTab(s, true))}
 
           {/* New session button */}
           {onNewSession && (
