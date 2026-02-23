@@ -35,7 +35,7 @@ export function AvatarAgentSelector({
         type="button"
         onClick={() => setOpen(!open)}
         className={cn(
-          "flex size-10 shrink-0 items-center justify-center rounded-full text-lg transition-all hover:scale-110 hover:ring-2 hover:ring-ring/30 md:size-14 md:text-2xl",
+          "flex size-8 shrink-0 items-center justify-center rounded-full text-base transition-all hover:scale-110 hover:ring-2 hover:ring-ring/30",
           avatar.color
         )}
         title={selectedId ? `${selectedId} · 클릭하여 변경` : "에이전트 선택"}
@@ -45,7 +45,7 @@ export function AvatarAgentSelector({
 
       {open && (
         <div className="absolute bottom-full left-0 z-50 mb-2 w-52 rounded-xl border border-border bg-popover py-1 shadow-xl">
-          {agents.map((agent) => {
+          {[...agents].sort((a, b) => (a.name || a.id).localeCompare(b.name || b.id)).map((agent) => {
             const av = getAgentAvatar(agent.id);
             return (
               <button
@@ -64,7 +64,7 @@ export function AvatarAgentSelector({
                 >
                   {av.emoji}
                 </div>
-                <span className="flex-1 truncate">{agent.name}</span>
+                <span className="flex-1 truncate">{agent.name || agent.id}</span>
                 {selectedId === agent.id && (
                   <Check size={14} className="shrink-0 text-primary" />
                 )}

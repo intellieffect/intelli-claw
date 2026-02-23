@@ -9,7 +9,7 @@ import {
 import { MarkdownRenderer } from "./markdown-renderer";
 import { ToolCallCard } from "./tool-call-card";
 import type { DisplayMessage, DisplayAttachment } from "@/lib/gateway/hooks";
-import { getAgentAvatar } from "@/lib/agent-avatars";
+import { AgentAvatar } from "@/components/ui/agent-avatar";
 
 /** Append dl=1 to /api/media URLs to force download */
 function forceDownloadUrl(url: string): string {
@@ -147,7 +147,6 @@ export function MessageList({
   onCancelQueued?: (id: string) => void;
   agentId?: string;
 }) {
-  const agentAv = getAgentAvatar(agentId);
   const bottomRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [userScrolledUp, setUserScrolledUp] = useState(false);
@@ -188,11 +187,7 @@ export function MessageList({
   if (messages.length === 0) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-3 text-muted-foreground">
-        {agentAv.imageUrl ? (
-          <img src={agentAv.imageUrl} alt="" className="size-12 rounded-full object-cover opacity-50" />
-        ) : (
-          <Bot size={48} strokeWidth={1.5} className="text-muted-foreground" />
-        )}
+        <AgentAvatar agentId={agentId} size={48} className="opacity-50" />
         <p className="text-lg">무엇을 도와드릴까요?</p>
         <p className="text-sm text-muted-foreground">메시지를 입력하여 대화를 시작하세요</p>
       </div>
@@ -209,10 +204,10 @@ export function MessageList({
             const prevRole = idx > 0 ? arr[idx - 1].role : null;
             const showAvatar = msg.role !== "assistant" || prevRole !== "assistant";
             return (
-              <MessageBubble key={msg.id} message={msg} showAvatar={showAvatar} onCancel={msg.queued ? onCancelQueued : undefined} agentImageUrl={agentAv.imageUrl} />
+              <MessageBubble key={msg.id} message={msg} showAvatar={showAvatar} onCancel={msg.queued ? onCancelQueued : undefined} agentId={agentId} />
             );
           })}
-        {streaming && !messages.some(m => m.streaming) && <ThinkingIndicator agentImageUrl={agentAv.imageUrl} />}
+        {streaming && !messages.some(m => m.streaming) && <ThinkingIndicator agentId={agentId} />}
         <div ref={bottomRef} />
       </div>
     </div>
@@ -231,22 +226,10 @@ export function MessageList({
   );
 }
 
-function AgentAvatarBubble({ imageUrl, size = 18 }: { imageUrl?: string; size?: number }) {
-  const [imgError, setImgError] = useState(false);
-  if (imageUrl && !imgError) {
-    return <img src={imageUrl} alt="" className="h-8 w-8 shrink-0 rounded-full object-cover" onError={() => setImgError(true)} />;
-  }
-  return (
-    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-      <Bot size={size} />
-    </div>
-  );
-}
-
-function ThinkingIndicator({ agentImageUrl }: { agentImageUrl?: string }) {
+function ThinkingIndicator({ agentId }: { agentId?: string }) {
   return (
     <div className="flex gap-3">
-      <AgentAvatarBubble imageUrl={agentImageUrl} />
+      <AgentAvatar agentId={agentId} size={32} />
       <div className="flex items-center gap-1.5 rounded-2xl bg-muted/60 px-4 py-3">
         <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground" style={{ animationDelay: "0ms" }} />
         <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground" style={{ animationDelay: "150ms" }} />
@@ -311,7 +294,7 @@ function formatTime(ts?: string): string | null {
   } catch { return null; }
 }
 
-function MessageBubble({ message, showAvatar = true, onCancel, agentImageUrl }: { message: DisplayMessage; showAvatar?: boolean; onCancel?: (id: string) => void; agentImageUrl?: string }) {
+function MessageBubble({ message, showAvatar = true, onCancel, agentId }: { message: DisplayMessage; showAvatar?: boolean; onCancel?: (id: string) => void; agentId?: string }) {
   const isUser = message.role === "user";
   const isSystem = message.role === "system";
   const isQueued = message.queued;
@@ -338,7 +321,7 @@ function MessageBubble({ message, showAvatar = true, onCancel, agentImageUrl }: 
       )}
       {!isUser && (
         showAvatar ? (
-          <AgentAvatarBubble imageUrl={agentImageUrl} />
+          <AgentAvatar agentId={agentId} size={32} />
         ) : (
           <div className="w-8 shrink-0" />
         )

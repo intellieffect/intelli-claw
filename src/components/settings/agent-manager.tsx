@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Bot, Plus, Pencil, Trash2, Save, X, ChevronRight } from "lucide-react";
 import { useGateway, useAgents } from "@/lib/gateway/hooks";
 import type { Agent } from "@/lib/gateway/protocol";
-import { getAgentAvatar } from "@/lib/agent-avatars";
+import { AgentAvatar } from "@/components/ui/agent-avatar";
 import { cn } from "@/lib/utils";
 
 // --- Agent form fields ---
@@ -86,7 +86,6 @@ export function NewSessionPicker({
         </div>
         <div className="max-h-[60vh] overflow-y-auto p-2">
           {agents.map((agent, index) => {
-            const av = getAgentAvatar(agent.id);
             const isFocused = index === focusIndex;
             return (
               <button
@@ -99,13 +98,7 @@ export function NewSessionPicker({
                   isFocused ? "bg-zinc-800 ring-1 ring-zinc-600" : "hover:bg-zinc-800"
                 )}
               >
-                {av.imageUrl ? (
-                  <img src={av.imageUrl} alt={agent.id} className="size-9 rounded-full object-cover shrink-0" />
-                ) : (
-                  <div className={cn("flex size-9 shrink-0 items-center justify-center rounded-full text-base", av.color)}>
-                    {av.emoji}
-                  </div>
-                )}
+                <AgentAvatar agentId={agent.id} size={36} />
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-semibold text-zinc-100 truncate">{agent.name || agent.id}</div>
                   {agent.description && (
@@ -343,18 +336,11 @@ export function AgentManager({
           <>
             <div className="max-h-[55vh] overflow-y-auto p-2">
               {agents.map((agent) => {
-                const av = getAgentAvatar(agent.id);
                 const isDeleting = confirmDeleteId === agent.id;
 
                 return (
                   <div key={agent.id} className="flex items-center gap-3 rounded-lg px-3 py-2.5 hover:bg-zinc-800/50">
-                    {av.imageUrl ? (
-                      <img src={av.imageUrl} alt={agent.id} className="size-8 rounded-full object-cover shrink-0" />
-                    ) : (
-                      <div className={cn("flex size-8 shrink-0 items-center justify-center rounded-full text-sm", av.color)}>
-                        {av.emoji}
-                      </div>
-                    )}
+                    <AgentAvatar agentId={agent.id} size={32} />
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-medium text-zinc-200 truncate">{agent.name || agent.id}</div>
                       <div className="text-[10px] text-zinc-600 truncate">{agent.id} · {agent.model || "default"}</div>

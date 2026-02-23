@@ -101,11 +101,16 @@ pnpm install
 cp .env.example .env.local
 # Edit .env.local — set your Gateway URL and token
 
-# Start dev server
-pnpm dev
+# Start dev server (HTTPS, recommended)
+./scripts/start-dev.sh
+
+# Or plain HTTP (localhost only)
+pnpm dev --port 4000
 ```
 
-Open `http://localhost:4000` in your browser.
+Open `https://localhost:4000` (HTTPS) or `http://localhost:4000` (plain) in your browser.
+
+> **HTTPS is recommended.** intelli-claw uses Web Crypto API for device identity, which requires a [secure context](https://developer.mozilla.org/en-US/docs/Web/Security/Secure_Contexts). `localhost` works without HTTPS, but LAN or remote access requires it. See [`docs/dev-setup.md`](docs/dev-setup.md) for mkcert setup, LAN/Tailscale/mobile access, and troubleshooting.
 
 ### Configuration
 
