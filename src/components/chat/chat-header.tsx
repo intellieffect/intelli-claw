@@ -8,7 +8,7 @@ import {
 import { parseSessionKey } from "@/lib/gateway/session-utils";
 import type { Agent, Session } from "@/lib/gateway/protocol";
 import type { AgentStatus } from "@/lib/gateway/hooks";
-import { getAgentAvatar } from "@/lib/agent-avatars";
+import { AgentAvatar } from "@/components/ui/agent-avatar";
 import { cn } from "@/lib/utils";
 
 // --- Types ---
@@ -328,14 +328,7 @@ export function ChatHeader({
     <div className="flex-shrink-0 border-b border-zinc-700/50 bg-zinc-900/90">
       {/* Agent name row */}
       <div className="flex items-center gap-3 px-5 pt-3.5 pb-2">
-        {(() => {
-          const av = getAgentAvatar(parsed.agentId);
-          return av.imageUrl ? (
-            <img src={av.imageUrl} alt={agentName} className="size-9 rounded-full object-cover flex-shrink-0" />
-          ) : (
-            <Bot size={28} className="text-amber-500 flex-shrink-0" />
-          );
-        })()}
+        <AgentAvatar agentId={parsed.agentId} size={36} />
         <span className="text-xl font-extrabold text-white truncate tracking-tight leading-tight">
           {agentName}
         </span>
