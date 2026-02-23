@@ -59,9 +59,9 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
   const effectiveSessionKey =
     sessionKey || (agentId ? `agent:${agentId}:main` : mainSessionKey) || undefined;
 
-  const { messages, streaming, loading, sendMessage, addUserMessage, cancelQueued, abort } = useChat(effectiveSessionKey);
+  const { messages, streaming, loading, sendMessage, addUserMessage, addLocalMessage, cancelQueued, abort } = useChat(effectiveSessionKey);
   const { agents } = useAgents();
-  const { sessions, loading: sessionsLoading, refresh: refreshSessions } = useSessions();
+  const { sessions, loading: sessionsLoading, refresh: refreshSessions, patchSession } = useSessions();
 
   const { attachments, addFiles, removeAttachment, clearAttachments } = useFileAttachments();
 
@@ -99,6 +99,10 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
         e.preventDefault();
         setNewSessionPickerOpen(true);
       }
+      if (matchesShortcutId(e, "abort-stream") && streaming) {
+        e.preventDefault();
+        abort();
+      }
       // Tab: cycle forward through session tabs / Shift+Tab: cycle backward
       if (e.key === "Tab" && !e.ctrlKey && !e.metaKey && !e.altKey && agentSessions.length > 1) {
         // Only intercept when focus is on textarea (chat input) or panel root
@@ -114,7 +118,7 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
     }
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [isActive, agentId, setSessionKey, refreshSessions, agentSessions, effectiveSessionKey]);
+  }, [isActive, agentId, setSessionKey, refreshSessions, agentSessions, effectiveSessionKey, streaming, abort]);
 
   // Restore focus to this panel's textarea
   const refocusPanel = useCallback(() => {
@@ -177,6 +181,56 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
     }
   }
 
+  const handleStatusCommand = useCallback(async () => {
+    if (!client || !isConnected) return;
+    try {
+      const res = await client.request<{
+        sessions: {
+          recent: Array<{
+            key: string;
+            agentId: string;
+            model: string;
+            inputTokens: number;
+            outputTokens: number;
+            totalTokens: number;
+            contextTokens: number;
+            percentUsed: number;
+            updatedAt: number;
+          }>;
+        };
+      }>("status");
+      const s = res?.sessions?.recent?.find(
+        (s) => s.key === effectiveSessionKey
+      );
+      if (!s) {
+        addLocalMessage("⚠️ 세션 정보를 찾을 수 없습니다.", "system");
+        return;
+      }
+      const agent = agents.find((a) => a.id === s.agentId);
+      const name = agent?.name || s.agentId;
+      const ver = client.serverVersion || "dev";
+      const commit = client.serverCommit ? ` (${client.serverCommit.slice(0, 7)})` : "";
+      const fmtTokens = (n: number) => n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}m` : n >= 1_000 ? `${(n / 1_000).toFixed(0)}k` : String(n);
+      const diff = Date.now() - s.updatedAt;
+      const ago = diff < 60_000 ? "just now" : diff < 3_600_000 ? `${Math.floor(diff / 60_000)}m ago` : diff < 86_400_000 ? `${Math.floor(diff / 3_600_000)}h ago` : `${Math.floor(diff / 86_400_000)}d ago`;
+
+      const lines = [
+        `**${name}**`,
+        ``,
+        `🌱 OpenClaw ${ver}${commit}`,
+        `🧠 Model: \`${s.model}\``,
+        `🔢 Tokens: ${s.inputTokens} in / ${s.outputTokens} out`,
+        `🧮 Context: ${fmtTokens(s.totalTokens)}/${fmtTokens(s.contextTokens)} (${s.percentUsed}%)`,
+        `📋 Session: \`${s.key}\` · ${ago}`,
+        `⚙️ Runtime: direct · Think: low`,
+      ];
+      addLocalMessage(lines.join("\n\n"), "assistant");
+    } catch (err) {
+      console.error("[intelli-claw] /status failed:", err);
+      addLocalMessage("⚠️ 상태 조회에 실패했습니다.", "system");
+    }
+  }, [client, isConnected, effectiveSessionKey, agents, addLocalMessage]);
+
   const handleSend = useCallback(
     async (text: string) => {
       const trimmed = text.trim().toLowerCase();
@@ -200,6 +254,10 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
       if (trimmed.startsWith("/model ")) {
         const modelArg = text.trim().slice(7).trim();
         if (modelArg && client && isConnected) {
+          // Optimistic: update UI immediately before gateway roundtrip
+          if (effectiveSessionKey) {
+            patchSession(effectiveSessionKey, { model: modelArg });
+          }
           try {
             await client.request("sessions.patch", { key: effectiveSessionKey, model: modelArg });
           } catch (err) {

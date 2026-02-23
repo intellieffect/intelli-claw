@@ -164,7 +164,12 @@ export function useSessions() {
     return () => clearInterval(id);
   }, [state, refreshThrottled]);
 
-  return { sessions, loading, refresh: fetchSessions };
+  // Optimistic local patch — update a session field immediately without waiting for gateway refresh
+  const patchSession = useCallback((key: string, patch: Record<string, unknown>) => {
+    setSessions((prev) => prev.map((s) => (s.key === key ? { ...s, ...patch } : s)));
+  }, []);
+
+  return { sessions, loading, refresh: fetchSessions, patchSession };
 }
 
 // --- Helpers ---
@@ -264,6 +269,7 @@ export function useChat(sessionKey?: string) {
     content: string;
     toolCalls: Map<string, ToolCall>;
   } | null>(null);
+  const runIdRef = useRef<string | null>(null);
   const sessionKeyRef = useRef(sessionKey);
 
   // Queue storage key (must be before loadHistory which references it)
@@ -523,6 +529,7 @@ export function useChat(sessionKey?: string) {
       } else if (stream === "lifecycle" && data?.phase === "start") {
         // lifecycle start
           setStreaming(true);
+          runIdRef.current = (raw.runId as string) ?? null;
           setAgentStatusDebug({ phase: "thinking" });
       } else if (stream === "lifecycle" && data?.phase === "end") {
         // lifecycle end = done
@@ -723,10 +730,22 @@ export function useChat(sessionKey?: string) {
   const abort = useCallback(async () => {
     if (!client || state !== "connected") return;
     try {
-      await client.request("chat.abort", { sessionKey });
-    } catch {
-      // silently fail
+      await client.request("chat.abort", {
+        sessionKey,
+        runId: runIdRef.current ?? undefined,
+      });
+    } catch (err) {
+      console.warn("[AWF] chat.abort failed:", String(err));
     }
+    // 부분 메시지 마무리
+    if (streamBuf.current) {
+      const abortedId = streamBuf.current.id;
+      setMessages((prev) =>
+        prev.map((m) => m.id === abortedId ? { ...m, streaming: false } : m)
+      );
+      streamBuf.current = null;
+    }
+    runIdRef.current = null;
     setStreaming(false);
     setAgentStatusDebug({ phase: "idle" });
   }, [client, state, sessionKey]);
@@ -749,6 +768,19 @@ export function useChat(sessionKey?: string) {
     }
   }, [streaming]);
 
+  // Add a local-only message (not sent to gateway)
+  const addLocalMessage = useCallback((content: string, role: "assistant" | "system" = "system") => {
+    const msgId = `local-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const msg: DisplayMessage = {
+      id: msgId,
+      role,
+      content,
+      timestamp: new Date().toISOString(),
+      toolCalls: [],
+    };
+    setMessages((prev) => [...prev, msg]);
+  }, []);
+
   return {
     messages,
     streaming,
@@ -756,6 +788,7 @@ export function useChat(sessionKey?: string) {
     agentStatus,
     sendMessage,
     addUserMessage,
+    addLocalMessage,
     cancelQueued,
     abort,
     reload: loadHistory,
