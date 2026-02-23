@@ -265,7 +265,7 @@ export function ChatHeader({
             }
           }}
           className={cn(
-            "flex items-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-medium transition-all w-[120px]",
+            "flex items-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-medium transition-all w-[140px]",
             isIdle && "opacity-50",
             isActive
               ? "bg-amber-600/80 text-white shadow-sm"
@@ -279,6 +279,15 @@ export function ChatHeader({
           {/* Label */}
           <span className="truncate">{label}</span>
 
+          {/* Time */}
+          {time && (
+            <span className={cn(
+              "flex-shrink-0 text-[9px]",
+              isActive ? "text-white/50" : "text-zinc-600"
+            )}>
+              {time}
+            </span>
+          )}
 
           {/* Close button (not for main, visible on hover) */}
           {!isMain && (
