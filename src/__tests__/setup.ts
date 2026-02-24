@@ -5,6 +5,17 @@ import { vi } from "vitest";
 // Mock scrollIntoView
 Element.prototype.scrollIntoView = vi.fn();
 
+// Mock ResizeObserver (not available in jsdom)
+global.ResizeObserver = class ResizeObserver {
+  private callback: ResizeObserverCallback;
+  constructor(callback: ResizeObserverCallback) {
+    this.callback = callback;
+  }
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+};
+
 // Mock matchMedia for responsive hooks
 Object.defineProperty(window, "matchMedia", {
   writable: true,
