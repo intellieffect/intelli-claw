@@ -1,70 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readFile, stat, open } from "fs/promises";
 import { extname, basename } from "path";
-
-const MIME_MAP: Record<string, string> = {
-  // Images
-  ".png": "image/png",
-  ".jpg": "image/jpeg",
-  ".jpeg": "image/jpeg",
-  ".gif": "image/gif",
-  ".webp": "image/webp",
-  ".svg": "image/svg+xml",
-  ".ico": "image/x-icon",
-  ".bmp": "image/bmp",
-  ".tiff": "image/tiff",
-  ".tif": "image/tiff",
-  // Video
-  ".mp4": "video/mp4",
-  ".webm": "video/webm",
-  ".mov": "video/quicktime",
-  ".avi": "video/x-msvideo",
-  ".mkv": "video/x-matroska",
-  // Audio
-  ".mp3": "audio/mpeg",
-  ".wav": "audio/wav",
-  ".ogg": "audio/ogg",
-  ".flac": "audio/flac",
-  ".aac": "audio/aac",
-  ".m4a": "audio/mp4",
-  ".wma": "audio/x-ms-wma",
-  // Documents
-  ".pdf": "application/pdf",
-  ".doc": "application/msword",
-  ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  ".xls": "application/vnd.ms-excel",
-  ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  ".ppt": "application/vnd.ms-powerpoint",
-  ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-  // Text / Code
-  ".txt": "text/plain",
-  ".csv": "text/csv",
-  ".json": "application/json",
-  ".xml": "application/xml",
-  ".html": "text/html",
-  ".css": "text/css",
-  ".js": "text/javascript",
-  ".ts": "text/typescript",
-  ".md": "text/markdown",
-  ".yaml": "text/yaml",
-  ".yml": "text/yaml",
-  ".py": "text/x-python",
-  ".rs": "text/x-rust",
-  ".go": "text/x-go",
-  ".java": "text/x-java",
-  ".c": "text/x-c",
-  ".cpp": "text/x-c++",
-  ".h": "text/x-c",
-  ".sh": "text/x-shellscript",
-  ".sql": "text/x-sql",
-  ".log": "text/plain",
-  // Archives
-  ".zip": "application/zip",
-  ".tar": "application/x-tar",
-  ".gz": "application/gzip",
-  ".7z": "application/x-7z-compressed",
-  ".rar": "application/vnd.rar",
-};
+import { getMimeTypeByDotExt } from "@/lib/mime-types";
 
 /** MIME types that should be displayed inline (not download) */
 const INLINE_TYPES = new Set([
@@ -99,7 +36,7 @@ export async function GET(req: NextRequest) {
     }
 
     const ext = extname(resolved).toLowerCase();
-    const mime = MIME_MAP[ext] || "application/octet-stream";
+    const mime = getMimeTypeByDotExt(ext);
     const fileName = basename(resolved);
 
     // Info-only mode: return metadata without file content
