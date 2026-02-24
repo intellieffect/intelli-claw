@@ -7,6 +7,7 @@ import { ChatInput } from "./chat-input";
 import { AvatarAgentSelector } from "./avatar-agent-selector";
 import { AgentSelector } from "./agent-selector";
 import { SessionSwitcher } from "./session-switcher";
+import { AgentBrowser } from "./agent-browser";
 import { DropZone, useFileAttachments, attachmentToPayload } from "./file-attachments";
 import { parseSessionKey, sessionDisplayName, type GatewaySession } from "@/lib/gateway/session-utils";
 import { TaskMemo } from "./task-memo";
@@ -66,6 +67,7 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
   const { attachments, addFiles, removeAttachment, clearAttachments } = useFileAttachments();
 
   const [sessionSwitcherOpen, setSessionSwitcherOpen] = useState(false);
+  const [agentBrowserOpen, setAgentBrowserOpen] = useState(false);
   const [newSessionPickerOpen, setNewSessionPickerOpen] = useState(false);
   const [agentManagerOpen, setAgentManagerOpen] = useState(false);
   const [sessionManagerOpen, setSessionManagerOpen] = useState(false);
@@ -94,6 +96,10 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
       if (matchesShortcutId(e, "session-switcher")) {
         e.preventDefault();
         setSessionSwitcherOpen((prev) => !prev);
+      }
+      if (matchesShortcutId(e, "agent-browser")) {
+        e.preventDefault();
+        setAgentBrowserOpen((prev) => !prev);
       }
       if (matchesShortcutId(e, "new-session")) {
         e.preventDefault();
@@ -529,6 +535,14 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
               onReset={handleReset}
               open={sessionSwitcherOpen}
               onOpenChange={setSessionSwitcherOpen}
+              portalContainer={panelRef.current}
+            />
+            <AgentBrowser
+              sessions={sessions as GatewaySession[]}
+              currentKey={sessionKey}
+              onSelect={setSessionKey}
+              open={agentBrowserOpen}
+              onOpenChange={setAgentBrowserOpen}
               portalContainer={panelRef.current}
             />
             <div className="ml-auto flex items-center gap-2">
