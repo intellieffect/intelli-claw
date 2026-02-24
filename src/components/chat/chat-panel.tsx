@@ -7,6 +7,7 @@ import { ChatInput } from "./chat-input";
 import { AvatarAgentSelector } from "./avatar-agent-selector";
 import { AgentSelector } from "./agent-selector";
 import { SessionSwitcher } from "./session-switcher";
+import { AgentBrowser } from "./agent-browser";
 import { DropZone, useFileAttachments, attachmentToPayload } from "./file-attachments";
 import { parseSessionKey, sessionDisplayName, type GatewaySession } from "@/lib/gateway/session-utils";
 import { TaskMemo } from "./task-memo";
@@ -66,6 +67,7 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
   const { attachments, addFiles, removeAttachment, clearAttachments } = useFileAttachments();
 
   const [sessionSwitcherOpen, setSessionSwitcherOpen] = useState(false);
+  const [agentBrowserOpen, setAgentBrowserOpen] = useState(false);
   const [newSessionPickerOpen, setNewSessionPickerOpen] = useState(false);
   const [agentManagerOpen, setAgentManagerOpen] = useState(false);
   const [sessionManagerOpen, setSessionManagerOpen] = useState(false);
@@ -99,19 +101,23 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
         e.preventDefault();
         setNewSessionPickerOpen(true);
       }
+      if (matchesShortcutId(e, "agent-browser")) {
+        e.preventDefault();
+        setAgentBrowserOpen((prev) => !prev);
+      }
       if (matchesShortcutId(e, "abort-stream") && streaming) {
         e.preventDefault();
         abort();
       }
-      // Tab: cycle forward through session tabs / Shift+Tab: cycle backward
-      if (e.key === "Tab" && !e.ctrlKey && !e.metaKey && !e.altKey && agentSessions.length > 1) {
+      // Tab/Shift+Tab: cycle through session tabs (uses matchesShortcutId for custom binding support)
+      if ((matchesShortcutId(e, "next-session") || matchesShortcutId(e, "prev-session")) && agentSessions.length > 1) {
         // Only intercept when focus is on textarea (chat input) or panel root
         const target = e.target as HTMLElement;
         const isInput = target.tagName === "TEXTAREA" || target.closest("[data-chat-panel]");
         if (!isInput) return;
         e.preventDefault();
         const currentIdx = agentSessions.findIndex((s) => s.key === effectiveSessionKey);
-        const delta = e.shiftKey ? -1 : 1;
+        const delta = matchesShortcutId(e, "prev-session") ? -1 : 1;
         const nextIdx = (currentIdx + delta + agentSessions.length) % agentSessions.length;
         setSessionKey(agentSessions[nextIdx].key);
       }
@@ -529,6 +535,14 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
               onReset={handleReset}
               open={sessionSwitcherOpen}
               onOpenChange={setSessionSwitcherOpen}
+              portalContainer={panelRef.current}
+            />
+            <AgentBrowser
+              sessions={sessions as GatewaySession[]}
+              currentKey={sessionKey}
+              onSelect={setSessionKey}
+              open={agentBrowserOpen}
+              onOpenChange={setAgentBrowserOpen}
               portalContainer={panelRef.current}
             />
             <div className="ml-auto flex items-center gap-2">
