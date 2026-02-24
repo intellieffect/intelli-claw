@@ -835,7 +835,7 @@ export function useChat(sessionKey?: string) {
   }, [streaming]);
 
   // Add a local-only message (not sent to gateway)
-  const addLocalMessage = useCallback((content: string, role: "assistant" | "system" = "system") => {
+  const addLocalMessage = useCallback((content: string, role: "user" | "assistant" | "system" = "system") => {
     const msgId = `local-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const msg: DisplayMessage = {
       id: msgId,
@@ -847,12 +847,31 @@ export function useChat(sessionKey?: string) {
     setMessages((prev) => [...prev, msg]);
   }, []);
 
+  // Send a command to gateway without setting streaming=true.
+  // If the gateway starts an agent run, event handlers will set streaming naturally.
+  const sendCommand = useCallback(
+    async (text: string) => {
+      if (!client || state !== "connected") return;
+      try {
+        await client.request("chat.send", {
+          message: text,
+          idempotencyKey: `awf-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          sessionKey,
+        });
+      } catch (err) {
+        console.error("[AWF] command error:", String(err));
+      }
+    },
+    [client, state, sessionKey]
+  );
+
   return {
     messages,
     streaming,
     loading,
     agentStatus,
     sendMessage,
+    sendCommand,
     addUserMessage,
     addLocalMessage,
     cancelQueued,
