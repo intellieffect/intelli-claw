@@ -505,6 +505,8 @@ export function useChat(sessionKey?: string) {
           }
           setMessages((prev) => {
             const existing = prev.findIndex((m) => m.id === snap.id);
+            // Preserve previous attachments if current chunk doesn't produce new ones
+            const prevAttachments = existing >= 0 ? prev[existing].attachments : undefined;
             const msg: DisplayMessage = {
               id: snap.id,
               role: "assistant",
@@ -512,7 +514,7 @@ export function useChat(sessionKey?: string) {
               timestamp: new Date().toISOString(),
               toolCalls: Array.from(snap.toolCalls.values()),
               streaming: true,
-              attachments: streamAttachments,
+              attachments: streamAttachments ?? prevAttachments,
             };
             if (existing >= 0) {
               const next = [...prev];
