@@ -232,6 +232,24 @@ export function SplitView() {
       } else if (matchesShortcutId(e, "reopen-panel")) {
         e.preventDefault(); e.stopPropagation();
         reopenLastClosedPanel();
+      } else {
+        // focus-panel-1 through focus-panel-5
+        for (let i = 1; i <= 5; i++) {
+          if (matchesShortcutId(e, `focus-panel-${i}`)) {
+            e.preventDefault(); e.stopPropagation();
+            setState((prev) => {
+              const idx = i - 1;
+              if (idx < 0 || idx >= prev.panels.length) return prev;
+              const targetId = prev.panels[idx].id;
+              requestAnimationFrame(() => {
+                const el = document.querySelector(`[data-panel-id="${targetId}"] textarea`) as HTMLElement | null;
+                el?.focus();
+              });
+              return { ...prev, activePanelId: targetId };
+            });
+            break;
+          }
+        }
       }
     };
     window.addEventListener("keydown", handler);
