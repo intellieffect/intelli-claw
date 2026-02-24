@@ -16,3 +16,8 @@ firebase-debug.log
 public/agents/
 .serena/
 public/agents/*.jpg
+
+# local dev
+.mcp.json
+.playwright-mcp/
+certificates/
