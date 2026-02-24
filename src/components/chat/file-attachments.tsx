@@ -79,6 +79,19 @@ function fileToAttachment(file: File): Promise<ChatAttachment> {
   });
 }
 
+/** Read text content from a file for inline preview (e.g. .md files) */
+export async function readTextContent(file: File): Promise<string | undefined> {
+  const ext = file.name.split(".").pop()?.toLowerCase();
+  if (ext === "md" || ext === "mdx") {
+    try {
+      return await file.text();
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
+}
+
 // ---- Attachment preview bar ----
 
 export function AttachmentPreview({

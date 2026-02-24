@@ -331,11 +331,21 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
         await maybeAutoLabelSession(effectiveSessionKey, text);
         const payloads = await Promise.all(attachments.map(attachmentToPayload));
         const userMsg = text || "";
-        const displayAtts = attachments.map((att) => ({
-          fileName: att.file.name,
-          mimeType: att.file.type || "application/octet-stream",
-          dataUrl: att.preview || undefined,
-        }));
+        const displayAtts = await Promise.all(
+          attachments.map(async (att) => {
+            const ext = att.file.name.split(".").pop()?.toLowerCase();
+            let textContent: string | undefined;
+            if (ext === "md" || ext === "mdx") {
+              try { textContent = await att.file.text(); } catch {}
+            }
+            return {
+              fileName: att.file.name,
+              mimeType: att.file.type || "application/octet-stream",
+              dataUrl: att.preview || undefined,
+              textContent,
+            };
+          })
+        );
         addUserMessage(userMsg || "(첨부 파일)", displayAtts);
         if (client && isConnected) {
           // Send all attachments in a single request.

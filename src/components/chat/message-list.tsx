@@ -6,7 +6,7 @@ import {
   FileText, Music, Video, File, Image as ImageIcon,
   FileSpreadsheet, FileCode, FileArchive, FileAudio, FileVideo,
 } from "lucide-react";
-import { MarkdownRenderer } from "./markdown-renderer";
+import { MarkdownRenderer, MarkdownFilePreview } from "./markdown-renderer";
 import { ToolCallCard } from "./tool-call-card";
 import type { DisplayMessage, DisplayAttachment } from "@/lib/gateway/hooks";
 import { AgentAvatar } from "@/components/ui/agent-avatar";
@@ -333,20 +333,35 @@ function MessageBubble({ message, showAvatar = true, onCancel, agentId }: { mess
             {/* Attachment images */}
             {message.attachments && message.attachments.length > 0 && (
               <div className="mb-2 flex flex-wrap gap-2">
-                {message.attachments.map((att, i) =>
-                  att.dataUrl && att.mimeType.startsWith("image/") ? (
-                    <img
-                      key={i}
-                      src={att.dataUrl}
-                      alt={att.fileName}
-                      className="max-h-48 w-full md:max-w-full md:w-auto rounded-lg object-contain"
-                    />
-                  ) : (
+                {message.attachments.map((att, i) => {
+                  if (att.dataUrl && att.mimeType.startsWith("image/")) {
+                    return (
+                      <img
+                        key={i}
+                        src={att.dataUrl}
+                        alt={att.fileName}
+                        className="max-h-48 w-full md:max-w-full md:w-auto rounded-lg object-contain"
+                      />
+                    );
+                  }
+                  if (att.textContent && (att.mimeType === "text/markdown" || att.fileName.endsWith(".md") || att.fileName.endsWith(".mdx"))) {
+                    return (
+                      <div key={i} className="w-full max-w-2xl overflow-hidden rounded-lg border border-zinc-600/50">
+                        <div className="flex items-center gap-1.5 bg-zinc-700/50 px-3 py-1.5 text-[11px] text-zinc-400">
+                          📎 {att.fileName}
+                        </div>
+                        <div className="max-h-60 overflow-y-auto bg-zinc-800/40 px-3 py-2 prose prose-sm prose-invert max-w-none">
+                          <MarkdownRenderer content={att.textContent} />
+                        </div>
+                      </div>
+                    );
+                  }
+                  return (
                     <div key={i} className="rounded-lg bg-white/10 px-3 py-1.5 text-xs">
                       📎 {att.fileName}
                     </div>
-                  )
-                )}
+                  );
+                })}
               </div>
             )}
             {message.content && message.content !== "(첨부 파일)" && (
@@ -416,6 +431,12 @@ function MessageBubble({ message, showAvatar = true, onCancel, agentId }: { mess
                         <div className="mt-1 text-[10px] text-zinc-500">{att.fileName}</div>
                       </div>
                     );
+                  }
+
+                  // Markdown file inline preview
+                  const ext = att.fileName.split(".").pop()?.toLowerCase();
+                  if (url && (ext === "md" || ext === "mdx")) {
+                    return <MarkdownFilePreview key={i} src={url} fileName={att.fileName} />;
                   }
 
                   // File card (vertical style)
