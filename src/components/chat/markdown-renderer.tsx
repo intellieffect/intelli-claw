@@ -10,6 +10,7 @@ import {
   FileSpreadsheet, FileCode, FileArchive,
 } from "lucide-react";
 import type { Components } from "react-markdown";
+import { blobDownload, forceDownloadUrl } from "@/lib/utils/download";
 
 function copyText(text: string) {
   if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(text);
@@ -439,25 +440,6 @@ function getMediaAccent(type: MediaType): string {
   }
 }
 
-/** Blob-based download */
-async function blobDownload(url: string, name: string) {
-  try {
-    const dlUrl = url.startsWith("/api/media") ? url + (url.includes("?") ? "&" : "?") + "dl=1" : url;
-    const res = await fetch(dlUrl);
-    const blob = await res.blob();
-    const blobUrl = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = blobUrl;
-    a.download = name;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(blobUrl);
-  } catch {
-    window.open(url, "_blank");
-  }
-}
-
 function FileCard({ url, fileName, type }: { url: string; fileName: string; type: MediaType }) {
   const [fileInfo, setFileInfo] = useState<{ size: number } | null>(null);
   const accent = getMediaAccent(type);
@@ -477,7 +459,7 @@ function FileCard({ url, fileName, type }: { url: string; fileName: string; type
 
   return (
     <button
-      onClick={() => blobDownload(url, fileName)}
+      onClick={() => blobDownload(forceDownloadUrl(url), fileName)}
       className="flex w-44 flex-col items-center gap-2 rounded-xl border border-zinc-700/80 bg-zinc-800/60 p-4 transition hover:bg-zinc-700/60 hover:border-zinc-600 cursor-pointer group"
     >
       <div className={`flex h-12 w-12 items-center justify-center rounded-xl ${accent}`}>
