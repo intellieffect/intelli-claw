@@ -11,32 +11,7 @@ import { ToolCallCard } from "./tool-call-card";
 import type { DisplayMessage, DisplayAttachment } from "@/lib/gateway/hooks";
 import { AgentAvatar } from "@/components/ui/agent-avatar";
 
-/** Append dl=1 to /api/media URLs to force download */
-function forceDownloadUrl(url: string): string {
-  if (url.startsWith("/api/media")) {
-    return url + (url.includes("?") ? "&" : "?") + "dl=1";
-  }
-  return url;
-}
-
-/** Blob-based download to bypass browser "unverified download" warnings on HTTP */
-async function blobDownload(url: string, fileName: string) {
-  try {
-    const res = await fetch(url);
-    const blob = await res.blob();
-    const blobUrl = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = blobUrl;
-    a.download = fileName;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(blobUrl);
-  } catch {
-    // Fallback to normal navigation
-    window.open(url, "_blank");
-  }
-}
+import { blobDownload, forceDownloadUrl } from "@/lib/utils/download";
 
 /** Get file extension from filename */
 function getExt(name: string): string {
