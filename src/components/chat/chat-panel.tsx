@@ -99,19 +99,23 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
         e.preventDefault();
         setNewSessionPickerOpen(true);
       }
+      if (matchesShortcutId(e, "agent-browser")) {
+        e.preventDefault();
+        setSessionManagerOpen((prev) => !prev);
+      }
       if (matchesShortcutId(e, "abort-stream") && streaming) {
         e.preventDefault();
         abort();
       }
-      // Tab: cycle forward through session tabs / Shift+Tab: cycle backward
-      if (e.key === "Tab" && !e.ctrlKey && !e.metaKey && !e.altKey && agentSessions.length > 1) {
+      // Tab/Shift+Tab: cycle through session tabs (uses matchesShortcutId for custom binding support)
+      if ((matchesShortcutId(e, "next-session") || matchesShortcutId(e, "prev-session")) && agentSessions.length > 1) {
         // Only intercept when focus is on textarea (chat input) or panel root
         const target = e.target as HTMLElement;
         const isInput = target.tagName === "TEXTAREA" || target.closest("[data-chat-panel]");
         if (!isInput) return;
         e.preventDefault();
         const currentIdx = agentSessions.findIndex((s) => s.key === effectiveSessionKey);
-        const delta = e.shiftKey ? -1 : 1;
+        const delta = matchesShortcutId(e, "prev-session") ? -1 : 1;
         const nextIdx = (currentIdx + delta + agentSessions.length) % agentSessions.length;
         setSessionKey(agentSessions[nextIdx].key);
       }
