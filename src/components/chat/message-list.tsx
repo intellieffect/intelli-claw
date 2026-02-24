@@ -160,6 +160,19 @@ export function MessageList({
     setUserScrolledUp(!atBottom);
   }, []);
 
+  // Re-evaluate scroll position when container is resized
+  // (e.g. textarea height change, mobile keyboard appear/disappear)
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(() => {
+      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+      setUserScrolledUp(!atBottom);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
   // Auto-scroll only when user is at the bottom
   // Use message count + streaming state as trigger (not full messages array) to reduce jitter
   const msgCount = messages.length;
