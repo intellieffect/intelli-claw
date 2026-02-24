@@ -59,7 +59,7 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
   const effectiveSessionKey =
     sessionKey || (agentId ? `agent:${agentId}:main` : mainSessionKey) || undefined;
 
-  const { messages, streaming, loading, sendMessage, addUserMessage, addLocalMessage, cancelQueued, abort } = useChat(effectiveSessionKey);
+  const { messages, streaming, loading, sendMessage, sendCommand, addUserMessage, addLocalMessage, cancelQueued, abort } = useChat(effectiveSessionKey);
   const { agents } = useAgents();
   const { sessions, loading: sessionsLoading, refresh: refreshSessions, patchSession } = useSessions();
 
@@ -241,38 +241,83 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
         return;
       }
 
-      // /new, /reset — send to gateway, then refresh sessions
-      if (trimmed === "/new" || trimmed === "/reset" || trimmed.startsWith("/new ") || trimmed.startsWith("/reset ")) {
-        sendMessage(text);
-        refreshSessions();
+      // --- Group A: Local-only commands (no gateway call) ---
+
+      // /status — show session status locally
+      if (trimmed === "/status") {
+        addLocalMessage(text, "user");
+        handleStatusCommand();
         return;
       }
 
-      // /model <name> — optimistic update via sessions.patch (same path as Settings UI)
-      // Don't use sendMessage — gateway may not stream a response for slash commands,
-      // which would leave streaming=true and the UI stuck in loading state.
+      // /help — show help table locally
+      if (trimmed === "/help") {
+        addLocalMessage(text, "user");
+        const helpLines = [
+          "**사용 가능한 명령어**",
+          "",
+          "| 명령어 | 설명 |",
+          "|--------|------|",
+          "| `/status` | 현재 세션 상태 표시 |",
+          "| `/model` | 현재 모델 표시 |",
+          "| `/model <name>` | 모델 변경 |",
+          "| `/new` | 새 스레드 생성 |",
+          "| `/reset` | 세션 초기화 |",
+          "| `/reasoning <level>` | 추론 레벨 변경 |",
+          "| `/stop` | 스트리밍 중단 |",
+        ];
+        addLocalMessage(helpLines.join("\n"), "assistant");
+        return;
+      }
+
+      // /model (no args) — show current model locally
+      if (trimmed === "/model") {
+        addLocalMessage(text, "user");
+        const sess = (sessions as GatewaySession[]).find((s) => s.key === effectiveSessionKey || s.key === sessionKey);
+        const model = sess?.model || "unknown";
+        addLocalMessage(`현재 모델: \`${model}\``, "assistant");
+        return;
+      }
+
+      // --- Group B: Settings change (no streaming needed) ---
+
+      // /model <name> — optimistic update via sessions.patch
       if (trimmed.startsWith("/model ")) {
         const modelArg = text.trim().slice(7).trim();
+        addLocalMessage(text, "user");
         if (modelArg && client && isConnected) {
-          // Optimistic: update UI immediately before gateway roundtrip
           if (effectiveSessionKey) {
             patchSession(effectiveSessionKey, { model: modelArg });
           }
           try {
             await client.request("sessions.patch", { key: effectiveSessionKey, model: modelArg });
+            addLocalMessage(`모델을 \`${modelArg}\`(으)로 변경했습니다.`, "assistant");
           } catch (err) {
             console.error("[AWF] model patch error:", err);
+            addLocalMessage("모델 변경에 실패했습니다.", "system");
           }
           refreshSessions();
         }
         return;
       }
 
-      // /status, /reasoning, /help, /model (no args) — pass to gateway as chat.send
-      if (trimmed === "/status" || trimmed === "/reasoning" || trimmed === "/help" || trimmed === "/model") {
-        sendMessage(text);
+      // --- Group C: Gateway commands (agent may or may not respond) ---
+      // Use sendCommand instead of sendMessage to avoid force-setting streaming=true.
+      // If gateway starts an agent run, event handlers set streaming naturally.
+
+      // /new, /reset
+      if (trimmed === "/new" || trimmed === "/reset" || trimmed.startsWith("/new ") || trimmed.startsWith("/reset ")) {
+        addLocalMessage(text, "user");
+        sendCommand(text);
+        refreshSessions();
+        return;
+      }
+
+      // /reasoning*, /think*, /verbose*
+      if (/^\/(reasoning|think|verbose)\b/.test(trimmed)) {
+        addLocalMessage(text, "user");
+        sendCommand(text);
         setTimeout(() => refreshSessions(), 400);
-        setTimeout(() => refreshSessions(), 1200);
         return;
       }
 
@@ -299,17 +344,18 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
             });
           } catch (bulkErr) {
             console.warn("[AWF] bulk chat.send failed, falling back to sequential:", bulkErr);
-            for (let i = 0; i < payloads.length; i++) {
-              try {
+            try {
+              for (let i = 0; i < payloads.length; i++) {
                 await client.request("chat.send", {
                   message: i === 0 ? (userMsg || `(첨부 이미지 ${i + 1}/${payloads.length})`) : `(첨부 이미지 ${i + 1}/${payloads.length})`,
                   idempotencyKey: `awf-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
                   sessionKey: effectiveSessionKey,
                   attachments: [payloads[i]],
                 });
-              } catch (err) {
-                console.error(`[AWF] sequential send ${i + 1}/${payloads.length} error:`, err);
               }
+            } catch (err) {
+              console.error("[AWF] sequential send error:", err);
+              abort();
             }
           }
         }
@@ -319,7 +365,7 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
         sendMessage(text);
       }
     },
-    [attachments, client, isConnected, effectiveSessionKey, clearAttachments, sendMessage, addUserMessage, abort, refreshSessions, sessions, summarizeLabelFromText]
+    [attachments, client, isConnected, effectiveSessionKey, sessionKey, clearAttachments, sendMessage, sendCommand, addUserMessage, addLocalMessage, handleStatusCommand, patchSession, abort, refreshSessions, sessions, summarizeLabelFromText]
   );
 
   const handleAgentChange = (id: string | undefined) => {
