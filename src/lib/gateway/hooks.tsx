@@ -197,6 +197,8 @@ export interface DisplayAttachment {
   dataUrl?: string;
   /** URL for downloading the file (e.g. gateway-served MEDIA path) */
   downloadUrl?: string;
+  /** Raw text content for inline preview (e.g. .md files uploaded by user) */
+  textContent?: string;
 }
 
 /** Parse MEDIA:<path-or-url> lines from assistant content, returning attachments and cleaned text */
