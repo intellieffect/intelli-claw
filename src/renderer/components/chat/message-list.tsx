@@ -1,10 +1,10 @@
-"use client";
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   User, Bot, Clock, X, Copy, Check, ArrowDown, Download,
   FileText, Music, Video, File, Image as ImageIcon,
   FileSpreadsheet, FileCode, FileArchive, FileAudio, FileVideo,
+  RefreshCw, History,
 } from "lucide-react";
 import { MarkdownRenderer, MarkdownFilePreview } from "./markdown-renderer";
 import { ToolCallCard } from "./tool-call-card";
@@ -115,12 +115,16 @@ export function MessageList({
   streaming,
   onCancelQueued,
   agentId,
+  onLoadPreviousContext,
+  onOpenTopicHistory,
 }: {
   messages: DisplayMessage[];
   loading: boolean;
   streaming: boolean;
   onCancelQueued?: (id: string) => void;
   agentId?: string;
+  onLoadPreviousContext?: () => void;
+  onOpenTopicHistory?: () => void;
 }) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -187,8 +191,17 @@ export function MessageList({
     <div ref={containerRef} onScroll={handleScroll} className="h-full overflow-y-auto overflow-x-hidden px-[3%] py-3 md:px-[5%] lg:px-[7%] md:py-4" style={{ WebkitOverflowScrolling: "touch" }}>
       <div className="mx-auto max-w-[1200px] space-y-3 md:space-y-4">
         {messages
-          .filter((msg) => msg.content || msg.toolCalls.length > 0 || msg.streaming || (msg.attachments && msg.attachments.length > 0))
+          .filter((msg) => msg.role === "session-boundary" || msg.content || msg.toolCalls.length > 0 || msg.streaming || (msg.attachments && msg.attachments.length > 0))
           .map((msg, idx, arr) => {
+            if (msg.role === "session-boundary") {
+              return (
+                <SessionBoundary
+                  key={msg.id}
+                  onLoadContext={onLoadPreviousContext}
+                  onViewHistory={onOpenTopicHistory}
+                />
+              );
+            }
             const prevRole = idx > 0 ? arr[idx - 1].role : null;
             const showAvatar = msg.role !== "assistant" || prevRole !== "assistant";
             return (
@@ -210,6 +223,47 @@ export function MessageList({
         <ArrowDown size={18} />
       </button>
     )}
+    </div>
+  );
+}
+
+function SessionBoundary({
+  onLoadContext,
+  onViewHistory,
+}: {
+  onLoadContext?: () => void;
+  onViewHistory?: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-3 py-3">
+      <div className="flex-1 border-t border-dashed border-amber-600/40" />
+      <div className="flex flex-col items-center gap-2">
+        <div className="flex items-center gap-1.5 text-[11px] font-medium text-amber-500/80">
+          <RefreshCw size={12} />
+          <span>세션 갱신됨 (컨텍스트 한도 도달)</span>
+        </div>
+        <div className="flex items-center gap-2">
+          {onLoadContext && (
+            <button
+              onClick={onLoadContext}
+              className="flex items-center gap-1 rounded-md border border-amber-600/30 bg-amber-900/20 px-2.5 py-1 text-[10px] text-amber-400 transition hover:bg-amber-900/40 hover:border-amber-500/50"
+            >
+              <RefreshCw size={10} />
+              이전 맥락 불러오기
+            </button>
+          )}
+          {onViewHistory && (
+            <button
+              onClick={onViewHistory}
+              className="flex items-center gap-1 rounded-md border border-zinc-600/30 bg-zinc-800/40 px-2.5 py-1 text-[10px] text-zinc-400 transition hover:bg-zinc-700/40 hover:text-zinc-300"
+            >
+              <History size={10} />
+              이전 세션 보기
+            </button>
+          )}
+        </div>
+      </div>
+      <div className="flex-1 border-t border-dashed border-amber-600/40" />
     </div>
   );
 }
