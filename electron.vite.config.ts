@@ -21,6 +21,10 @@ export default defineConfig({
     },
   },
   renderer: {
+    server: {
+      host: "0.0.0.0",
+      allowedHosts: ["bignos-mac-studio.tail7d5991.ts.net"],
+    },
     root: resolve(__dirname, "src/renderer"),
     build: {
       rollupOptions: {

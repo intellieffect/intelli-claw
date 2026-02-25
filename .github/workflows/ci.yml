@@ -19,6 +19,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
-      - run: pnpm exec tsc --noEmit
+      - run: pnpm exec tsc --noEmit -p tsconfig.web.json
+      - run: pnpm exec tsc --noEmit -p tsconfig.node.json
       - run: pnpm exec vitest run
       - run: pnpm build
