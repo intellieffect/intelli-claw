@@ -10,7 +10,7 @@
     "web:dev": "vite --config vite.config.web.ts",
     "web:build": "vite build --config vite.config.web.ts",
     "web:prod": "vite preview --config vite.config.web.ts",
-    "lint": "eslint ."
+    "lint": "eslint src/"
   },
   "dependencies": {
     "class-variance-authority": "^0.7.1",
