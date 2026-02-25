@@ -56,6 +56,23 @@ body {
   padding-top: env(safe-area-inset-top, 0px);
 }
 
+/* Electron: draggable title bar region */
+.electron-drag {
+  -webkit-app-region: drag;
+}
+.electron-drag button,
+.electron-drag a,
+.electron-drag input {
+  -webkit-app-region: no-drag;
+}
+
+/* Electron: top header padding for hidden title bar (traffic lights) */
+.electron-header-pad {
+  padding-top: 12px;
+  padding-bottom: 12px;
+  padding-left: 80px; /* room for macOS traffic lights */
+}
+
 .safe-left {
   padding-left: env(safe-area-inset-left, 0px);
 }
