@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Check } from "lucide-react";
 import type { Agent } from "@/lib/gateway/protocol";
+import { AgentAvatar } from "@/components/ui/agent-avatar";
 import { getAgentAvatar } from "@/lib/agent-avatars";
 import { cn } from "@/lib/utils";
 
@@ -34,13 +35,10 @@ export function AvatarAgentSelector({
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className={cn(
-          "flex size-8 shrink-0 items-center justify-center rounded-full text-base transition-all hover:scale-110 hover:ring-2 hover:ring-ring/30",
-          avatar.color
-        )}
+        className="shrink-0 transition-all hover:scale-110 hover:ring-2 hover:ring-ring/30 rounded-full"
         title={selectedId ? `${selectedId} · 클릭하여 변경` : "에이전트 선택"}
       >
-        {avatar.emoji}
+        <AgentAvatar agentId={selectedId} size={32} />
       </button>
 
       {open && (
@@ -56,14 +54,7 @@ export function AvatarAgentSelector({
                 }}
                 className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-foreground transition hover:bg-accent"
               >
-                <div
-                  className={cn(
-                    "flex size-6 shrink-0 items-center justify-center rounded-full text-xs",
-                    av.color
-                  )}
-                >
-                  {av.emoji}
-                </div>
+                <AgentAvatar agentId={agent.id} size={24} />
                 <span className="flex-1 truncate">{agent.name || agent.id}</span>
                 {selectedId === agent.id && (
                   <Check size={14} className="shrink-0 text-primary" />
