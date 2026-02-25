@@ -28,7 +28,7 @@
   },
   "build": {
     "appId": "com.openclaw.intelli-claw",
-    "productName": "intelli-claw",
+    "productName": "iClaw",
     "directories": {
       "output": "release"
     },
