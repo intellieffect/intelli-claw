@@ -464,7 +464,7 @@ export function useChat(sessionKey?: string) {
         { sessionKey, limit: 100 }
       );
       /** Internal system messages and empty agent replies to hide from UI */
-      const HIDDEN_PATTERNS = /^(NO_REPLY|HEARTBEAT_OK|NO_)\s*$|Pre-compaction memory flush|^Read HEARTBEAT\.md|reply with NO_REPLY|Store durable memories now/;
+      const HIDDEN_PATTERNS = /^(NO_REPLY|HEARTBEAT_OK|NO_)\s*$|Pre-compaction memory flush|^Read HEARTBEAT\.md|reply with NO_REPLY|Store durable memories now|\[System\] 이전 세션이 컨텍스트 한도로 갱신|\[이전 세션 맥락\]/;
       const isHiddenMessage = (role: string, text: string) => {
         if (role === "system") return true; // hide all system-role messages
         return HIDDEN_PATTERNS.test(text.trim());
@@ -984,37 +984,33 @@ export function useChat(sessionKey?: string) {
 
   // --- Session reset detection & context bridging ---
 
-  // Auto-context injection setting (persisted in localStorage)
-  const autoContextKey = "awf:auto-context-bridge";
-  const isAutoContextEnabled = useCallback(() => {
-    try { return localStorage.getItem(autoContextKey) !== "off"; } catch { return true; }
-  }, []);
-
-  /** Build a context summary from current messages */
+  /** Build a compact context summary from current messages.
+   *  Returns a short directive — not a dump of the full conversation. */
   const buildContextSummary = useCallback((): string | null => {
-    // Get last ~5 conversation turns (user+assistant pairs)
-    const relevant = messages.filter((m) => m.role === "user" || m.role === "assistant");
-    const lastTurns = relevant.slice(-10); // last 10 messages = ~5 turns
-    if (lastTurns.length === 0) return null;
+    // Find the last user message (the most relevant anchor)
+    const lastUser = [...messages].reverse().find((m) => m.role === "user" && m.content.trim());
+    if (!lastUser) return null;
 
-    const lines: string[] = [];
-    for (const m of lastTurns) {
-      const role = m.role === "user" ? "사용자" : "어시스턴트";
-      const text = m.content.slice(0, 200).replace(/\n/g, " ").trim();
-      if (text) lines.push(`- ${role}: ${text}`);
+    const userText = lastUser.content.slice(0, 150).replace(/\n/g, " ").trim();
+
+    // Find last assistant reply (brief excerpt)
+    const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant" && m.content.trim());
+    const assistantExcerpt = lastAssistant
+      ? lastAssistant.content.slice(0, 120).replace(/\n/g, " ").trim()
+      : null;
+
+    const lines = [
+      "[System] 이전 세션이 컨텍스트 한도로 갱신되었습니다.",
+      `마지막 요청: ${userText}`,
+    ];
+    if (assistantExcerpt) {
+      lines.push(`마지막 응답 요약: ${assistantExcerpt}…`);
     }
-    if (lines.length === 0) return null;
-
-    return [
-      "[이전 세션 맥락]",
-      "컨텍스트 한도 도달로 세션이 갱신되었습니다.",
-      "이전 대화에서 다룬 내용:",
-      ...lines,
-      "이전 대화를 이어서 진행해주세요.",
-    ].join("\n");
+    lines.push("위 맥락을 참고하여 대화를 이어주세요. 이 메시지에 대해 별도 답변하지 마세요.");
+    return lines.join("\n");
   }, [messages]);
 
-  /** Send context bridge to new session */
+  /** Send context bridge to new session (manual trigger) */
   const sendContextBridge = useCallback(async () => {
     if (!client || state !== "connected" || !sessionKey) return;
     const summary = buildContextSummary();
@@ -1032,7 +1028,7 @@ export function useChat(sessionKey?: string) {
     }
   }, [client, state, sessionKey, buildContextSummary]);
 
-  // Listen for session reset events
+  // Listen for session reset events — boundary marker only, NO auto-send
   useEffect(() => {
     const unsub = onSessionReset((event) => {
       if (event.key !== sessionKeyRef.current) return;
@@ -1050,15 +1046,9 @@ export function useChat(sessionKey?: string) {
         newSessionId: event.newSessionId,
       };
       setMessages((prev) => [...prev, boundaryMsg]);
-
-      // Auto-inject context if enabled
-      if (isAutoContextEnabled()) {
-        // Small delay to let the new session initialize
-        setTimeout(() => sendContextBridge(), 1500);
-      }
     });
     return unsub;
-  }, [isAutoContextEnabled, sendContextBridge]);
+  }, []);
 
   return {
     messages,
