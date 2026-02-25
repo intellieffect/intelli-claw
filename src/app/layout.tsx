@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { GeistSans } from "geist/font/sans";
 import { GatewayProvider } from "@/lib/gateway/hooks";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import "@/styles/globals.css";
@@ -29,7 +30,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="ko" className="dark">
+    <html lang="ko" className={`dark ${GeistSans.variable}`}>
       <head>
         <link rel="apple-touch-icon" href="/icon-192.png" />
       </head>
