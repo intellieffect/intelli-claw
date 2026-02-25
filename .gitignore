@@ -16,8 +16,10 @@ next-env.d.ts
 *.log
 firebase-debug.log
 public/agents/
-.serena/
 public/agents/*.jpg
+public/logo.svg
+public/logo-concept-*.png
+.serena/
 
 # local dev
 .mcp.json
