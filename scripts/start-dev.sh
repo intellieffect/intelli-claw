@@ -1,14 +1,21 @@
 #!/bin/bash
-# intelli-clawd Dev Server — port 4000
+# intelli-claw Dev Server — Vite + API server on port 4000/4001
 cd "$(dirname "$0")/.."
-pkill -f "next dev.*4000" 2>/dev/null
+
+# Kill any existing dev servers
+pkill -f "vite.*4000" 2>/dev/null
+pkill -f "api-server" 2>/dev/null
 sleep 1
-rm -rf .next
-nohup pnpm dev --port 4000 --hostname 0.0.0.0 \
-  --experimental-https \
-  --experimental-https-key certificates/localhost-key.pem \
-  --experimental-https-cert certificates/localhost.pem \
-  > /tmp/intelli-clawd-dev.log 2>&1 &
-echo "Dev server starting on :4000 (log: /tmp/intelli-clawd-dev.log)"
+
+# Start API server in background
+nohup npx tsx src/server/api-server.ts \
+  > /tmp/intelli-claw-api.log 2>&1 &
+echo "API server starting on :4001 (log: /tmp/intelli-claw-api.log)"
+
+# Start Vite dev server
+nohup pnpm dev \
+  > /tmp/intelli-claw-dev.log 2>&1 &
+echo "Dev server starting on :4000 (log: /tmp/intelli-claw-dev.log)"
+
 sleep 3
-tail -3 /tmp/intelli-clawd-dev.log
+tail -3 /tmp/intelli-claw-dev.log

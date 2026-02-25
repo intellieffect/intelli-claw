@@ -1,7 +1,7 @@
-"use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import { Paperclip, X, FileText, Image as ImageIcon, File, Video } from "lucide-react";
+import { extractPdf, extractPdfPreview } from "@/lib/utils/pdf";
 
 export interface ChatAttachment {
   id: string;
@@ -53,30 +53,32 @@ function videoThumbnail(file: File): Promise<string | undefined> {
   });
 }
 
-function fileToAttachment(file: File): Promise<ChatAttachment> {
-  return new Promise(async (resolve) => {
-    const id = `att-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const isImage = file.type.startsWith("image/");
-    const isVideo = file.type.startsWith("video/");
+function isPdf(file: File): boolean {
+  return file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+}
 
-    if (isImage) {
+async function fileToAttachment(file: File): Promise<ChatAttachment> {
+  const id = `att-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+  if (file.type.startsWith("image/")) {
+    return new Promise((resolve) => {
       const reader = new FileReader();
-      reader.onload = () => {
-        resolve({
-          id,
-          file,
-          preview: reader.result as string,
-          type: "image",
-        });
-      };
+      reader.onload = () => resolve({ id, file, preview: reader.result as string, type: "image" });
       reader.readAsDataURL(file);
-    } else if (isVideo) {
-      const thumbnail = await videoThumbnail(file);
-      resolve({ id, file, preview: thumbnail, type: "video" });
-    } else {
-      resolve({ id, file, type: "file" });
-    }
-  });
+    });
+  }
+
+  if (file.type.startsWith("video/")) {
+    const thumbnail = await videoThumbnail(file);
+    return { id, file, preview: thumbnail, type: "video" };
+  }
+
+  if (isPdf(file)) {
+    const preview = await extractPdfPreview(file).catch(() => undefined);
+    return { id, file, preview, type: "file" };
+  }
+
+  return { id, file, type: "file" };
 }
 
 /** Read text content from a file for inline preview (e.g. .md files) */
@@ -110,7 +112,7 @@ export function AttachmentPreview({
           key={att.id}
           className="group relative flex items-center gap-2 rounded-lg border border-border bg-muted p-2 text-xs text-foreground"
         >
-          {(att.type === "image" || att.type === "video") && att.preview ? (
+          {att.preview ? (
             <div className="relative h-10 w-10 md:h-12 md:w-12">
               <img
                 src={att.preview}
@@ -361,21 +363,60 @@ function fileToBase64(file: File): Promise<string> {
 /** Max image base64 for compression target (5 MB — keeps images reasonable). */
 const IMAGE_COMPRESS_TARGET = 5_000_000;
 
+type AttachmentPayload = { fileName: string; mimeType: string; content: string };
+
+export interface AttachmentPayloadResult {
+  /** Text to prepend to the user message (e.g. extracted PDF text) */
+  prependText?: string;
+  /** Attachment payloads (images) to send via gateway */
+  payloads: AttachmentPayload[];
+}
+
 /**
- * Convert a ChatAttachment to a payload for sending via gateway chat.send.
- * Images are compressed for efficiency. Videos and other files are sent as-is.
+ * Convert a ChatAttachment to payloads for sending via gateway chat.send.
+ *
+ * - **PDF**: extracts text (prepended to message) + renders pages as images.
+ *   The Gateway only accepts image attachments, so raw PDF bytes are useless.
+ * - **Images**: compressed for efficiency.
+ * - **Other files**: sent as base64.
  */
 export async function attachmentToPayload(
-  att: ChatAttachment
-): Promise<{ fileName: string; mimeType: string; content: string }> {
-  // Images: compress to a reasonable size
+  att: ChatAttachment,
+): Promise<AttachmentPayloadResult> {
+  // --- PDF: text extraction + page images ---
+  if (isPdf(att.file)) {
+    try {
+      const extraction = await extractPdf(att.file);
+
+      const prependText = extraction.text.trim()
+        ? `📄 [PDF: ${att.file.name} — ${extraction.totalPages} pages]\n${extraction.text}`
+        : undefined;
+
+      const payloads: AttachmentPayload[] = extraction.images.map((img) => ({
+        fileName: `${att.file.name}-page-${img.page}.jpg`,
+        mimeType: img.mimeType,
+        content: img.base64,
+      }));
+
+      return { prependText, payloads };
+    } catch (err) {
+      console.warn("[PDF] extraction failed, sending raw:", err);
+      return { payloads: [await rawPayload(att)] };
+    }
+  }
+
+  // --- Images: compress ---
   if (att.type === "image") {
     const target = Math.min(MAX_BASE64_BYTES, IMAGE_COMPRESS_TARGET);
     const { base64, mimeType } = await compressImage(att.file, target);
-    return { fileName: att.file.name, mimeType, content: base64 };
+    return { payloads: [{ fileName: att.file.name, mimeType, content: base64 }] };
   }
 
-  // Videos & other files: read as base64 directly
+  // --- Other files: as-is ---
+  return { payloads: [await rawPayload(att)] };
+}
+
+async function rawPayload(att: ChatAttachment): Promise<AttachmentPayload> {
   const base64 = await fileToBase64(att.file);
   if (base64.length > MAX_BASE64_BYTES) {
     throw new Error(`파일이 너무 큽니다 (${formatSize(att.file.size)}). 최대 약 75MB까지 지원됩니다.`);

@@ -1,4 +1,3 @@
-"use client";
 
 import { useState } from "react";
 import { getAgentAvatar } from "@/lib/agent-avatars";

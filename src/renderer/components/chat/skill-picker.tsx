@@ -1,4 +1,3 @@
-"use client";
 
 import { useState, useEffect, useRef, useMemo } from "react";
 import { Puzzle, ExternalLink, Terminal } from "lucide-react";

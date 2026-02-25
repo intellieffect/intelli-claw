@@ -1,24 +1,22 @@
-import nextVitals from "eslint-config-next/core-web-vitals";
+import tseslint from "typescript-eslint";
+import reactHooks from "eslint-plugin-react-hooks";
+import reactRefresh from "eslint-plugin-react-refresh";
 
 const config = [
   {
-    ignores: [
-      "**/.next/**",
-      "**/.next-prod/**",
-      "**/node_modules/**",
-      "firebase-debug.log",
-    ],
+    ignores: ["**/dist/**", "**/out/**", "**/release/**", "**/node_modules/**"],
   },
-  ...nextVitals,
+  ...tseslint.configs.recommended,
   {
+    plugins: {
+      "react-hooks": reactHooks,
+      "react-refresh": reactRefresh,
+    },
     rules: {
-      // Too strict for current stage; re-enable gradually
-      "react-hooks/set-state-in-effect": "off",
-      "react-hooks/purity": "off",
-      "react-hooks/refs": "off",
-      "react-hooks/immutability": "off",
-      "react-hooks/exhaustive-deps": "warn",
-      "@next/next/no-img-element": "off",
+      ...reactHooks.configs.recommended.rules,
+      "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
+      "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_" }],
+      "@typescript-eslint/no-explicit-any": "off",
     },
   },
 ];
