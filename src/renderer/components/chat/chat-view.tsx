@@ -1,18 +1,19 @@
-"use client";
 
 import { useEffect, useState } from "react";
 import { useGateway } from "@/lib/gateway/hooks";
 import { useIsMobile } from "@/lib/hooks/use-mobile";
 import { ConnectionStatus } from "./connection-status";
+import { ConnectionSettings } from "@/components/settings/connection-settings";
 import { SplitView } from "./split-view";
 import { ShortcutHelpDialog } from "./shortcut-help-dialog";
 import { isShortcutHelp, matchesShortcutId } from "@/lib/shortcuts";
 import { Plus, Keyboard, Menu } from "lucide-react";
 
 export function ChatView() {
-  const { state } = useGateway();
+  const { state, error } = useGateway();
   const isMobile = useIsMobile();
   const [shortcutOpen, setShortcutOpen] = useState(false);
+  const [connectionOpen, setConnectionOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -41,7 +42,7 @@ export function ChatView() {
 
   return (
     <div className="flex h-dvh flex-col bg-background overflow-x-hidden max-w-[100vw]">
-      <header className="safe-top relative z-20 flex items-center justify-between border-b border-border bg-background/80 px-3 py-1.5 md:px-4 md:py-2.5 backdrop-blur-sm">
+      <header className="safe-top relative z-20 flex items-center justify-between border-b border-border bg-background/80 px-3 py-1.5 md:px-4 md:py-2.5 backdrop-blur-sm electron-drag electron-header-pad">
         <div className="flex items-center gap-2 md:gap-3">
           {isMobile && (
             <button
@@ -59,7 +60,7 @@ export function ChatView() {
         </div>
 
         <div className="flex items-center gap-1.5 md:gap-3">
-          <ConnectionStatus state={state} />
+          <ConnectionStatus state={state} error={error} onClick={() => setConnectionOpen(true)} />
           {!isMobile && (
             <button
               onClick={() => setShortcutOpen(true)}
@@ -88,6 +89,7 @@ export function ChatView() {
       </div>
 
       <ShortcutHelpDialog open={shortcutOpen} onClose={() => setShortcutOpen(false)} />
+      <ConnectionSettings open={connectionOpen} onClose={() => setConnectionOpen(false)} />
     </div>
   );
 }
