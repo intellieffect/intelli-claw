@@ -3,7 +3,7 @@ import { signChallenge } from "./device-identity";
 
 export type ConnectionState = "disconnected" | "connecting" | "authenticating" | "connected";
 type EventHandler = (event: EventFrame) => void;
-type StateHandler = (state: ConnectionState) => void;
+type StateHandler = (state: ConnectionState, error?: ErrorShape | null) => void;
 type PendingReq = {
   resolve: (payload: unknown) => void;
   reject: (error: Error) => void;
@@ -29,6 +29,7 @@ export class GatewayClient {
   public mainSessionKey = "";
   public serverVersion = "";
   public serverCommit = "";
+  public lastError: ErrorShape | null = null;
 
   constructor(url: string, token: string) {
     this.url = url;
@@ -40,6 +41,7 @@ export class GatewayClient {
   connect(): void {
     if (this.ws && this.state !== "disconnected") return;
     this.intentionalClose = false;
+    this.lastError = null;
     this.setState("connecting");
 
     try {
@@ -100,6 +102,10 @@ export class GatewayClient {
     return this.state;
   }
 
+  getUrl(): string {
+    return this.url;
+  }
+
   // --- Private ---
 
   private send(frame: Frame): void {
@@ -108,10 +114,11 @@ export class GatewayClient {
     }
   }
 
-  private setState(state: ConnectionState): void {
-    if (this.state === state) return;
+  private setState(state: ConnectionState, error?: ErrorShape | null): void {
+    if (this.state === state && error === undefined) return;
     this.state = state;
-    this.stateHandlers.forEach((h) => h(state));
+    if (error !== undefined) this.lastError = error;
+    this.stateHandlers.forEach((h) => h(state, this.lastError));
   }
 
   private handleOpen(): void {
@@ -119,6 +126,7 @@ export class GatewayClient {
     this.clearAuthTimer();
     this.authTimer = setTimeout(() => {
       console.warn("[AWF] Auth timeout – closing and reconnecting");
+      this.lastError = { code: "auth_timeout", message: "Authentication timed out" };
       this.ws?.close();
     }, AUTH_TIMEOUT);
   }
@@ -146,6 +154,7 @@ export class GatewayClient {
       let device: DeviceIdentity | undefined;
       try {
         device = await signChallenge(nonce);
+        console.log("[AWF] Device identity:", device.id);
       } catch (err) {
         console.warn("[AWF] device identity unavailable, connecting without it:", err);
       }
@@ -175,6 +184,17 @@ export class GatewayClient {
   }
 
   private handleResponse(frame: ResFrame): void {
+    // Log auth failures (connect frame is sent via send(), not request(), so it's not in pending)
+    if (!frame.ok) {
+      const errObj = frame.error as ErrorShape | undefined;
+      console.error("[AWF] Server error:", errObj?.code, errObj?.message, frame.error);
+      // Save connect-level errors for UI display
+      if (errObj) {
+        this.lastError = errObj;
+        this.stateHandlers.forEach((h) => h(this.state, this.lastError));
+      }
+    }
+
     // Check if this is the connect response (hello-ok)
     const payload = frame.payload as Record<string, unknown> | undefined;
     if (frame.ok && payload?.type === "hello-ok") {
@@ -187,6 +207,7 @@ export class GatewayClient {
       this.serverCommit = (server?.commit as string) || "";
       console.log("[AWF] hello-ok: mainSessionKey=", this.mainSessionKey, "version=", this.serverVersion, "commit=", this.serverCommit);
       this.reconnectAttempt = 0;
+      this.lastError = null;
       this.setState("connected");
     }
 
@@ -210,6 +231,7 @@ export class GatewayClient {
     this.clearAuthTimer();
     this.ws = null;
     this.rejectAll("Connection closed");
+    // Keep lastError from previous handleResponse if it exists
     this.setState("disconnected");
 
     if (!this.intentionalClose) {

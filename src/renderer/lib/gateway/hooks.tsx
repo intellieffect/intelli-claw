@@ -1,4 +1,3 @@
-"use client";
 
 import {
   createContext,
@@ -11,8 +10,10 @@ import {
 } from "react";
 import { GatewayClient, type ConnectionState } from "./client";
 import { getMimeType } from "@/lib/mime-types";
+import { platform } from "@/lib/platform";
 import type {
   EventFrame,
+  ErrorShape,
   AgentEvent,
   Agent,
   Session,
@@ -20,33 +21,66 @@ import type {
   ToolCall,
 } from "./protocol";
 
+// --- Gateway Config ---
+
+export const GATEWAY_CONFIG_STORAGE_KEY = "awf:gateway-config";
+export const DEFAULT_GATEWAY_URL = "ws://127.0.0.1:18789";
+
+export interface GatewayConfig {
+  url: string;
+  token: string;
+}
+
+export function loadGatewayConfig(): GatewayConfig {
+  try {
+    const saved = localStorage.getItem(GATEWAY_CONFIG_STORAGE_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved) as Partial<GatewayConfig>;
+      if (parsed.url && parsed.token) return parsed as GatewayConfig;
+    }
+  } catch { /* ignore */ }
+  return {
+    url: import.meta.env.VITE_GATEWAY_URL || DEFAULT_GATEWAY_URL,
+    token: import.meta.env.VITE_GATEWAY_TOKEN || "",
+  };
+}
+
+function saveConfig(config: GatewayConfig): void {
+  localStorage.setItem(GATEWAY_CONFIG_STORAGE_KEY, JSON.stringify(config));
+}
+
 // --- Gateway Context ---
 
 interface GatewayContextValue {
   client: GatewayClient | null;
   state: ConnectionState;
+  error: ErrorShape | null;
+  updateConfig: (url: string, token: string) => void;
 }
 
 const GatewayContext = createContext<GatewayContextValue>({
   client: null,
   state: "disconnected",
+  error: null,
+  updateConfig: () => {},
 });
 
 export function GatewayProvider({ children }: { children: ReactNode }) {
   const [client, setClient] = useState<GatewayClient | null>(null);
   const [state, setState] = useState<ConnectionState>("disconnected");
+  const [error, setError] = useState<ErrorShape | null>(null);
+  const configRef = useRef<GatewayConfig>(loadGatewayConfig());
 
-  useEffect(() => {
-    const url = process.env.NEXT_PUBLIC_GATEWAY_URL || "ws://127.0.0.1:18789";
-    const token = process.env.NEXT_PUBLIC_GATEWAY_TOKEN || "";
-    console.log("[AWF] Connecting to gateway:", url, "token:", token ? "✓" : "✗");
-
-    const c = new GatewayClient(url, token);
+  const createAndConnect = useCallback((config: GatewayConfig) => {
+    console.log("[AWF] Connecting to gateway:", config.url, "token:", config.token ? "\u2713" : "\u2717", "origin:", window.location.origin);
+    const c = new GatewayClient(config.url, config.token);
     setClient(c);
+    setError(null);
 
-    const unsub = c.onStateChange((s) => {
-      console.log("[AWF] Gateway state:", s);
+    const unsub = c.onStateChange((s, err) => {
+      console.log("[AWF] Gateway state:", s, err ? `error: ${err.code}` : "");
       setState(s);
+      setError(err ?? null);
     });
     c.connect();
 
@@ -56,8 +90,24 @@ export function GatewayProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  const cleanupRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    cleanupRef.current = createAndConnect(configRef.current);
+    return () => cleanupRef.current?.();
+  }, [createAndConnect]);
+
+  const updateConfig = useCallback((url: string, token: string) => {
+    const newConfig = { url, token };
+    configRef.current = newConfig;
+    saveConfig(newConfig);
+    // Disconnect existing and reconnect
+    cleanupRef.current?.();
+    cleanupRef.current = createAndConnect(newConfig);
+  }, [createAndConnect]);
+
   return (
-    <GatewayContext.Provider value={{ client, state }}>
+    <GatewayContext.Provider value={{ client, state, error, updateConfig }}>
       {children}
     </GatewayContext.Provider>
   );
@@ -65,7 +115,13 @@ export function GatewayProvider({ children }: { children: ReactNode }) {
 
 export function useGateway() {
   const ctx = useContext(GatewayContext);
-  return { ...ctx, mainSessionKey: ctx.client?.mainSessionKey || "" };
+  return {
+    ...ctx,
+    mainSessionKey: ctx.client?.mainSessionKey || "",
+    serverVersion: ctx.client?.serverVersion || "",
+    serverCommit: ctx.client?.serverCommit || "",
+    gatewayUrl: ctx.client?.getUrl() || "",
+  };
 }
 
 // --- useAgents ---
@@ -214,7 +270,7 @@ function extractMediaAttachments(text: string): { cleanedText: string; attachmen
     const mimeType = getMimeType(ext);
     const isImage = mimeType.startsWith("image/");
     const isHttp = raw.startsWith("http://") || raw.startsWith("https://") || raw.startsWith("data:");
-    const downloadUrl = isHttp ? raw : `/api/media?path=${encodeURIComponent(raw)}`;
+    const downloadUrl = isHttp ? raw : platform.mediaUrl(raw);
     attachments.push({
       fileName,
       mimeType,
