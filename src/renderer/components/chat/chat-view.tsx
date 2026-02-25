@@ -42,8 +42,9 @@ export function ChatView() {
 
   return (
     <div className="flex h-dvh flex-col bg-background overflow-x-hidden max-w-[100vw]">
-      <header className="safe-top relative z-20 flex items-center justify-between border-b border-border bg-background/80 px-3 py-1.5 md:px-4 md:py-2.5 backdrop-blur-sm electron-drag electron-header-pad">
-        <div className="flex items-center gap-2 md:gap-3">
+      <header className="safe-top relative z-20 flex items-center border-b border-border bg-background/80 px-3 py-1.5 md:px-4 md:py-2.5 backdrop-blur-sm electron-drag electron-header-pad">
+        {/* 좌측 */}
+        <div className="flex flex-1 items-center gap-2 md:gap-3">
           {isMobile && (
             <button
               onClick={() => (window as any).__awfMobileSessionToggle?.()}
@@ -53,13 +54,16 @@ export function ChatView() {
               <Menu size={18} />
             </button>
           )}
-          <div className="flex items-center gap-1.5 md:gap-2 leading-none">
-            <img src="/logo.svg" alt="intelli-claw" className="h-5 w-5 md:h-6 md:w-6 shrink-0" />
-            {!isMobile && <span className="text-sm font-semibold text-foreground translate-y-[0.5px]">intelli-claw</span>}
-          </div>
         </div>
 
-        <div className="flex items-center gap-1.5 md:gap-3">
+        {/* 중앙: 로고 + 텍스트 */}
+        <div className="flex items-center gap-1.5 md:gap-2 leading-none">
+          <img src="/logo.svg" alt="intelli-claw" className="h-5 w-5 md:h-6 md:w-6 shrink-0" />
+          {!isMobile && <span className="text-sm font-semibold text-foreground translate-y-[0.5px]">intelli-claw</span>}
+        </div>
+
+        {/* 우측 */}
+        <div className="flex flex-1 items-center justify-end gap-1.5 md:gap-3">
           <ConnectionStatus state={state} error={error} onClick={() => setConnectionOpen(true)} />
           {!isMobile && (
             <button
