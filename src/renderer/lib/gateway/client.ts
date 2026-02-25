@@ -152,11 +152,17 @@ export class GatewayClient {
       const nonce = payload?.nonce || "";
 
       let device: DeviceIdentity | undefined;
-      try {
-        device = await signChallenge(nonce);
-        console.log("[AWF] Device identity:", device.id);
-      } catch (err) {
-        console.warn("[AWF] device identity unavailable, connecting without it:", err);
+      // Skip device identity in Electron (allowInsecureAuth handles auth)
+      const isElectron = typeof window !== "undefined" && "electron" in window;
+      if (!isElectron) {
+        try {
+          device = await signChallenge(nonce);
+          console.log("[AWF] Device identity:", device.id);
+        } catch (err) {
+          console.warn("[AWF] device identity unavailable, connecting without it:", err);
+        }
+      } else {
+        console.log("[AWF] Electron mode — skipping device identity");
       }
 
       // Respond with Protocol v3 connect handshake

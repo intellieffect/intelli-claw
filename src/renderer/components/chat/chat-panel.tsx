@@ -38,13 +38,13 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
   const storagePrefix = `awf:panel:${panelId}:`;
 
   const [sessionKey, setSessionKeyRaw] = useState<string | undefined>(undefined);
-  const [agentId, setAgentId] = useState<string>(process.env.NEXT_PUBLIC_DEFAULT_AGENT || "default");
+  const [agentId, setAgentId] = useState<string>(import.meta.env.VITE_DEFAULT_AGENT || "default");
 
   // Load persisted panel state on mount (client only)
   useEffect(() => {
     if (typeof window === "undefined") return;
     const savedSession = localStorage.getItem(`${storagePrefix}sessionKey`) || undefined;
-    const savedAgent = localStorage.getItem(`${storagePrefix}agentId`) || process.env.NEXT_PUBLIC_DEFAULT_AGENT || "default";
+    const savedAgent = localStorage.getItem(`${storagePrefix}agentId`) || import.meta.env.VITE_DEFAULT_AGENT || "default";
     setSessionKeyRaw(savedSession);
     setAgentId(savedAgent);
   }, [storagePrefix]);
@@ -385,7 +385,7 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
   );
 
   const handleAgentChange = (id: string | undefined) => {
-    const newId = id || process.env.NEXT_PUBLIC_DEFAULT_AGENT || "default";
+    const newId = id || import.meta.env.VITE_DEFAULT_AGENT || "default";
     setAgentId(newId);
     if (typeof window !== "undefined") {
       localStorage.setItem(`${storagePrefix}agentId`, newId);
