@@ -12,6 +12,7 @@ import type { DisplayMessage, DisplayAttachment } from "@/lib/gateway/hooks";
 import { AgentAvatar } from "@/components/ui/agent-avatar";
 
 import { blobDownload, forceDownloadUrl } from "@/lib/utils/download";
+import { formatTime } from "@/lib/utils/format-time";
 
 /** Get file extension from filename */
 function getExt(name: string): string {
@@ -270,22 +271,6 @@ function CopyButton({ text }: { text: string }) {
       {copied ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
     </button>
   );
-}
-
-/** Format timestamp to HH:MM (today) or MM/DD HH:MM (other days), KST */
-function formatTime(ts?: string): string | null {
-  if (!ts) return null;
-  try {
-    const d = new Date(ts);
-    if (isNaN(d.getTime())) return null;
-    const tz = { timeZone: "Asia/Seoul" as const };
-    const time = d.toLocaleTimeString("ko-KR", { ...tz, hour: "2-digit", minute: "2-digit", hour12: false });
-    const kstDate = d.toLocaleDateString("fr-CA", { ...tz, year: "numeric", month: "2-digit", day: "2-digit" }); // YYYY-MM-DD
-    const kstToday = new Date().toLocaleDateString("fr-CA", { ...tz, year: "numeric", month: "2-digit", day: "2-digit" });
-    if (kstDate === kstToday) return time;
-    const short = d.toLocaleDateString("ko-KR", { ...tz, month: "2-digit", day: "2-digit" });
-    return `${short} ${time}`;
-  } catch { return null; }
 }
 
 function MessageBubble({ message, showAvatar = true, onCancel, agentId }: { message: DisplayMessage; showAvatar?: boolean; onCancel?: (id: string) => void; agentId?: string }) {
