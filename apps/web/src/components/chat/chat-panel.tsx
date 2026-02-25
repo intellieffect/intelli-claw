@@ -56,6 +56,16 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
       if (key) localStorage.setItem(`${storagePrefix}sessionKey`, key);
       else localStorage.removeItem(`${storagePrefix}sessionKey`);
     }
+    // Sync agentId from session key
+    if (key) {
+      const parsed = parseSessionKey(key);
+      if (parsed.agentId && parsed.agentId !== "unknown") {
+        setAgentId(parsed.agentId);
+        if (typeof window !== "undefined") {
+          localStorage.setItem(`${storagePrefix}agentId`, parsed.agentId);
+        }
+      }
+    }
   }, [storagePrefix]);
 
   const effectiveSessionKey =
@@ -125,18 +135,6 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
 
     // Tab/Shift+Tab: capture phase to intercept before browser focus navigation
     function handleTab(e: KeyboardEvent) {
-      if (e.key === "Tab") {
-        console.log("[TAB-DEBUG]", {
-          isActive,
-          agentId,
-          agentSessions: agentSessions.length,
-          totalSessions: (sessions as any[]).length,
-          allKeys: (sessions as any[]).map((s: any) => s.key),
-          effectiveSessionKey,
-          filtered: agentSessions.map(s => s.key),
-          inPanel: !!(e.target as HTMLElement).closest("[data-chat-panel]"),
-        });
-      }
       if (!isActive) return;
       if (!(matchesShortcutId(e, "next-session") || matchesShortcutId(e, "prev-session"))) return;
       if (agentSessions.length <= 1) return;

@@ -1,0 +1,43 @@
+{
+  "name": "@intelli-claw/mobile",
+  "version": "0.1.0",
+  "private": true,
+  "main": "expo-router/entry",
+  "scripts": {
+    "dev": "expo start",
+    "build": "echo 'mobile: use EAS Build for native builds'",
+    "lint": "expo lint",
+    "typecheck": "tsc --noEmit",
+    "native:prebuild": "expo prebuild",
+    "ios": "expo run:ios",
+    "android": "expo run:android"
+  },
+  "dependencies": {
+    "@expo/vector-icons": "^14.0.0",
+    "@intelli-claw/shared": "workspace:*",
+    "@noble/curves": "^1.8.0",
+    "@noble/hashes": "^1.7.0",
+    "expo": "~53.0.0",
+    "expo-constants": "~17.1.8",
+    "expo-crypto": "~14.1.5",
+    "expo-font": "~13.3.2",
+    "expo-linking": "~7.1.7",
+    "expo-router": "~5.1.11",
+    "expo-secure-store": "~14.2.4",
+    "expo-status-bar": "~2.2.3",
+    "expo-system-ui": "~5.0.11",
+    "nativewind": "^4.1.0",
+    "react": "19.0.0",
+    "react-native": "0.79.6",
+    "react-native-mmkv": "^3.2.0",
+    "react-native-reanimated": "~3.17.0",
+    "react-native-safe-area-context": "~5.4.0",
+    "react-native-screens": "~4.11.1",
+    "react-native-web": "~0.20.0"
+  },
+  "devDependencies": {
+    "@types/react": "~19.0.0",
+    "tailwindcss": "^3.4.17",
+    "typescript": "~5.7.0"
+  }
+}

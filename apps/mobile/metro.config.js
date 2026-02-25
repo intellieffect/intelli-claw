@@ -1,0 +1,9 @@
+// Learn more: https://docs.expo.dev/guides/monorepos/
+// SDK 52+ auto-configures Metro for monorepos — no manual watchFolders needed.
+
+const { getDefaultConfig } = require("expo/metro-config");
+const { withNativeWind } = require("nativewind/metro");
+
+const config = getDefaultConfig(__dirname);
+
+module.exports = withNativeWind(config, { input: "./global.css" });

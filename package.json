@@ -12,7 +12,8 @@
     "package": "pnpm --filter @intelli-claw/desktop package",
     "lint": "turbo run lint",
     "test": "turbo run test",
-    "dev:server": "pnpm --filter @intelli-claw/server dev"
+    "dev:server": "pnpm --filter @intelli-claw/server dev",
+    "dev:mobile": "pnpm --filter @intelli-claw/mobile dev"
   },
   "devDependencies": {
     "turbo": "^2.5.0"
@@ -20,7 +21,8 @@
   "pnpm": {
     "onlyBuiltDependencies": [
       "electron",
-      "esbuild"
+      "esbuild",
+      "react-native-mmkv"
     ]
   }
 }

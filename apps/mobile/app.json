@@ -1,0 +1,32 @@
+{
+  "expo": {
+    "name": "intelli-claw",
+    "slug": "intelli-claw",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "intelli-claw",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.intelliclaw.mobile"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.intelliclaw.mobile"
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
