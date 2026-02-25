@@ -1,4 +1,3 @@
-"use client";
 
 import { useState, useEffect, useCallback } from "react";
 import { Bot, Plus, Pencil, Trash2, Save, X, ChevronRight } from "lucide-react";
