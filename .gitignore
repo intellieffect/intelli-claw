@@ -13,6 +13,9 @@ release/
 .env.*.local
 !.env.example
 
+# turbo
+.turbo/
+
 # logs
 *.log
 firebase-debug.log

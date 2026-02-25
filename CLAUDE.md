@@ -1,9 +1,10 @@
 # intelli-claw
 
-OpenClaw Gateway 기반 AI 에이전트 채팅 클라이언트 (Vite + Electron)
+OpenClaw Gateway 기반 AI 에이전트 채팅 클라이언트 — pnpm 모노레포
 
 ## Tech Stack
 
+- **Monorepo**: pnpm workspaces + Turborepo
 - **Framework**: Vite + React 19 (SPA) + Electron (데스크톱)
 - **Language**: TypeScript (strict)
 - **Styling**: Tailwind CSS v4 + shadcn/ui (new-york style)
@@ -16,32 +17,38 @@ OpenClaw Gateway 기반 AI 에이전트 채팅 클라이언트 (Vite + Electron)
 ## Project Structure
 
 ```
-src/
-├── main/                   # Electron main process
-│   ├── index.ts            # BrowserWindow, 프로토콜 등록
-│   ├── ipc-handlers.ts     # IPC 핸들러 등록
-│   ├── media-handler.ts    # 파일 서빙 로직
-│   └── showcase-handler.ts # 쇼케이스 서빙 로직
-├── preload/                # Electron preload (contextBridge)
-│   └── index.ts
-├── server/                 # 웹 전용 API 서버
-│   └── api-server.ts       # 독립 실행 가능한 HTTP 서버
-├── renderer/               # React SPA (렌더러)
-│   ├── main.tsx            # React 엔트리포인트
-│   ├── App.tsx             # 루트 컴포넌트
-│   ├── env.d.ts            # Vite 환경변수 타입
-│   ├── components/
-│   │   ├── chat/           # 채팅 UI
-│   │   ├── settings/       # 설정 패널
-│   │   ├── showcase/       # 쇼케이스
-│   │   └── ui/             # 공통 UI (shadcn 기반)
-│   ├── lib/
-│   │   ├── gateway/        # WebSocket 클라이언트, 프로토콜, hooks
-│   │   ├── platform/       # 플랫폼 추상화 (web/electron)
-│   │   ├── hooks/          # 공통 React hooks
-│   │   └── utils.ts        # cn() 등 유틸리티
-│   └── styles/             # globals.css (Tailwind)
-└── __tests__/              # Vitest 테스트
+packages/
+└── shared/                     # @intelli-claw/shared — 공유 코드
+    └── src/
+        ├── gateway/            # 프로토콜, 클라이언트, device-identity
+        ├── hooks/              # GatewayProvider, useGateway, useCron 등
+        ├── adapters/           # CryptoAdapter, StorageAdapter, PlatformAPI 인터페이스
+        ├── utils/              # cn() 등 유틸리티
+        └── index.ts            # Barrel export
+
+apps/
+├── web/                        # @intelli-claw/web — 웹 SPA
+│   ├── src/
+│   │   ├── main.tsx            # React 엔트리포인트
+│   │   ├── App.tsx             # 루트 컴포넌트
+│   │   ├── adapters/           # WebCryptoAdapter, LocalStorageAdapter
+│   │   ├── components/         # chat/, settings/, showcase/, ui/ (shadcn)
+│   │   ├── lib/
+│   │   │   ├── gateway/        # Re-export shims + web-specific hooks (hooks.tsx)
+│   │   │   ├── platform/       # 플랫폼 추상화 (web/electron)
+│   │   │   └── hooks/          # 웹 전용 hooks
+│   │   ├── styles/             # globals.css (Tailwind)
+│   │   └── __tests__/          # Vitest 테스트
+│   ├── vite.config.ts
+│   └── vitest.config.ts
+├── desktop/                    # @intelli-claw/desktop — Electron 앱
+│   ├── src/
+│   │   ├── main/               # BrowserWindow, IPC, 프로토콜
+│   │   └── preload/            # contextBridge
+│   └── electron.vite.config.ts
+└── server/                     # @intelli-claw/server — 웹 API 서버
+    └── src/
+        └── api-server.ts
 ```
 
 ## Commands
@@ -56,7 +63,7 @@ pnpm dev:electron
 # 프로덕션 빌드 + 서버 (port 4100)
 scripts/start-prod.sh
 
-# 웹 빌드만
+# 전체 빌드 (turbo)
 pnpm build
 
 # Electron 빌드
@@ -76,41 +83,51 @@ pnpm lint
 
 - 개발 서버는 **반드시 `scripts/start-dev.sh`** 사용
 - Electron 개발은 `pnpm dev:electron`
-- 경로 alias는 `@/` 사용 → `src/renderer/`로 해석 (e.g. `@/components/ui/button`)
+- 경로 alias는 `@/` 사용 → `apps/web/src/`로 해석 (e.g. `@/components/ui/button`)
 - UI 컴포넌트는 `shadcn/ui` 패턴 따를 것 (components.json 참고)
-- CSS class 조합 시 `cn()` 유틸리티 사용
-- WebSocket 통신은 `src/renderer/lib/gateway/` 내 클라이언트/프로토콜 사용
-- 파일 서빙 API는 `src/renderer/lib/platform/` 추상화 레이어를 통해 접근
+- CSS class 조합 시 `cn()` 유틸리티 사용 (`@intelli-claw/shared`)
+- WebSocket 통신은 `packages/shared/src/gateway/` 내 클라이언트/프로토콜 사용
+- 파일 서빙 API는 `apps/web/src/lib/platform/` 추상화 레이어를 통해 접근
+- 플랫폼 독립 코드는 `packages/shared`에 배치
+- 어댑터 패턴: `CryptoAdapter` / `StorageAdapter` 인터페이스는 shared, 구현은 각 앱
 
 ## MUST NOT DO
 
 - `npm` 사용 금지 — **pnpm** 만 사용
 - `.env.local`을 커밋하지 말 것 (gateway token 포함)
-- `src/renderer/components/ui/` 내 shadcn 컴포넌트를 직접 수정하지 말 것 (래퍼 만들어 확장)
+- `apps/web/src/components/ui/` 내 shadcn 컴포넌트를 직접 수정하지 말 것 (래퍼 만들어 확장)
 - `/api/media`, `/api/showcase` 하드코딩 금지 — `platform` API 사용
+- shared 패키지에 web-specific API (localStorage, IndexedDB, import.meta.env) 사용 금지
 
 ## Conventions
 
 - 컴포넌트: PascalCase 파일명 (kebab-case도 혼용 중)
 - hooks: `use-*.ts` 또는 `hooks.tsx`
-- 테스트: `src/__tests__/*.test.ts(x)`
+- 테스트: `apps/web/src/__tests__/*.test.ts(x)`
 - 커밋 메시지: conventional commits (`feat:`, `fix:`, `docs:`, `refactor:`)
 - PR: squash merge
 
 ## Gateway Protocol
 
-WebSocket 프레임 기반 통신 (`src/renderer/lib/gateway/protocol.ts`):
+WebSocket 프레임 기반 통신 (`packages/shared/src/gateway/protocol.ts`):
 - `ReqFrame` → 요청, `ResFrame` → 응답
 - `EventFrame` → 서버 이벤트 (스트리밍, 상태 변경)
-- Device identity: Web Crypto 기반 인증 (`device-identity.ts`)
+- Device identity: CryptoAdapter 기반 인증 (`device-identity.ts`)
 
 ## Platform Abstraction
 
-`src/renderer/lib/platform/` — 웹/Electron 자동 감지:
+`apps/web/src/lib/platform/` — 웹/Electron 자동 감지:
 - `platform.mediaUrl(path)` — 미디어 파일 URL 생성
 - `platform.mediaGetInfo(path)` — 파일 메타데이터 조회
 - `platform.showcaseList()` — 쇼케이스 목록
 - `platform.showcaseUrl(path)` — 쇼케이스 파일 URL
+
+## Adapter Pattern
+
+`packages/shared/src/adapters/` — 플랫폼 독립 인터페이스:
+- `CryptoAdapter` — 키 쌍 생성/서명 (Web Crypto, native 등)
+- `StorageAdapter` — 영속 저장소 (localStorage, SecureStore 등)
+- `PlatformAPI` — 미디어/쇼케이스 파일 접근
 
 ## Environment
 

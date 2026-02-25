@@ -8,7 +8,7 @@ pkill -f "api-server" 2>/dev/null
 sleep 1
 
 # Start API server in background
-nohup npx tsx src/server/api-server.ts \
+nohup pnpm dev:server \
   > /tmp/intelli-claw-api.log 2>&1 &
 echo "API server starting on :4001 (log: /tmp/intelli-claw-api.log)"
 

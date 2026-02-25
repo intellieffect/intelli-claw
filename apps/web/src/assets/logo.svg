@@ -1,0 +1,109 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <defs>
+    <linearGradient id="bodyGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FF6B35"/>
+      <stop offset="100%" stop-color="#E63946"/>
+    </linearGradient>
+    <linearGradient id="techGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#7B68EE"/>
+      <stop offset="100%" stop-color="#4EA8DE"/>
+    </linearGradient>
+    <linearGradient id="clawGrad" x1="0" y1="0" x2="0.5" y2="1">
+      <stop offset="0%" stop-color="#FF8C42"/>
+      <stop offset="100%" stop-color="#E63946"/>
+    </linearGradient>
+  </defs>
+  
+  <!-- Background circle -->
+  <circle cx="256" cy="256" r="240" fill="#1E1E2E" stroke="url(#techGrad)" stroke-width="4" opacity="0.95"/>
+  
+  <!-- Circuit traces (tech element) -->
+  <g stroke="url(#techGrad)" stroke-width="2.5" stroke-linecap="round" opacity="0.5">
+    <!-- Left circuits -->
+    <line x1="80" y1="200" x2="130" y2="200"/>
+    <line x1="130" y1="200" x2="130" y2="240"/>
+    <circle cx="130" cy="240" r="4" fill="#7B68EE"/>
+    <line x1="70" y1="280" x2="120" y2="280"/>
+    <circle cx="120" cy="280" r="4" fill="#4EA8DE"/>
+    <!-- Right circuits -->
+    <line x1="432" y1="200" x2="382" y2="200"/>
+    <line x1="382" y1="200" x2="382" y2="240"/>
+    <circle cx="382" cy="240" r="4" fill="#7B68EE"/>
+    <line x1="442" y1="280" x2="392" y2="280"/>
+    <circle cx="392" cy="280" r="4" fill="#4EA8DE"/>
+    <!-- Top circuits -->
+    <line x1="220" y1="60" x2="220" y2="100"/>
+    <circle cx="220" cy="100" r="4" fill="#7B68EE"/>
+    <line x1="292" y1="60" x2="292" y2="100"/>
+    <circle cx="292" cy="100" r="4" fill="#4EA8DE"/>
+  </g>
+
+  <!-- Crayfish Body -->
+  <ellipse cx="256" cy="290" rx="70" ry="90" fill="url(#bodyGrad)" opacity="0.9"/>
+  <!-- Body segments -->
+  <ellipse cx="256" cy="260" rx="60" ry="20" fill="url(#bodyGrad)" stroke="#FF8C42" stroke-width="1" opacity="0.7"/>
+  <ellipse cx="256" cy="295" rx="55" ry="18" fill="url(#bodyGrad)" stroke="#FF8C42" stroke-width="1" opacity="0.7"/>
+  <ellipse cx="256" cy="328" rx="48" ry="16" fill="url(#bodyGrad)" stroke="#FF8C42" stroke-width="1" opacity="0.7"/>
+  
+  <!-- Tail -->
+  <path d="M220 370 Q256 420 292 370" fill="url(#bodyGrad)" opacity="0.85"/>
+  <path d="M228 380 Q256 405 284 380" fill="none" stroke="#FF8C42" stroke-width="1.5" opacity="0.6"/>
+  <!-- Tail fan -->
+  <ellipse cx="235" cy="400" rx="18" ry="10" fill="url(#clawGrad)" opacity="0.8" transform="rotate(-15 235 400)"/>
+  <ellipse cx="256" cy="405" rx="16" ry="10" fill="url(#clawGrad)" opacity="0.8"/>
+  <ellipse cx="277" cy="400" rx="18" ry="10" fill="url(#clawGrad)" opacity="0.8" transform="rotate(15 277 400)"/>
+
+  <!-- Head -->
+  <ellipse cx="256" cy="220" rx="52" ry="40" fill="url(#bodyGrad)"/>
+  
+  <!-- Eyes -->
+  <circle cx="232" cy="200" r="12" fill="#1E1E2E"/>
+  <circle cx="280" cy="200" r="12" fill="#1E1E2E"/>
+  <circle cx="234" cy="198" r="6" fill="#4EA8DE"/>
+  <circle cx="282" cy="198" r="6" fill="#4EA8DE"/>
+  <circle cx="236" cy="196" r="2.5" fill="white"/>
+  <circle cx="284" cy="196" r="2.5" fill="white"/>
+  
+  <!-- Antennae -->
+  <path d="M240 190 Q220 140 190 120" stroke="url(#techGrad)" stroke-width="3" fill="none" stroke-linecap="round"/>
+  <path d="M272 190 Q292 140 322 120" stroke="url(#techGrad)" stroke-width="3" fill="none" stroke-linecap="round"/>
+  <circle cx="190" cy="120" r="5" fill="#7B68EE"/>
+  <circle cx="322" cy="120" r="5" fill="#4EA8DE"/>
+
+  <!-- LEFT CLAW (big, prominent) -->
+  <g>
+    <!-- Arm -->
+    <path d="M200 240 Q150 220 120 190" stroke="url(#clawGrad)" stroke-width="14" fill="none" stroke-linecap="round"/>
+    <!-- Claw upper -->
+    <path d="M120 190 Q90 150 75 160 Q60 170 90 195 Q100 200 120 190Z" fill="url(#clawGrad)" stroke="#FF6B35" stroke-width="2"/>
+    <!-- Claw lower -->
+    <path d="M120 190 Q100 220 85 215 Q70 210 95 190 Q105 185 120 190Z" fill="url(#clawGrad)" stroke="#FF6B35" stroke-width="2"/>
+    <!-- Tech glow on claw -->
+    <circle cx="95" cy="180" r="6" fill="#7B68EE" opacity="0.6"/>
+  </g>
+
+  <!-- RIGHT CLAW (big, prominent) -->
+  <g>
+    <!-- Arm -->
+    <path d="M312 240 Q362 220 392 190" stroke="url(#clawGrad)" stroke-width="14" fill="none" stroke-linecap="round"/>
+    <!-- Claw upper -->
+    <path d="M392 190 Q422 150 437 160 Q452 170 422 195 Q412 200 392 190Z" fill="url(#clawGrad)" stroke="#FF6B35" stroke-width="2"/>
+    <!-- Claw lower -->
+    <path d="M392 190 Q412 220 427 215 Q442 210 417 190 Q407 185 392 190Z" fill="url(#clawGrad)" stroke="#FF6B35" stroke-width="2"/>
+    <!-- Tech glow on claw -->
+    <circle cx="417" cy="180" r="6" fill="#4EA8DE" opacity="0.6"/>
+  </g>
+
+  <!-- Small legs -->
+  <g stroke="url(#bodyGrad)" stroke-width="4" stroke-linecap="round" opacity="0.7">
+    <line x1="200" y1="280" x2="160" y2="310"/>
+    <line x1="195" y1="300" x2="155" y2="335"/>
+    <line x1="192" y1="320" x2="155" y2="355"/>
+    <line x1="312" y1="280" x2="352" y2="310"/>
+    <line x1="317" y1="300" x2="357" y2="335"/>
+    <line x1="320" y1="320" x2="357" y2="355"/>
+  </g>
+
+  <!-- Cute smile -->
+  <path d="M240 228 Q256 240 272 228" stroke="#1E1E2E" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+</svg>
