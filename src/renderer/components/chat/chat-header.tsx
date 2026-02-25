@@ -1,15 +1,15 @@
-"use client";
 
 import { useMemo, useRef, useEffect, useState, useCallback } from "react";
 import {
   MessageSquare, Plus, X, Pin, Zap,
-  MessageCircle, Bot, Settings,
+  MessageCircle, Bot, Settings, History,
 } from "lucide-react";
 import { parseSessionKey } from "@/lib/gateway/session-utils";
 import type { Agent, Session } from "@/lib/gateway/protocol";
 import type { AgentStatus } from "@/lib/gateway/hooks";
 import { AgentAvatar } from "@/components/ui/agent-avatar";
 import { cn } from "@/lib/utils";
+import { getTopicCount } from "@/lib/gateway/topic-store";
 
 // --- Types ---
 
@@ -28,6 +28,7 @@ interface ChatHeaderProps {
   onDeleteSession?: (key: string) => void;
   onRenameSession?: (key: string, label: string) => void;
   onOpenSessionManager?: () => void;
+  onOpenTopicHistory?: () => void;
 }
 
 // --- Constants ---
@@ -155,11 +156,19 @@ export function ChatHeader({
   onDeleteSession,
   onRenameSession,
   onOpenSessionManager,
+  onOpenTopicHistory,
 }: ChatHeaderProps) {
   const [confirmDeleteKey, setConfirmDeleteKey] = useState<string | null>(null);
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [editLabel, setEditLabel] = useState("");
+  const [topicCount, setTopicCount] = useState(0);
   
+
+  // Load topic count for current session key
+  useEffect(() => {
+    if (!sessionKey) { setTopicCount(0); return; }
+    getTopicCount(sessionKey).then(setTopicCount).catch(() => setTopicCount(0));
+  }, [sessionKey]);
 
   const parsed = sessionKey ? parseSessionKey(sessionKey) : null;
   const agent = parsed ? agents.find((a) => a.id === parsed.agentId) : undefined;
@@ -333,6 +342,16 @@ export function ChatHeader({
         <span className="rounded-md bg-zinc-800 px-2 py-0.5 text-[10px] font-medium text-zinc-500 uppercase tracking-wide">
           {sessionType}
         </span>
+        {topicCount > 1 && onOpenTopicHistory && (
+          <button
+            onClick={onOpenTopicHistory}
+            className="flex items-center gap-1 rounded-md bg-amber-900/20 border border-amber-600/20 px-2 py-0.5 text-[10px] font-medium text-amber-500 hover:bg-amber-900/40 hover:border-amber-500/40 transition"
+            title="세션 이력 보기"
+          >
+            <History size={10} />
+            <span>세션 {topicCount}</span>
+          </button>
+        )}
         {(() => {
           const status = formatAgentStatus(agentStatus);
           if (!status) return null;
