@@ -1,9 +1,12 @@
 node_modules/
-.next/
-.next-prod/
 *.tsbuildinfo
 .DS_Store
 /tmp/
+
+# Build outputs
+dist/
+out/
+release/
 
 # env
 .env.local

@@ -29,9 +29,9 @@ export async function blobDownload(url: string, fileName: string): Promise<boole
   }
 }
 
-/** Append dl=1 to /api/media URLs to force download */
+/** Append dl=1 to media API URLs to force download */
 export function forceDownloadUrl(url: string): string {
-  if (url.startsWith("/api/media")) {
+  if (url.startsWith("/api/media") || url.includes("?path=")) {
     return url + (url.includes("?") ? "&" : "?") + "dl=1";
   }
   return url;

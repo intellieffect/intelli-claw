@@ -1,4 +1,3 @@
-"use client";
 
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
@@ -11,6 +10,7 @@ import {
 } from "lucide-react";
 import type { Components } from "react-markdown";
 import { blobDownload, forceDownloadUrl } from "@/lib/utils/download";
+import { platform } from "@/lib/platform";
 
 function copyText(text: string) {
   if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(text);
@@ -352,7 +352,7 @@ function extractMediaLines(text: string): [string, MediaEntry[]] {
       url = trimmed;
       originalPath = trimmed;
     } else {
-      url = `/api/media?path=${encodeURIComponent(trimmed)}`;
+      url = platform.mediaUrl(trimmed);
       originalPath = trimmed;
     }
 
@@ -508,8 +508,7 @@ function FileCard({ url, fileName, type }: { url: string; fileName: string; type
   useEffect(() => {
     const originalPath = extractOriginalPath(url);
     if (!originalPath) return;
-    fetch(`/api/media?path=${encodeURIComponent(originalPath)}&info=1`)
-      .then(r => r.ok ? r.json() : null)
+    platform.mediaGetInfo(originalPath)
       .then(data => { if (data?.size) setFileInfo({ size: data.size }); })
       .catch(() => {});
   }, [url]);

@@ -1,7 +1,7 @@
-"use client";
 
 import { useState, useEffect, useCallback } from "react";
 import { X, FileText, RefreshCw, ExternalLink, Copy, Check } from "lucide-react";
+import { platform } from "@/lib/platform";
 
 interface FileEntry {
   name: string;
@@ -20,8 +20,7 @@ export function ShowcasePanel({ onClose }: { onClose: () => void }) {
   const fetchFiles = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/showcase");
-      const data = await res.json();
+      const data = await platform.showcaseList();
       setFiles(data.files || []);
     } catch {
       setFiles([]);
@@ -43,7 +42,7 @@ export function ShowcasePanel({ onClose }: { onClose: () => void }) {
     return () => document.removeEventListener("keydown", handler);
   }, [onClose]);
 
-  const iframeUrl = selected ? `/api/showcase/${selected}` : null;
+  const iframeUrl = selected ? platform.showcaseUrl(selected) : null;
   const selectedFile = files.find((f) => f.relativePath === selected);
 
   const handleCopyContent = async () => {
@@ -195,7 +194,7 @@ export function ShowcasePanel({ onClose }: { onClose: () => void }) {
                   <span>{copied ? "복사됨!" : "복사"}</span>
                 </button>
                 <a
-                  href={`/api/showcase/${selected}`}
+                  href={platform.showcaseUrl(selected!)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground"
@@ -208,7 +207,7 @@ export function ShowcasePanel({ onClose }: { onClose: () => void }) {
             </div>
             <div className="flex-1 overflow-hidden">
               <iframe
-                src={`/api/showcase/${selected}`}
+                src={platform.showcaseUrl(selected!)}
                 className="h-full w-full border-0 bg-white"
                 title="Showcase preview"
               />
