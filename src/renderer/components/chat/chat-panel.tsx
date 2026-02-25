@@ -331,8 +331,13 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
 
       if (attachments.length > 0) {
         await maybeAutoLabelSession(effectiveSessionKey, text);
-        const payloads = await Promise.all(attachments.map(attachmentToPayload));
-        const userMsg = text || "";
+
+        // Convert attachments — PDFs become extracted text + page images
+        const results = await Promise.all(attachments.map(attachmentToPayload));
+        const payloads = results.flatMap((r) => r.payloads);
+        const pdfTexts = results.map((r) => r.prependText).filter(Boolean).join("\n\n");
+        const userMsg = [text, pdfTexts].filter(Boolean).join("\n\n") || "";
+
         const displayAtts = await Promise.all(
           attachments.map(async (att) => {
             const ext = att.file.name.split(".").pop()?.toLowerCase();
@@ -348,7 +353,7 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
             };
           })
         );
-        addUserMessage(userMsg || "(첨부 파일)", displayAtts);
+        addUserMessage(text || "(첨부 파일)", displayAtts);
         if (client && isConnected) {
           // Send all attachments in a single request.
           // If the single request fails (e.g. payload too large), fall back to
@@ -365,7 +370,7 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
             try {
               for (let i = 0; i < payloads.length; i++) {
                 await client.request("chat.send", {
-                  message: i === 0 ? (userMsg || `(첨부 이미지 ${i + 1}/${payloads.length})`) : `(첨부 이미지 ${i + 1}/${payloads.length})`,
+                  message: i === 0 ? (userMsg || `(첨부 ${i + 1}/${payloads.length})`) : `(첨부 ${i + 1}/${payloads.length})`,
                   idempotencyKey: `awf-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
                   sessionKey: effectiveSessionKey,
                   attachments: [payloads[i]],
