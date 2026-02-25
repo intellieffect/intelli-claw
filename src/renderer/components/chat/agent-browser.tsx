@@ -1,4 +1,3 @@
-"use client";
 
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
@@ -165,14 +164,15 @@ export function AgentBrowser({
     });
   }, []);
 
-  // Reset on open
+  // Reset on open — start with all groups collapsed
   useEffect(() => {
     if (open) {
       setSearch("");
       setSelectedIndex(0);
-      setCollapsedAgents(new Set());
+      setCollapsedAgents(new Set(groups.map((g) => g.agentId)));
       setTimeout(() => searchRef.current?.focus(), 16);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only reset on open change
   }, [open]);
 
   // Escape key
@@ -283,7 +283,7 @@ export function AgentBrowser({
         </div>
 
         {/* List */}
-        <div ref={listRef} className="flex-1 overflow-y-auto py-2" style={{ maxHeight: "calc(70vh - 60px)" }}>
+        <div ref={listRef} className="flex-1 overflow-y-auto pt-2 pb-4" style={{ maxHeight: "calc(70vh - 60px)" }}>
           {groups.length === 0 && (
             <p className="px-4 py-8 text-center text-sm text-muted-foreground">
               {search ? "검색 결과가 없습니다" : "세션이 없습니다"}
