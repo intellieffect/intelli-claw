@@ -1,10 +1,10 @@
-"use client";
 
 import { useState, useCallback, useRef, useEffect } from "react";
 import { ChatPanel } from "./chat-panel";
 import { useIsMobile } from "@/lib/hooks/use-mobile";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { matchesShortcutId } from "@/lib/shortcuts";
+import { windowStoragePrefix } from "@/lib/utils";
 
 function uid() {
   return Math.random().toString(36).slice(2, 8);
@@ -25,12 +25,14 @@ interface SplitState {
 
 // --- Storage helpers ---
 
-const STORAGE_KEY = "awf:split-panels";
+function storageKey(): string {
+  return `awf:${windowStoragePrefix()}split-panels`;
+}
 
 function loadState(): SplitState | null {
   if (typeof window === "undefined") return null;
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(storageKey());
     if (!raw) return null;
     const parsed = JSON.parse(raw) as SplitState;
     if (parsed.panels?.length >= 1) return parsed;
@@ -40,7 +42,7 @@ function loadState(): SplitState | null {
 
 function saveState(state: SplitState) {
   if (typeof window === "undefined") return;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  localStorage.setItem(storageKey(), JSON.stringify(state));
 }
 
 function defaultState(): SplitState {
