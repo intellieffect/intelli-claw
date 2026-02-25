@@ -10,7 +10,7 @@ echo "Building for production..."
 pnpm build
 
 # Start API server in background
-nohup npx tsx src/server/api-server.ts \
+nohup pnpm dev:server \
   > /tmp/intelli-claw-api.log 2>&1 &
 
 echo "Starting prod preview server..."
