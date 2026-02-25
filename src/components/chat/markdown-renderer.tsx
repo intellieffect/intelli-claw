@@ -10,6 +10,7 @@ import {
   FileSpreadsheet, FileCode, FileArchive,
 } from "lucide-react";
 import type { Components } from "react-markdown";
+import { blobDownload, forceDownloadUrl } from "@/lib/utils/download";
 
 function copyText(text: string) {
   if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(text);
@@ -439,23 +440,61 @@ function getMediaAccent(type: MediaType): string {
   }
 }
 
-/** Blob-based download */
-async function blobDownload(url: string, name: string) {
-  try {
-    const dlUrl = url.startsWith("/api/media") ? url + (url.includes("?") ? "&" : "?") + "dl=1" : url;
-    const res = await fetch(dlUrl);
-    const blob = await res.blob();
-    const blobUrl = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = blobUrl;
-    a.download = name;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(blobUrl);
-  } catch {
-    window.open(url, "_blank");
-  }
+/** Inline markdown file preview — fetches .md content and renders with MarkdownRenderer */
+export function MarkdownFilePreview({ src, fileName }: { src: string; fileName: string }) {
+  const [content, setContent] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState(true);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    fetch(src)
+      .then((r) => (r.ok ? r.text() : Promise.reject(new Error(`${r.status}`))))
+      .then(setContent)
+      .catch(() => setError(true));
+  }, [src]);
+
+  return (
+    <div className="my-2 w-full max-w-2xl overflow-hidden rounded-lg border border-zinc-700">
+      <div className="flex items-center justify-between bg-zinc-800 px-3 py-1.5 text-xs text-zinc-400">
+        <span className="flex items-center gap-1.5">
+          <FileText size={12} />
+          {fileName}
+        </span>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => blobDownload(forceDownloadUrl(src), fileName)}
+            className="rounded px-1.5 py-0.5 hover:bg-zinc-700 hover:text-zinc-200 transition"
+            title="다운로드"
+          >
+            <Download size={12} />
+          </button>
+          <button
+            onClick={() => setExpanded((e) => !e)}
+            className="rounded px-1.5 py-0.5 hover:bg-zinc-700 hover:text-zinc-200 transition"
+          >
+            {expanded ? "접기" : "펼치기"}
+          </button>
+        </div>
+      </div>
+      {expanded && (
+        <div className="max-h-96 overflow-y-auto bg-zinc-900 px-4 py-3">
+          {error ? (
+            <div className="text-xs text-zinc-500">파일을 불러올 수 없습니다.</div>
+          ) : content === null ? (
+            <div className="text-xs text-zinc-500">불러오는 중...</div>
+          ) : content === "" ? (
+            <div className="text-xs text-zinc-500">(빈 파일)</div>
+          ) : (
+            <div className="prose prose-sm prose-invert max-w-none">
+              <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]} components={components}>
+                {content}
+              </ReactMarkdown>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function FileCard({ url, fileName, type }: { url: string; fileName: string; type: MediaType }) {
@@ -477,7 +516,7 @@ function FileCard({ url, fileName, type }: { url: string; fileName: string; type
 
   return (
     <button
-      onClick={() => blobDownload(url, fileName)}
+      onClick={() => blobDownload(forceDownloadUrl(url), fileName)}
       className="flex w-44 flex-col items-center gap-2 rounded-xl border border-zinc-700/80 bg-zinc-800/60 p-4 transition hover:bg-zinc-700/60 hover:border-zinc-600 cursor-pointer group"
     >
       <div className={`flex h-12 w-12 items-center justify-center rounded-xl ${accent}`}>
@@ -507,6 +546,13 @@ function MediaRenderer({ entry }: { entry: MediaEntry }) {
       return <MediaAudio src={entry.url} fileName={entry.fileName} />;
     case "pdf":
       return <MediaPdf src={entry.url} fileName={entry.fileName} />;
+    case "text": {
+      const ext = getExtension(entry.fileName);
+      if (ext === "md" || ext === "mdx") {
+        return <MarkdownFilePreview src={entry.url} fileName={entry.fileName} />;
+      }
+      return <FileCard url={entry.url} fileName={entry.fileName} type={entry.type} />;
+    }
     default:
       return <FileCard url={entry.url} fileName={entry.fileName} type={entry.type} />;
   }

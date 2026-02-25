@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { GatewayClient, type ConnectionState } from "./client";
+import { getMimeType } from "@/lib/mime-types";
 import type {
   EventFrame,
   AgentEvent,
@@ -197,6 +198,8 @@ export interface DisplayAttachment {
   dataUrl?: string;
   /** URL for downloading the file (e.g. gateway-served MEDIA path) */
   downloadUrl?: string;
+  /** Raw text content for inline preview (e.g. .md files uploaded by user) */
+  textContent?: string;
 }
 
 /** Parse MEDIA:<path-or-url> lines from assistant content, returning attachments and cleaned text */
@@ -208,17 +211,7 @@ function extractMediaAttachments(text: string): { cleanedText: string; attachmen
     const raw = match[1].trim();
     const fileName = raw.split("/").pop() || raw;
     const ext = fileName.split(".").pop()?.toLowerCase() || "";
-    const MIME_MAP: Record<string, string> = {
-      png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif",
-      webp: "image/webp", svg: "image/svg+xml",
-      pdf: "application/pdf", zip: "application/zip",
-      mp3: "audio/mpeg", wav: "audio/wav", ogg: "audio/ogg", m4a: "audio/mp4",
-      mp4: "video/mp4", webm: "video/webm", mov: "video/quicktime",
-      json: "application/json", csv: "text/csv", txt: "text/plain",
-      docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    };
-    const mimeType = MIME_MAP[ext] || "application/octet-stream";
+    const mimeType = getMimeType(ext);
     const isImage = mimeType.startsWith("image/");
     const isHttp = raw.startsWith("http://") || raw.startsWith("https://") || raw.startsWith("data:");
     const downloadUrl = isHttp ? raw : `/api/media?path=${encodeURIComponent(raw)}`;
@@ -505,6 +498,8 @@ export function useChat(sessionKey?: string) {
           }
           setMessages((prev) => {
             const existing = prev.findIndex((m) => m.id === snap.id);
+            // Preserve previous attachments if current chunk doesn't produce new ones
+            const prevAttachments = existing >= 0 ? prev[existing].attachments : undefined;
             const msg: DisplayMessage = {
               id: snap.id,
               role: "assistant",
@@ -512,7 +507,7 @@ export function useChat(sessionKey?: string) {
               timestamp: new Date().toISOString(),
               toolCalls: Array.from(snap.toolCalls.values()),
               streaming: true,
-              attachments: streamAttachments,
+              attachments: streamAttachments ?? prevAttachments,
             };
             if (existing >= 0) {
               const next = [...prev];
