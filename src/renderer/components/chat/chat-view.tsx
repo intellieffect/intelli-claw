@@ -54,7 +54,7 @@ export function ChatView() {
             </button>
           )}
           <div className="flex items-center gap-1.5 md:gap-2">
-            <img src="/logo.svg" alt="intelli-claw" className="h-5 w-5 md:h-6 md:w-6" />
+            <img src={new URL('/logo.svg', import.meta.url).href} alt="intelli-claw" className="h-5 w-5 md:h-6 md:w-6" />
             {!isMobile && <span className="text-sm font-semibold text-foreground">intelli-claw</span>}
           </div>
         </div>
