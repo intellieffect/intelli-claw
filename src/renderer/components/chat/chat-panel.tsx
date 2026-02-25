@@ -1,4 +1,3 @@
-"use client";
 
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { useGateway, useChat, useAgents, useSessions } from "@/lib/gateway/hooks";
@@ -14,10 +13,12 @@ import { TaskMemo } from "./task-memo";
 import { SessionSettings } from "@/components/settings/session-settings";
 import { ChatHeader } from "./chat-header";
 import { matchesShortcutId } from "@/lib/shortcuts";
+import { windowStoragePrefix } from "@/lib/utils";
 import { useIsMobile } from "@/lib/hooks/use-mobile";
 import { useKeyboardHeight } from "@/lib/hooks/use-keyboard-height";
 import { NewSessionPicker, AgentManager } from "@/components/settings/agent-manager";
 import { SessionManagerPanel } from "./session-manager-panel";
+import { TopicHistory } from "./topic-history";
 
 export interface ChatPanelProps {
   /** Panel id for focus management */
@@ -35,7 +36,7 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
   const isMobile = useIsMobile();
   const keyboardHeight = useKeyboardHeight();
 
-  const storagePrefix = `awf:panel:${panelId}:`;
+  const storagePrefix = `awf:${windowStoragePrefix()}panel:${panelId}:`;
 
   const [sessionKey, setSessionKeyRaw] = useState<string | undefined>(undefined);
   const [agentId, setAgentId] = useState<string>(import.meta.env.VITE_DEFAULT_AGENT || "default");
@@ -60,7 +61,7 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
   const effectiveSessionKey =
     sessionKey || (agentId ? `agent:${agentId}:main` : mainSessionKey) || undefined;
 
-  const { messages, streaming, loading, sendMessage, sendCommand, addUserMessage, addLocalMessage, cancelQueued, abort } = useChat(effectiveSessionKey);
+  const { messages, streaming, loading, sendMessage, sendCommand, addUserMessage, addLocalMessage, cancelQueued, abort, sendContextBridge } = useChat(effectiveSessionKey);
   const { agents } = useAgents();
   const { sessions, loading: sessionsLoading, refresh: refreshSessions, patchSession } = useSessions();
 
@@ -71,6 +72,7 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
   const [newSessionPickerOpen, setNewSessionPickerOpen] = useState(false);
   const [agentManagerOpen, setAgentManagerOpen] = useState(false);
   const [sessionManagerOpen, setSessionManagerOpen] = useState(false);
+  const [topicHistoryOpen, setTopicHistoryOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
 
   // Build ordered session list for current agent (matches header tab order: main first, then by updatedAt desc)
@@ -510,6 +512,7 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
           onDeleteSession={(key) => handleDelete(key)}
           onRenameSession={(key, label) => handleRename(key, label)}
           onOpenSessionManager={() => setSessionManagerOpen(true)}
+          onOpenTopicHistory={() => setTopicHistoryOpen(true)}
         />
       )}
 
@@ -520,7 +523,15 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
 
       {/* Messages */}
       <DropZone onDrop={addFiles}>
-        <MessageList messages={messages} loading={loading} streaming={streaming} onCancelQueued={cancelQueued} agentId={currentAgentId} />
+        <MessageList
+          messages={messages}
+          loading={loading}
+          streaming={streaming}
+          onCancelQueued={cancelQueued}
+          agentId={currentAgentId}
+          onLoadPreviousContext={sendContextBridge}
+          onOpenTopicHistory={() => setTopicHistoryOpen(true)}
+        />
       </DropZone>
 
       {/* Input with integrated toolbar */}
@@ -594,6 +605,16 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
         onDeleteSession={async (key) => { await handleDelete(key); }}
         onResetSession={async (key) => { await handleReset(key); }}
       />
+
+      {/* Topic History Panel */}
+      {effectiveSessionKey && (
+        <TopicHistory
+          sessionKey={effectiveSessionKey}
+          open={topicHistoryOpen}
+          onClose={() => setTopicHistoryOpen(false)}
+          portalContainer={panelRef.current}
+        />
+      )}
     </div>
   );
 }

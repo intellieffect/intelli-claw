@@ -1,4 +1,3 @@
-"use client";
 
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { AnimatePresence, motion } from "framer-motion";
@@ -256,7 +255,7 @@ export function ChatInput({
 
   return (
     <div
-      className="relative px-[3%] py-1.5 sm:py-2 md:px-[5%] lg:px-[7%] safe-bottom"
+      className="relative px-[3%] py-1.5 sm:py-2 md:px-[5%] lg:px-[7%] safe-bottom electron-bottom-pad"
       style={isMobile && keyboardHeight > 0 ? { paddingBottom: `max(4px, env(safe-area-inset-bottom, 0px))` } : undefined}
     >
       {/* Skill picker */}

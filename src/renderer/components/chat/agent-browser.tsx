@@ -1,4 +1,3 @@
-"use client";
 
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
@@ -15,6 +14,7 @@ import {
   ChevronDown,
   ChevronRight,
   Command,
+  History,
 } from "lucide-react";
 import {
   parseSessionKey,
@@ -24,6 +24,7 @@ import {
   type SessionGroup,
 } from "@/lib/gateway/session-utils";
 import type { Session } from "@/lib/gateway/protocol";
+import { getTopicCount } from "@/lib/gateway/topic-store";
 
 // ---- Type icon per session type ----
 
@@ -111,6 +112,8 @@ export function AgentBrowser({
   const searchRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const isKeyboardNav = useRef(false);
+  /** Map sessionKey → topic count (number of session resets) */
+  const [topicCounts, setTopicCounts] = useState<Map<string, number>>(new Map());
 
   // Convert to GatewaySession format
   const gwSessions = useMemo((): GatewaySession[] => {
@@ -165,14 +168,28 @@ export function AgentBrowser({
     });
   }, []);
 
-  // Reset on open
+  // Reset on open — start with all groups collapsed + load topic counts
   useEffect(() => {
     if (open) {
       setSearch("");
       setSelectedIndex(0);
-      setCollapsedAgents(new Set());
+      setCollapsedAgents(new Set(groups.map((g) => g.agentId)));
       setTimeout(() => searchRef.current?.focus(), 16);
+
+      // Load topic counts for visible sessions
+      const loadCounts = async () => {
+        const counts = new Map<string, number>();
+        for (const s of gwSessions) {
+          try {
+            const count = await getTopicCount(s.key);
+            if (count > 1) counts.set(s.key, count);
+          } catch {}
+        }
+        setTopicCounts(counts);
+      };
+      loadCounts();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only reset on open change
   }, [open]);
 
   // Escape key
@@ -283,7 +300,7 @@ export function AgentBrowser({
         </div>
 
         {/* List */}
-        <div ref={listRef} className="flex-1 overflow-y-auto py-2" style={{ maxHeight: "calc(70vh - 60px)" }}>
+        <div ref={listRef} className="flex-1 overflow-y-auto pt-2 pb-4" style={{ maxHeight: "calc(70vh - 60px)" }}>
           {groups.length === 0 && (
             <p className="px-4 py-8 text-center text-sm text-muted-foreground">
               {search ? "검색 결과가 없습니다" : "세션이 없습니다"}
@@ -345,6 +362,12 @@ export function AgentBrowser({
                           <p className="text-[10px] text-muted-foreground">{relativeTime(s.updatedAt)}</p>
                         )}
                       </div>
+                      {topicCounts.get(s.key) != null && topicCounts.get(s.key)! > 1 && (
+                        <span className="flex items-center gap-0.5 text-[10px] text-amber-500/70 rounded bg-amber-900/20 px-1.5 py-0.5" title="세션 이력">
+                          <History size={10} />
+                          {topicCounts.get(s.key)}
+                        </span>
+                      )}
                       {parsed.channel && (
                         <span className="text-[10px] text-muted-foreground rounded bg-muted px-1.5 py-0.5">
                           {parsed.channel}

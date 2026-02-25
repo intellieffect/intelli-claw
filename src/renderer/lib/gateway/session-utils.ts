@@ -136,6 +136,8 @@ export interface GatewaySession {
   totalTokens?: number;
   model?: string;
   modelProvider?: string;
+  /** Internal session UUID from gateway — changes on session reset */
+  sessionId?: string;
 }
 
 /**

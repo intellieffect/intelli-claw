@@ -20,6 +20,13 @@ import type {
   ChatMessage,
   ToolCall,
 } from "./protocol";
+import {
+  trackSessionId,
+  markSessionEnded,
+  getCurrentSessionId,
+  getTopicHistory,
+  type TopicEntry,
+} from "./topic-store";
 
 // --- Gateway Config ---
 
@@ -151,6 +158,28 @@ export function useAgents() {
   return { agents, loading, refresh: fetchAgents };
 }
 
+// --- Session reset event ---
+
+export interface SessionResetEvent {
+  key: string;
+  oldSessionId: string;
+  newSessionId: string;
+}
+
+type SessionResetListener = (event: SessionResetEvent) => void;
+const sessionResetListeners = new Set<SessionResetListener>();
+
+export function onSessionReset(listener: SessionResetListener): () => void {
+  sessionResetListeners.add(listener);
+  return () => { sessionResetListeners.delete(listener); };
+}
+
+function emitSessionReset(event: SessionResetEvent) {
+  for (const l of sessionResetListeners) {
+    try { l(event); } catch (e) { console.error("[AWF] session reset listener error:", e); }
+  }
+}
+
 // --- useSessions ---
 
 export function useSessions() {
@@ -158,6 +187,8 @@ export function useSessions() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(false);
   const lastRefreshAtRef = useRef(0);
+  /** Map of sessionKey → last known sessionId for reset detection */
+  const trackedSessionIdsRef = useRef<Map<string, string>>(new Map());
 
   const fetchSessions = useCallback(async () => {
     if (!client || state !== "connected") return;
@@ -178,6 +209,37 @@ export function useSessions() {
       })) as Session[];
       setSessions(mapped);
       lastRefreshAtRef.current = Date.now();
+
+      // --- Session ID tracking & reset detection ---
+      for (const s of res?.sessions || []) {
+        const key = String(s.key || "");
+        const newSessionId = s.sessionId ? String(s.sessionId) : undefined;
+        if (!key || !newSessionId) continue;
+
+        const oldSessionId = trackedSessionIdsRef.current.get(key);
+        trackedSessionIdsRef.current.set(key, newSessionId);
+
+        if (oldSessionId && oldSessionId !== newSessionId) {
+          // Session reset detected!
+          console.log(`[AWF] Session reset detected: ${key} ${oldSessionId.slice(0, 8)} → ${newSessionId.slice(0, 8)}`);
+          const label = s.label ? String(s.label) : undefined;
+          const totalTokens = typeof s.totalTokens === "number" ? s.totalTokens : undefined;
+          markSessionEnded(key, oldSessionId, { totalTokens }).catch(() => {});
+          trackSessionId(key, newSessionId, { label }).catch(() => {});
+          emitSessionReset({ key, oldSessionId, newSessionId });
+        } else if (!oldSessionId) {
+          // First time seeing this session — track it
+          const existing = await getCurrentSessionId(key);
+          if (!existing || existing !== newSessionId) {
+            if (existing) {
+              markSessionEnded(key, existing).catch(() => {});
+            }
+            trackSessionId(key, newSessionId, {
+              label: s.label ? String(s.label) : undefined,
+            }).catch(() => {});
+          }
+        }
+      }
     } catch {
       // silently fail
     } finally {
@@ -284,7 +346,7 @@ function extractMediaAttachments(text: string): { cleanedText: string; attachmen
 
 export interface DisplayMessage {
   id: string;
-  role: "user" | "assistant" | "system";
+  role: "user" | "assistant" | "system" | "session-boundary";
   content: string;
   timestamp: string;
   toolCalls: ToolCall[];
@@ -293,6 +355,10 @@ export interface DisplayMessage {
   queued?: boolean;
   /** Attachments (images, files) */
   attachments?: DisplayAttachment[];
+  /** For session-boundary: the old session ID */
+  oldSessionId?: string;
+  /** For session-boundary: the new session ID */
+  newSessionId?: string;
 }
 
 export type AgentStatus =
@@ -398,7 +464,7 @@ export function useChat(sessionKey?: string) {
         { sessionKey, limit: 100 }
       );
       /** Internal system messages and empty agent replies to hide from UI */
-      const HIDDEN_PATTERNS = /^(NO_REPLY|HEARTBEAT_OK|NO_)\s*$|Pre-compaction memory flush|^Read HEARTBEAT\.md|reply with NO_REPLY|Store durable memories now/;
+      const HIDDEN_PATTERNS = /^(NO_REPLY|HEARTBEAT_OK|NO_)\s*$|Pre-compaction memory flush|^Read HEARTBEAT\.md|reply with NO_REPLY|Store durable memories now|\[System\] 이전 세션이 컨텍스트 한도로 갱신|\[이전 세션 맥락\]/;
       const isHiddenMessage = (role: string, text: string) => {
         if (role === "system") return true; // hide all system-role messages
         return HIDDEN_PATTERNS.test(text.trim());
@@ -916,6 +982,74 @@ export function useChat(sessionKey?: string) {
     [client, state, sessionKey]
   );
 
+  // --- Session reset detection & context bridging ---
+
+  /** Build a compact context summary from current messages.
+   *  Returns a short directive — not a dump of the full conversation. */
+  const buildContextSummary = useCallback((): string | null => {
+    // Find the last user message (the most relevant anchor)
+    const lastUser = [...messages].reverse().find((m) => m.role === "user" && m.content.trim());
+    if (!lastUser) return null;
+
+    const userText = lastUser.content.slice(0, 150).replace(/\n/g, " ").trim();
+
+    // Find last assistant reply (brief excerpt)
+    const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant" && m.content.trim());
+    const assistantExcerpt = lastAssistant
+      ? lastAssistant.content.slice(0, 120).replace(/\n/g, " ").trim()
+      : null;
+
+    const lines = [
+      "[System] 이전 세션이 컨텍스트 한도로 갱신되었습니다.",
+      `마지막 요청: ${userText}`,
+    ];
+    if (assistantExcerpt) {
+      lines.push(`마지막 응답 요약: ${assistantExcerpt}…`);
+    }
+    lines.push("위 맥락을 참고하여 대화를 이어주세요. 이 메시지에 대해 별도 답변하지 마세요.");
+    return lines.join("\n");
+  }, [messages]);
+
+  /** Send context bridge to new session (manual trigger) */
+  const sendContextBridge = useCallback(async () => {
+    if (!client || state !== "connected" || !sessionKey) return;
+    const summary = buildContextSummary();
+    if (!summary) return;
+
+    try {
+      await client.request("chat.send", {
+        message: summary,
+        idempotencyKey: `context-bridge-${Date.now()}`,
+        sessionKey,
+      });
+      console.log("[AWF] Context bridge sent to new session");
+    } catch (err) {
+      console.error("[AWF] Context bridge send error:", err);
+    }
+  }, [client, state, sessionKey, buildContextSummary]);
+
+  // Listen for session reset events — boundary marker only, NO auto-send
+  useEffect(() => {
+    const unsub = onSessionReset((event) => {
+      if (event.key !== sessionKeyRef.current) return;
+
+      console.log(`[AWF] Session reset for current chat: ${event.key}`);
+
+      // Insert session boundary marker into messages
+      const boundaryMsg: DisplayMessage = {
+        id: `boundary-${event.oldSessionId.slice(0, 8)}-${Date.now()}`,
+        role: "session-boundary",
+        content: "",
+        timestamp: new Date().toISOString(),
+        toolCalls: [],
+        oldSessionId: event.oldSessionId,
+        newSessionId: event.newSessionId,
+      };
+      setMessages((prev) => [...prev, boundaryMsg]);
+    });
+    return unsub;
+  }, []);
+
   return {
     messages,
     streaming,
@@ -928,5 +1062,6 @@ export function useChat(sessionKey?: string) {
     cancelQueued,
     abort,
     reload: loadHistory,
+    sendContextBridge,
   };
 }

@@ -81,6 +81,24 @@ body {
   padding-right: env(safe-area-inset-right, 0px);
 }
 
+/* Electron: titlebar drag region + traffic light padding */
+.electron .electron-drag {
+  -webkit-app-region: drag;
+}
+.electron .electron-drag button,
+.electron .electron-drag a,
+.electron .electron-drag input {
+  -webkit-app-region: no-drag;
+}
+.electron .electron-header-pad {
+  padding-top: 12px;
+  padding-bottom: 12px;
+  padding-left: 80px; /* space for traffic lights */
+}
+.electron .electron-bottom-pad {
+  padding-bottom: 8px;
+}
+
 /* Prevent iOS auto-zoom on input focus */
 @media (max-width: 767px) {
   input, textarea, select {
