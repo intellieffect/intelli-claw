@@ -111,6 +111,15 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
         e.preventDefault();
         abort();
       }
+      // '/' — focus chat input (only when not already in an input/textarea)
+      if (e.key === "/" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        const tag = (e.target as HTMLElement).tagName;
+        if (tag !== "INPUT" && tag !== "TEXTAREA" && !(e.target as HTMLElement).isContentEditable) {
+          e.preventDefault();
+          const textarea = panelRef.current?.querySelector("textarea");
+          textarea?.focus();
+        }
+      }
       // Tab/Shift+Tab: cycle through session tabs (uses matchesShortcutId for custom binding support)
       if ((matchesShortcutId(e, "next-session") || matchesShortcutId(e, "prev-session")) && agentSessions.length > 1) {
         // Only intercept when focus is on textarea (chat input) or panel root
