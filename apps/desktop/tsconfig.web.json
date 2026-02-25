@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "paths": {
+      "@/*": ["../web/src/*"],
+      "@intelli-claw/shared": ["../../packages/shared/src"],
+      "@intelli-claw/shared/*": ["../../packages/shared/src/*"]
+    }
+  },
+  "include": [
+    "../web/src/**/*.ts",
+    "../web/src/**/*.tsx"
+  ]
+}
