@@ -57,8 +57,8 @@ export function getAgentAvatar(agentId?: string): AgentAvatar {
 
   const h = hashCode(key);
   const initials = key.slice(0, 2).toUpperCase();
-  // Try /agents/<id>.jpg — image will 404 gracefully if not present
-  const imageUrl = `/agents/${key}.jpg`;
+  // intelliclaw agent uses the app logo
+  const imageUrl = key === "intelliclaw" ? "/logo.svg" : `/agents/${key}.jpg`;
   const result: AgentAvatar = {
     emoji: initials,
     color: COLORS[h % COLORS.length],
