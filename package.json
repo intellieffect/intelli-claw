@@ -16,6 +16,7 @@
     "dev:mobile": "pnpm --filter @intelli-claw/mobile dev"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
     "turbo": "^2.5.0"
   },
   "pnpm": {
