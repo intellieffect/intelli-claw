@@ -68,12 +68,12 @@ const markdownStyles = StyleSheet.create({
     marginVertical: 6,
   },
   code_inline: {
-    backgroundColor: "#F3F4F6",
-    color: "#DC2626",
+    backgroundColor: "#E5E7EB",
+    color: "#1F2937",
     fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
     fontSize: 13,
-    paddingHorizontal: 4,
-    paddingVertical: 1,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
     borderRadius: 4,
   },
   code_block: {
