@@ -658,7 +658,7 @@ const s = StyleSheet.create({
   bubbleRow: { flexDirection: "row", paddingHorizontal: 8, paddingVertical: 3, alignItems: "flex-start" },
   bubbleRowRight: { justifyContent: "flex-end" },
   bubbleRowLeft: { justifyContent: "flex-start" },
-  bubble: { borderRadius: 18, paddingHorizontal: 14, paddingVertical: 10 },
+  bubble: { borderRadius: 18, paddingHorizontal: 14, paddingVertical: 10, width: "100%" },
   bubbleUser: { backgroundColor: "#3B82F6", borderBottomRightRadius: 6 },
   bubbleAssistant: { backgroundColor: "#F3F4F6", borderBottomLeftRadius: 6 },
   bubbleText: { fontSize: 15, lineHeight: 22 },
