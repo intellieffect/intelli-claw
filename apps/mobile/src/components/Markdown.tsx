@@ -1,19 +1,22 @@
 import React from "react";
-import { Platform, ScrollView, StyleSheet } from "react-native";
+import { Platform, ScrollView, View, StyleSheet } from "react-native";
 import MarkdownDisplay from "react-native-markdown-display";
 
 const rules = {
   // Suppress <body> wrapper to avoid nesting issues
   body: (node: any, children: any) => children,
-  // Wrap tables in horizontal ScrollView to prevent column squishing
+  // Wrap tables in horizontal ScrollView to prevent column squishing on narrow screens
   table: (node: any, children: any) => (
     <ScrollView
       key={node.key}
       horizontal
       showsHorizontalScrollIndicator
       style={{ marginVertical: 6 }}
+      contentContainerStyle={{ flexGrow: 1 }}
     >
-      {children}
+      <View style={{ minWidth: 320 }}>
+        {children}
+      </View>
     </ScrollView>
   ),
 };
@@ -128,7 +131,6 @@ const markdownStyles = StyleSheet.create({
   },
   th: {
     padding: 8,
-    minWidth: 80,
     borderBottomWidth: 1,
     borderColor: "#E5E7EB",
     fontWeight: "600",
@@ -136,7 +138,6 @@ const markdownStyles = StyleSheet.create({
   },
   td: {
     padding: 8,
-    minWidth: 80,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderColor: "#F3F4F6",
     fontSize: 13,
