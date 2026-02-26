@@ -434,7 +434,7 @@ export default function ChatScreen() {
     <KeyboardAvoidingView
       style={s.flex1}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
-      keyboardVerticalOffset={Platform.OS === "ios" ? insets.top : 0}
+      keyboardVerticalOffset={0}
     >
 
       {/* Message area */}
