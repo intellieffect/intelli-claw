@@ -1,5 +1,5 @@
 import "react-native-get-random-values"; // polyfill crypto.getRandomValues for uuid
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Slot } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -12,6 +12,7 @@ import {
   type GatewayConfig,
 } from "@intelli-claw/shared";
 import { ExpoCryptoAdapter } from "../src/adapters/crypto";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { mmkvStorage } from "../src/adapters/storage";
 import { SessionContext } from "../src/stores/sessionStore";
 
@@ -52,13 +53,19 @@ const ACTIVE_SESSION_KEY = "intelli-claw:activeSessionKey";
 
 export default function RootLayout() {
   const config = loadGatewayConfig();
-  const [activeSessionKey, setActiveSessionKeyRaw] = useState<string | null>(() => {
-    return mmkvStorage.getString(ACTIVE_SESSION_KEY) ?? null;
-  });
+  const [activeSessionKey, setActiveSessionKeyRaw] = useState<string | null>(null);
+
+  // Restore persisted session on mount
+  useEffect(() => {
+    AsyncStorage.getItem(ACTIVE_SESSION_KEY).then((v) => {
+      if (v) setActiveSessionKeyRaw(v);
+    }).catch(() => {});
+  }, []);
+
   const setActiveSessionKey = useCallback((key: string | null) => {
     setActiveSessionKeyRaw(key);
-    if (key) mmkvStorage.set(ACTIVE_SESSION_KEY, key);
-    else mmkvStorage.delete(ACTIVE_SESSION_KEY);
+    if (key) AsyncStorage.setItem(ACTIVE_SESSION_KEY, key).catch(() => {});
+    else AsyncStorage.removeItem(ACTIVE_SESSION_KEY).catch(() => {});
   }, []);
 
   const openSessionPicker = useCallback(() => {
