@@ -8,7 +8,7 @@ export default defineConfig({
   workers: process.env.CI ? 1 : undefined,
   reporter: "html",
   use: {
-    baseURL: "https://localhost:4000",
+    baseURL: process.env.E2E_BASE_URL || "https://localhost:4100",
     ignoreHTTPSErrors: true,
     trace: "on-first-retry",
   },
@@ -19,10 +19,10 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: "cd ../.. && scripts/start-dev.sh",
-    url: "https://localhost:4000",
-    reuseExistingServer: !process.env.CI,
+    command: "cd ../.. && scripts/start-prod.sh",
+    url: process.env.E2E_BASE_URL || "https://localhost:4100",
+    reuseExistingServer: true,
     ignoreHTTPSErrors: true,
-    timeout: 30_000,
+    timeout: 60_000,
   },
 });
