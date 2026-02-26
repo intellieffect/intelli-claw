@@ -153,15 +153,20 @@ export function MessageList({
   }, []);
 
   // Auto-scroll only when user is at the bottom
-  // Use message count + streaming state as trigger (not full messages array) to reduce jitter
+  // Track message count, streaming state, AND content length so scroll follows during streaming
   const msgCount = messages.length;
-  const lastStreaming = messages[messages.length - 1]?.streaming;
+  const lastMsg = messages[messages.length - 1];
+  const lastStreaming = lastMsg?.streaming;
+  const lastContentLen = lastMsg?.content?.length ?? 0;
   useEffect(() => {
     if (!userScrolledUp) {
-      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+      const el = containerRef.current;
+      if (el) {
+        el.scrollTop = el.scrollHeight;
+      }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [msgCount, lastStreaming, userScrolledUp]);
+  }, [msgCount, lastStreaming, lastContentLen, userScrolledUp]);
 
   const scrollToBottom = useCallback(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
