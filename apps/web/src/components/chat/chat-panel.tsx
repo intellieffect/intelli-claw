@@ -363,7 +363,7 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
         const results = await Promise.all(attachments.map(attachmentToPayload));
         const payloads = results.flatMap((r) => r.payloads);
         const pdfTexts = results.map((r) => r.prependText).filter(Boolean).join("\n\n");
-        const userMsg = [text, pdfTexts].filter(Boolean).join("\n\n") || "";
+        const userMsg = [text, pdfTexts].filter(Boolean).join("\n\n") || (payloads.length > 0 ? "(image)" : "");
 
         const displayAtts = await Promise.all(
           attachments.map(async (att) => {
