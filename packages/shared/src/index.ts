@@ -30,6 +30,7 @@ export {
   type Agent,
   type Session,
   type ChatMessage,
+  type ContentPart,
   type ToolCall,
 } from "./gateway/protocol";
 export {
