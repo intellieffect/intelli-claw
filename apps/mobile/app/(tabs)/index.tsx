@@ -177,7 +177,7 @@ const MessageBubble = React.memo(function MessageBubble({ msg }: { msg: DisplayM
 
   return (
     <View style={[s.bubbleRow, isUser ? s.bubbleRowRight : s.bubbleRowLeft]}>
-      <View style={{ maxWidth: "85%" }}>
+      <View style={{ maxWidth: "78%" }}>
         <Pressable
           onLongPress={!isUser ? handleCopy : undefined}
           style={[s.bubble, isUser ? s.bubbleUser : s.bubbleAssistant]}
@@ -433,10 +433,9 @@ export default function ChatScreen() {
 
     <KeyboardAvoidingView
       style={s.flex1}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      keyboardVerticalOffset={insets.top + 44}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      keyboardVerticalOffset={Platform.OS === "ios" ? insets.top : 0}
     >
-      <Pressable style={s.flex1} onPress={Keyboard.dismiss}>
 
       {/* Message area */}
       {loading ? (
@@ -534,8 +533,6 @@ export default function ChatScreen() {
           </TouchableOpacity>
         )}
       </View>
-
-      </Pressable>
 
       {/* Session picker modal */}
       <Modal visible={sessionPickerOpen} animationType="slide" transparent onRequestClose={() => setSessionPickerOpen(false)}>
