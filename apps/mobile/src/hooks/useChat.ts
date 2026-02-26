@@ -66,15 +66,16 @@ export function useChat(sessionKey?: string) {
       const histMsgs: DisplayMessage[] = (res?.messages || [])
         .filter((m) => {
           if (m.role !== "user" && m.role !== "assistant") return false;
+          const blocks = m.content as any;
           const raw = typeof m.content === "string" ? m.content
-            : Array.isArray(m.content) ? m.content.map((b: any) => b.text || "").join("") : String(m.content || "");
+            : Array.isArray(blocks) ? blocks.map((b: any) => b?.text || "").join("") : String(m.content || "");
           return !HIDDEN.test(raw.trim());
         })
         .map((m, i) => {
+          const blocks = m.content as any;
           let text = typeof m.content === "string" ? m.content
-            : Array.isArray(m.content) ? m.content.map((b: any) => b.text || "").join("") : String(m.content || "");
-          // Strip MEDIA: lines for mobile (no media support yet)
-          text = text.replace(/^MEDIA:.+$/gm, "").replace(/\n{3,}/g, "\n\n").trim();
+            : Array.isArray(blocks) ? blocks.map((b: any) => b?.text || "").join("") : String(m.content || "");
+          text = text.replace(/\n{3,}/g, "\n\n").trim();
           return {
             id: `hist-${i}`,
             role: m.role as "user" | "assistant",
@@ -95,7 +96,7 @@ export function useChat(sessionKey?: string) {
     loadHistory();
   }, [loadHistory]);
 
-  // ─── Stream handler ───
+  // ─── Stream handler (mirrors web/electron pattern) ───
   useEffect(() => {
     if (!client) return;
 
@@ -108,64 +109,129 @@ export function useChat(sessionKey?: string) {
 
       // Only process events for our session
       if (sessionKey && evtSessionKey && evtSessionKey !== sessionKey) return;
+      if (!evtSessionKey && sessionKey) return;
 
-      if (stream === "lifecycle") {
-        const phase = data?.phase as string | undefined;
-        if (phase === "run-start") {
-          runIdRef.current = (data?.runId as string) || null;
-          setStreaming(true);
-          setAgentStatus({ phase: "thinking" });
-          // Create streaming placeholder
-          const id = `stream-${Date.now()}`;
-          streamBuf.current = { id, content: "", toolCalls: new Map() };
-          setMessages((prev) => [
-            ...prev,
-            { id, role: "assistant", content: "", timestamp: new Date().toISOString(), toolCalls: [], streaming: true },
-          ]);
-        } else if (phase === "run-end" || phase === "run-error") {
-          if (streamBuf.current) {
-            const buf = streamBuf.current;
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === buf.id
-                  ? { ...m, content: buf.content, toolCalls: [...buf.toolCalls.values()], streaming: false }
-                  : m,
-              ),
-            );
-            streamBuf.current = null;
-          }
-          runIdRef.current = null;
-          setStreaming(false);
-          setAgentStatus({ phase: "idle" });
+      // ── assistant text delta ──
+      if (stream === "assistant" && (typeof data?.delta === "string" || typeof data?.text === "string")) {
+        const chunk = (data?.delta as string | undefined) ?? (data?.text as string);
+        setStreaming(true);
+        setAgentStatus({ phase: "writing" });
+
+        if (!streamBuf.current) {
+          streamBuf.current = { id: `stream-${Date.now()}`, content: "", toolCalls: new Map() };
         }
-        return;
-      }
+        streamBuf.current.content += chunk;
+        const snap = streamBuf.current;
 
-      if (stream === "assistant") {
-        if (!streamBuf.current) return;
-        const buf = streamBuf.current;
+        setMessages((prev) => {
+          const idx = prev.findIndex((m) => m.id === snap.id);
+          const msg: DisplayMessage = {
+            id: snap.id, role: "assistant", content: snap.content,
+            timestamp: new Date().toISOString(),
+            toolCalls: Array.from(snap.toolCalls.values()), streaming: true,
+          };
+          if (idx >= 0) { const next = [...prev]; next[idx] = msg; return next; }
+          return [...prev, msg];
+        });
 
-        if (data?.delta) {
-          buf.content += String(data.delta);
-          setAgentStatus({ phase: "writing" });
-          // Throttled update
+      // ── tool start ──
+      } else if (stream === "tool-start" && data) {
+        const callId = String(data.toolCallId || data.callId || "");
+        const name = String(data.name || data.tool || "");
+        setAgentStatus({ phase: "tool", toolName: name });
+
+        if (!streamBuf.current) {
+          streamBuf.current = { id: `stream-${Date.now()}`, content: "", toolCalls: new Map() };
+        }
+        streamBuf.current.toolCalls.set(callId, { callId, name, status: "running" });
+        const snap = streamBuf.current;
+
+        setMessages((prev) => {
+          const idx = prev.findIndex((m) => m.id === snap.id);
+          const msg: DisplayMessage = {
+            id: snap.id, role: "assistant", content: snap.content,
+            timestamp: new Date().toISOString(),
+            toolCalls: Array.from(snap.toolCalls.values()), streaming: true,
+          };
+          if (idx >= 0) { const next = [...prev]; next[idx] = msg; return next; }
+          return [...prev, msg];
+        });
+
+      // ── tool end ──
+      } else if (stream === "tool-end" && data) {
+        const callId = String(data.toolCallId || data.callId || "");
+        const result = data.result as string | undefined;
+        setAgentStatus({ phase: "thinking" });
+
+        if (streamBuf.current) {
+          const tc = streamBuf.current.toolCalls.get(callId);
+          if (tc) { tc.status = "done"; tc.result = result; }
+          const snap = streamBuf.current;
+          setMessages((prev) => {
+            const idx = prev.findIndex((m) => m.id === snap.id);
+            if (idx >= 0) {
+              const next = [...prev];
+              next[idx] = { ...next[idx], toolCalls: Array.from(snap.toolCalls.values()) };
+              return next;
+            }
+            return prev;
+          });
+        }
+
+      // ── lifecycle start ──
+      } else if (stream === "lifecycle" && data?.phase === "start") {
+        setStreaming(true);
+        runIdRef.current = (raw.runId as string) ?? null;
+        setAgentStatus({ phase: "thinking" });
+
+      // ── lifecycle end ──
+      } else if (stream === "lifecycle" && data?.phase === "end") {
+        setStreaming(false);
+        setAgentStatus({ phase: "idle" });
+
+        if (streamBuf.current) {
+          const finalId = streamBuf.current.id;
+          const finalContent = streamBuf.current.content;
+          const finalTools = Array.from(streamBuf.current.toolCalls.values());
           setMessages((prev) =>
-            prev.map((m) =>
-              m.id === buf.id ? { ...m, content: buf.content } : m,
-            ),
+            prev.map((m) => m.id === finalId
+              ? { ...m, content: finalContent, toolCalls: finalTools, streaming: false }
+              : m),
           );
-        } else if (data?.kind === "tool-call-start") {
-          const callId = String(data.callId || "");
-          const name = String(data.name || "");
-          buf.toolCalls.set(callId, { callId, name, status: "running" });
-          setAgentStatus({ phase: "tool", toolName: name });
-        } else if (data?.kind === "tool-call-end") {
-          const callId = String(data.callId || "");
-          const existing = buf.toolCalls.get(callId);
-          if (existing) {
-            existing.status = "done";
-            existing.result = String(data.result || "");
-          }
+          streamBuf.current = null;
+        }
+
+      // ── done/end/finish (alternative end signals) ──
+      } else if (stream === "done" || stream === "end" || stream === "finish") {
+        setStreaming(false);
+        setAgentStatus({ phase: "idle" });
+
+        if (streamBuf.current) {
+          const finalId = streamBuf.current.id;
+          const finalContent = (data?.text as string) || streamBuf.current.content;
+          const finalTools = Array.from(streamBuf.current.toolCalls.values());
+          setMessages((prev) =>
+            prev.map((m) => m.id === finalId
+              ? { ...m, content: finalContent, toolCalls: finalTools, streaming: false }
+              : m),
+          );
+          streamBuf.current = null;
+        }
+
+      // ── error ──
+      } else if (stream === "error") {
+        setStreaming(false);
+        setAgentStatus({ phase: "idle" });
+        const errMsg = String(data?.message || data?.error || "Unknown error");
+
+        if (streamBuf.current) {
+          const errId = streamBuf.current.id;
+          setMessages((prev) =>
+            prev.map((m) => m.id === errId
+              ? { ...m, content: m.content + `\n\n**Error:** ${errMsg}`, streaming: false }
+              : m),
+          );
+          streamBuf.current = null;
         }
       }
     });
@@ -175,24 +241,33 @@ export function useChat(sessionKey?: string) {
 
   // ─── Send message ───
   const sendMessage = useCallback(
-    async (text: string) => {
-      if (!client || state !== "connected" || !sessionKey || !text.trim()) return;
+    async (text: string, attachments?: Array<{ data: string; mimeType: string; fileName?: string }>) => {
+      if (!client || state !== "connected" || !sessionKey) return;
+      if (!text.trim() && (!attachments || attachments.length === 0)) return;
 
       const userMsg: DisplayMessage = {
         id: `user-${Date.now()}`,
         role: "user",
-        content: text.trim(),
+        content: text.trim() || (attachments?.length ? "(이미지)" : ""),
         timestamp: new Date().toISOString(),
         toolCalls: [],
       };
       setMessages((prev) => [...prev, userMsg]);
 
       try {
-        await client.request("chat.send", {
+        const payload: Record<string, unknown> = {
           sessionKey,
           message: text.trim(),
           idempotencyKey: `mobile-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-        });
+        };
+        if (attachments && attachments.length > 0) {
+          payload.attachments = attachments.map((a) => ({
+            data: a.data,
+            mimeType: a.mimeType,
+            fileName: a.fileName || `image-${Date.now()}.jpg`,
+          }));
+        }
+        await client.request("chat.send", payload);
       } catch (err) {
         console.error("[useChat] send error:", err);
       }

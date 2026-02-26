@@ -1,4 +1,5 @@
 import "react-native-get-random-values"; // polyfill crypto.getRandomValues for uuid
+import { useState, useCallback } from "react";
 import { Slot } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -12,6 +13,7 @@ import {
 } from "@intelli-claw/shared";
 import { ExpoCryptoAdapter } from "../src/adapters/crypto";
 import { mmkvStorage } from "../src/adapters/storage";
+import { SessionContext } from "../src/stores/sessionStore";
 
 // Initialize crypto adapter (must be called once before gateway connects)
 initCryptoAdapter(new ExpoCryptoAdapter());
@@ -41,19 +43,31 @@ function saveConfig(url: string, token: string): void {
 
 // --- Root Layout ---
 
+// Session picker callback ref — set by ChatScreen, called by ChatHeader
+let _openSessionPicker: (() => void) | null = null;
+export function registerSessionPicker(fn: () => void) { _openSessionPicker = fn; }
+export function unregisterSessionPicker() { _openSessionPicker = null; }
+
 export default function RootLayout() {
   const config = loadGatewayConfig();
+  const [activeSessionKey, setActiveSessionKey] = useState<string | null>(null);
+
+  const openSessionPicker = useCallback(() => {
+    _openSessionPicker?.();
+  }, []);
 
   return (
     <SafeAreaProvider>
-      <GatewayProvider
-        url={config.url}
-        token={config.token}
-        onConfigChange={saveConfig}
-      >
-        <StatusBar style="auto" />
-        <Slot />
-      </GatewayProvider>
+      <SessionContext.Provider value={{ activeSessionKey, setActiveSessionKey, openSessionPicker }}>
+        <GatewayProvider
+          url={config.url}
+          token={config.token}
+          onConfigChange={saveConfig}
+        >
+          <StatusBar style="auto" />
+          <Slot />
+        </GatewayProvider>
+      </SessionContext.Provider>
     </SafeAreaProvider>
   );
 }
