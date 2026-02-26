@@ -428,7 +428,7 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
   };
 
     const handleNewSession = () => {
-    setNewSessionPickerOpen(true);
+    createSessionForAgent(agentId);
   };
 
   const createSessionForAgent = async (selectedAgentId: string) => {
