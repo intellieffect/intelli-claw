@@ -1,4 +1,4 @@
-import "../global.css";
+import "react-native-get-random-values"; // polyfill crypto.getRandomValues for uuid
 import { Slot } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -16,7 +16,7 @@ import { mmkvStorage } from "../src/adapters/storage";
 // Initialize crypto adapter (must be called once before gateway connects)
 initCryptoAdapter(new ExpoCryptoAdapter());
 
-// --- Config persistence (synchronous via MMKV) ---
+// --- Config persistence ---
 
 function loadGatewayConfig(): GatewayConfig {
   try {

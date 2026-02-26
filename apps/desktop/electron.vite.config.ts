@@ -18,6 +18,7 @@ export default defineConfig({
   },
   renderer: {
     root: path.resolve(__dirname, "../web/src"),
+    envDir: path.resolve(__dirname, "../web"),
     publicDir: path.resolve(__dirname, "../../public"),
     build: {
       outDir: path.resolve(__dirname, "out/renderer"),
