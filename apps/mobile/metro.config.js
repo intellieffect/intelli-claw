@@ -1,9 +1,21 @@
-// Learn more: https://docs.expo.dev/guides/monorepos/
-// SDK 52+ auto-configures Metro for monorepos — no manual watchFolders needed.
-
 const { getDefaultConfig } = require("expo/metro-config");
-const { withNativeWind } = require("nativewind/metro");
+const path = require("path");
 
 const config = getDefaultConfig(__dirname);
 
-module.exports = withNativeWind(config, { input: "./global.css" });
+// Force single React instance across monorepo (prevents "Invalid hook call" errors)
+const mobileReact = path.resolve(__dirname, "node_modules/react");
+const mobileReactNative = path.resolve(__dirname, "node_modules/react-native");
+
+config.resolver.extraNodeModules = {
+  react: mobileReact,
+  "react-native": mobileReactNative,
+};
+
+// Ensure Metro resolves from mobile's node_modules first
+config.resolver.nodeModulesPaths = [
+  path.resolve(__dirname, "node_modules"),
+  path.resolve(__dirname, "../../node_modules"),
+];
+
+module.exports = config;

@@ -1,32 +1,21 @@
 import { useState } from "react";
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  ScrollView,
-  Alert,
-} from "react-native";
+import { View, Text, TextInput, TouchableOpacity, ScrollView, Alert, StyleSheet, Platform } from "react-native";
 import { useGateway } from "@intelli-claw/shared";
 import Constants from "expo-constants";
 
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
-    <View className="flex-row justify-between py-2.5">
-      <Text className="text-sm text-gray-500">{label}</Text>
-      <Text className="text-sm text-gray-900 font-mono max-w-[60%] text-right" numberOfLines={1}>
-        {value}
-      </Text>
+    <View style={s.infoRow}>
+      <Text style={s.infoLabel}>{label}</Text>
+      <Text style={s.infoValue} numberOfLines={1}>{value}</Text>
     </View>
   );
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <View className="bg-gray-50 rounded-xl p-4 mb-4">
-      <Text className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">
-        {title}
-      </Text>
+    <View style={s.section}>
+      <Text style={s.sectionTitle}>{title}</Text>
       {children}
     </View>
   );
@@ -39,61 +28,27 @@ export default function SettingsScreen() {
   const [token, setToken] = useState("");
 
   const handleSave = () => {
-    if (!url.trim()) {
-      Alert.alert("오류", "Gateway URL을 입력하세요");
-      return;
-    }
+    if (!url.trim()) { Alert.alert("오류", "Gateway URL을 입력하세요"); return; }
     updateConfig(url.trim(), token.trim());
     setEditing(false);
     Alert.alert("저장됨", "Gateway 설정이 변경되었습니다. 재연결 중...");
   };
 
-  const handleCancel = () => {
-    setUrl(gatewayUrl || "");
-    setToken("");
-    setEditing(false);
-  };
-
   return (
-    <ScrollView className="flex-1 bg-white p-4" keyboardShouldPersistTaps="handled">
-      {/* Connection Settings */}
+    <ScrollView style={s.container} keyboardShouldPersistTaps="handled">
       <Section title="Gateway 연결">
         {editing ? (
           <>
-            <Text className="text-xs text-gray-500 mb-1">URL</Text>
-            <TextInput
-              className="h-10 px-3 bg-white border border-gray-200 rounded-lg text-sm mb-3"
-              value={url}
-              onChangeText={setUrl}
-              placeholder="ws://127.0.0.1:18789"
-              autoCapitalize="none"
-              autoCorrect={false}
-              keyboardType="url"
-            />
-            <Text className="text-xs text-gray-500 mb-1">Token</Text>
-            <TextInput
-              className="h-10 px-3 bg-white border border-gray-200 rounded-lg text-sm mb-4"
-              value={token}
-              onChangeText={setToken}
-              placeholder="인증 토큰"
-              autoCapitalize="none"
-              autoCorrect={false}
-              secureTextEntry
-            />
-            <View className="flex-row gap-2">
-              <TouchableOpacity
-                onPress={handleSave}
-                className="flex-1 py-2.5 bg-blue-500 rounded-lg items-center"
-                activeOpacity={0.7}
-              >
-                <Text className="text-white font-medium text-sm">저장</Text>
+            <Text style={s.fieldLabel}>URL</Text>
+            <TextInput style={s.textInput} value={url} onChangeText={setUrl} placeholder="ws://127.0.0.1:18789" autoCapitalize="none" autoCorrect={false} keyboardType="url" />
+            <Text style={s.fieldLabel}>Token</Text>
+            <TextInput style={s.textInput} value={token} onChangeText={setToken} placeholder="인증 토큰" autoCapitalize="none" autoCorrect={false} secureTextEntry />
+            <View style={s.btnRow}>
+              <TouchableOpacity onPress={handleSave} style={[s.btn, s.btnPrimary]} activeOpacity={0.7}>
+                <Text style={s.btnPrimaryText}>저장</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                onPress={handleCancel}
-                className="flex-1 py-2.5 bg-gray-200 rounded-lg items-center"
-                activeOpacity={0.7}
-              >
-                <Text className="text-gray-700 font-medium text-sm">취소</Text>
+              <TouchableOpacity onPress={() => { setUrl(gatewayUrl || ""); setToken(""); setEditing(false); }} style={[s.btn, s.btnSecondary]} activeOpacity={0.7}>
+                <Text style={s.btnSecondaryText}>취소</Text>
               </TouchableOpacity>
             </View>
           </>
@@ -103,21 +58,13 @@ export default function SettingsScreen() {
             <InfoRow label="URL" value={gatewayUrl || "-"} />
             <InfoRow label="Server" value={serverVersion || "-"} />
             <InfoRow label="Commit" value={serverCommit?.slice(0, 8) || "-"} />
-            <TouchableOpacity
-              onPress={() => {
-                setUrl(gatewayUrl || "");
-                setEditing(true);
-              }}
-              className="mt-2 py-2.5 bg-gray-200 rounded-lg items-center"
-              activeOpacity={0.7}
-            >
-              <Text className="text-gray-700 font-medium text-sm">연결 설정 변경</Text>
+            <TouchableOpacity onPress={() => { setUrl(gatewayUrl || ""); setEditing(true); }} style={[s.btn, s.btnSecondary, { marginTop: 8 }]} activeOpacity={0.7}>
+              <Text style={s.btnSecondaryText}>연결 설정 변경</Text>
             </TouchableOpacity>
           </>
         )}
       </Section>
 
-      {/* App Info */}
       <Section title="앱 정보">
         <InfoRow label="Version" value={Constants.expoConfig?.version || "0.1.0"} />
         <InfoRow label="SDK" value={`Expo ${Constants.expoConfig?.sdkVersion || "?"}`} />
@@ -126,3 +73,20 @@ export default function SettingsScreen() {
     </ScrollView>
   );
 }
+
+const s = StyleSheet.create({
+  container: { flex: 1, backgroundColor: "#FFFFFF", padding: 16 },
+  section: { backgroundColor: "#F9FAFB", borderRadius: 12, padding: 16, marginBottom: 16 },
+  sectionTitle: { fontSize: 11, fontWeight: "600", color: "#9CA3AF", textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 },
+  infoRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 10 },
+  infoLabel: { fontSize: 13, color: "#6B7280" },
+  infoValue: { fontSize: 13, color: "#111827", fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace", maxWidth: "60%", textAlign: "right" },
+  fieldLabel: { fontSize: 11, color: "#6B7280", marginBottom: 4 },
+  textInput: { height: 40, paddingHorizontal: 12, backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 8, fontSize: 13, marginBottom: 12 },
+  btnRow: { flexDirection: "row", gap: 8 },
+  btn: { flex: 1, paddingVertical: 10, borderRadius: 8, alignItems: "center" },
+  btnPrimary: { backgroundColor: "#3B82F6" },
+  btnPrimaryText: { color: "#FFFFFF", fontWeight: "500", fontSize: 13 },
+  btnSecondary: { backgroundColor: "#E5E7EB" },
+  btnSecondaryText: { color: "#374151", fontWeight: "500", fontSize: 13 },
+});

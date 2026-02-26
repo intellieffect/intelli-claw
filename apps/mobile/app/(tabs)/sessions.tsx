@@ -1,4 +1,4 @@
-import { View, Text, TouchableOpacity, FlatList, RefreshControl } from "react-native";
+import { View, Text, TouchableOpacity, FlatList, RefreshControl, StyleSheet } from "react-native";
 import { useGateway, sessionDisplayName, parseSessionKey } from "@intelli-claw/shared";
 import { useSessions } from "../../src/hooks/useSessions";
 
@@ -20,58 +20,49 @@ export default function SessionsScreen() {
 
   if (state !== "connected") {
     return (
-      <View className="flex-1 items-center justify-center bg-white px-8">
-        <Text className="text-4xl mb-3">🔌</Text>
-        <Text className="text-lg font-semibold text-gray-400">Gateway 연결 필요</Text>
-        <Text className="text-sm text-gray-300 mt-1 text-center">
-          Settings에서 Gateway URL과 Token을 설정하세요
-        </Text>
+      <View style={s.center}>
+        <Text style={s.emptyEmoji}>🔌</Text>
+        <Text style={s.emptyTitle}>Gateway 연결 필요</Text>
+        <Text style={s.emptySubtitle}>Settings에서 Gateway URL과 Token을 설정하세요</Text>
       </View>
     );
   }
 
   return (
-    <View className="flex-1 bg-white">
+    <View style={s.container}>
       <FlatList
         data={sessions}
         keyExtractor={(item) => item.key}
-        refreshControl={
-          <RefreshControl refreshing={loading} onRefresh={refresh} tintColor="#3B82F6" />
-        }
-        contentContainerStyle={sessions.length === 0 ? { flex: 1 } : { paddingVertical: 4 }}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} tintColor="#3B82F6" />}
+        contentContainerStyle={sessions.length === 0 ? s.emptyList : s.listContent}
         ListEmptyComponent={
-          <View className="flex-1 items-center justify-center">
-            <Text className="text-gray-400">세션 없음</Text>
+          <View style={s.center}>
+            <Text style={s.emptySubtitle}>세션 없음</Text>
           </View>
         }
         renderItem={({ item }) => {
-          const parsed = parseSessionKey(item.key);
           const isMain = item.key === mainSessionKey;
           const displayName = item.title || sessionDisplayName({ key: item.key, label: item.title });
 
           return (
             <TouchableOpacity
-              className={`px-4 py-3 border-b border-gray-100 ${isMain ? "bg-blue-50" : ""}`}
+              style={[s.sessionRow, isMain && s.sessionMain]}
               activeOpacity={0.6}
             >
-              <View className="flex-row items-center justify-between">
-                <View className="flex-1 mr-3">
-                  <View className="flex-row items-center gap-2">
-                    <Text className="text-[15px] font-medium text-gray-900" numberOfLines={1}>
-                      {displayName}
-                    </Text>
-                    {isMain && (
-                      <View className="bg-blue-100 px-1.5 py-0.5 rounded">
-                        <Text className="text-[10px] text-blue-600 font-medium">MAIN</Text>
-                      </View>
-                    )}
-                  </View>
-                  <Text className="text-xs text-gray-400 mt-0.5" numberOfLines={1}>
-                    {parsed?.agentId || item.key}
-                  </Text>
+              <View style={s.sessionContent}>
+                <View style={s.sessionHeader}>
+                  <Text style={s.sessionName} numberOfLines={1}>{displayName}</Text>
+                  {isMain && (
+                    <View style={s.badge}>
+                      <Text style={s.badgeText}>MAIN</Text>
+                    </View>
+                  )}
                 </View>
-                <Text className="text-xs text-gray-300">{timeAgo(item.updatedAt)}</Text>
+                <Text style={s.sessionKey} numberOfLines={1}>
+                  {parseSessionKey(item.key)?.agentId || item.key}
+                </Text>
               </View>
+              <Text style={s.sessionTime}>{timeAgo(item.updatedAt)}</Text>
             </TouchableOpacity>
           );
         }}
@@ -79,3 +70,22 @@ export default function SessionsScreen() {
     </View>
   );
 }
+
+const s = StyleSheet.create({
+  container: { flex: 1, backgroundColor: "#FFFFFF" },
+  center: { flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 32 },
+  emptyEmoji: { fontSize: 40, marginBottom: 12 },
+  emptyTitle: { fontSize: 18, fontWeight: "600", color: "#9CA3AF" },
+  emptySubtitle: { fontSize: 13, color: "#D1D5DB", marginTop: 4, textAlign: "center" },
+  emptyList: { flex: 1 },
+  listContent: { paddingVertical: 4 },
+  sessionRow: { paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: "#F3F4F6", flexDirection: "row", alignItems: "center" },
+  sessionMain: { backgroundColor: "#EFF6FF" },
+  sessionContent: { flex: 1, marginRight: 12 },
+  sessionHeader: { flexDirection: "row", alignItems: "center", gap: 8 },
+  sessionName: { fontSize: 15, fontWeight: "500", color: "#111827", flexShrink: 1 },
+  badge: { backgroundColor: "#DBEAFE", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+  badgeText: { fontSize: 10, color: "#2563EB", fontWeight: "600" },
+  sessionKey: { fontSize: 12, color: "#9CA3AF", marginTop: 2 },
+  sessionTime: { fontSize: 11, color: "#D1D5DB" },
+});

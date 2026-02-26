@@ -13,7 +13,7 @@ export default function TabLayout() {
         name="index"
         options={{
           title: "Chat",
-          tabBarIcon: ({ color, size }) => (
+          tabBarIcon: ({ color, size }: { color: string; size: number }) => (
             <Ionicons name="chatbubble-outline" size={size} color={color} />
           ),
         }}
@@ -22,7 +22,7 @@ export default function TabLayout() {
         name="sessions"
         options={{
           title: "Sessions",
-          tabBarIcon: ({ color, size }) => (
+          tabBarIcon: ({ color, size }: { color: string; size: number }) => (
             <Ionicons name="list-outline" size={size} color={color} />
           ),
         }}
@@ -31,7 +31,7 @@ export default function TabLayout() {
         name="settings"
         options={{
           title: "Settings",
-          tabBarIcon: ({ color, size }) => (
+          tabBarIcon: ({ color, size }: { color: string; size: number }) => (
             <Ionicons name="settings-outline" size={size} color={color} />
           ),
         }}

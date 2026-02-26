@@ -1,34 +1,14 @@
-import { View, Text } from "react-native";
+import { View, Text, StyleSheet } from "react-native";
 import { useGateway, type ConnectionState } from "@intelli-claw/shared";
 
 const STATUS_CONFIG: Record<
   ConnectionState,
   { bg: string; dot: string; text: string; label: string }
 > = {
-  connected: {
-    bg: "bg-green-50",
-    dot: "bg-green-500",
-    text: "text-green-800",
-    label: "Connected",
-  },
-  connecting: {
-    bg: "bg-yellow-50",
-    dot: "bg-yellow-500",
-    text: "text-yellow-800",
-    label: "Connecting...",
-  },
-  authenticating: {
-    bg: "bg-blue-50",
-    dot: "bg-blue-500",
-    text: "text-blue-800",
-    label: "Authenticating...",
-  },
-  disconnected: {
-    bg: "bg-red-50",
-    dot: "bg-red-500",
-    text: "text-red-800",
-    label: "Disconnected",
-  },
+  connected: { bg: "#F0FDF4", dot: "#22C55E", text: "#166534", label: "Connected" },
+  connecting: { bg: "#FEFCE8", dot: "#EAB308", text: "#854D0E", label: "Connecting..." },
+  authenticating: { bg: "#EFF6FF", dot: "#3B82F6", text: "#1E40AF", label: "Authenticating..." },
+  disconnected: { bg: "#FEF2F2", dot: "#EF4444", text: "#991B1B", label: "Disconnected" },
 };
 
 export function ConnectionBanner() {
@@ -36,16 +16,20 @@ export function ConnectionBanner() {
   const config = STATUS_CONFIG[state];
 
   return (
-    <View className={`px-4 py-2.5 ${config.bg}`}>
-      <View className="flex-row items-center">
-        <View className={`w-2 h-2 rounded-full mr-2 ${config.dot}`} />
-        <Text className={`text-sm font-medium ${config.text}`}>
-          {config.label}
-        </Text>
+    <View style={[styles.container, { backgroundColor: config.bg }]}>
+      <View style={styles.row}>
+        <View style={[styles.dot, { backgroundColor: config.dot }]} />
+        <Text style={[styles.label, { color: config.text }]}>{config.label}</Text>
       </View>
-      {error && (
-        <Text className="text-xs text-red-600 mt-1">{error.message}</Text>
-      )}
+      {error && <Text style={styles.error}>{error.message}</Text>}
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: { paddingHorizontal: 16, paddingVertical: 10 },
+  row: { flexDirection: "row", alignItems: "center" },
+  dot: { width: 8, height: 8, borderRadius: 4, marginRight: 8 },
+  label: { fontSize: 13, fontWeight: "500" },
+  error: { fontSize: 11, color: "#DC2626", marginTop: 4 },
+});
