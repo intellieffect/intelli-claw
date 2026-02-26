@@ -489,7 +489,7 @@ export default function ChatScreen() {
       )}
 
       {/* Input bar */}
-      <View style={[s.inputBar, { paddingBottom: keyboardVisible ? 8 : Math.max(8, insets.bottom) }]}>
+      <View style={[s.inputBar, { paddingBottom: keyboardVisible ? 0 : Math.max(8, insets.bottom) }]}>
         <TouchableOpacity
           onPress={() => {
             if (Platform.OS === "ios") {
