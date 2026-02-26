@@ -181,7 +181,9 @@ export function useSessions() {
 
 function stripInboundMeta(text: string): string {
   let cleaned = text.replace(/Conversation info \(untrusted metadata\):\s*```json\s*\{[\s\S]*?\}\s*```\s*/g, "");
-  cleaned = cleaned.replace(/^\[[\w\s\-:+]+\]\s*/g, "");
+  // Only strip gateway-injected timestamp prefixes like [2024-01-15 10:30:45+09:00]
+  // Do NOT strip arbitrary bracketed text like [important], [TODO], etc. (#55)
+  cleaned = cleaned.replace(/^\[\d{4}-\d{2}-\d{2}[\w\s\-:+]*\]\s*/g, "");
   return cleaned.trim();
 }
 
@@ -382,9 +384,14 @@ export function useChat(sessionKey?: string) {
           const allAttachments = [...imgAttachments, ...mediaAttachments];
           if (m.role === 'assistant') textContent = stripTemplateVars(textContent);
 
+          // Check ORIGINAL content for system-injected markers (before stripping) (#55)
+          // Use ^ anchors to avoid false positives on user text containing these substrings mid-text
+          const rawContentStr = typeof m.content === 'string' ? m.content : textContent;
+          const isSystemInjected = m.role === 'user' && /^\[System Message\]|^\[sessionId:|^System:\s*\[/.test(rawContentStr);
+
           return {
             id: `hist-${i}`,
-            role: (m.role === 'system' || (m.role === 'user' && /\[System Message\]|\[sessionId:|^System:\s*\[/.test(textContent)))
+            role: (m.role === 'system' || isSystemInjected)
               ? 'system' as const
               : m.role as "user" | "assistant",
             content: textContent,
@@ -433,7 +440,9 @@ export function useChat(sessionKey?: string) {
       const raw = frame.payload as Record<string, unknown>;
       const stream = raw.stream as string | undefined;
       const data = raw.data as Record<string, unknown> | undefined;
-      const evSessionKey = raw.sessionKey as string | undefined;
+      // Check both top-level sessionKey and data.sessionKey — gateway may
+      // nest the key inside data depending on event type (#48)
+      const evSessionKey = (raw.sessionKey ?? data?.sessionKey) as string | undefined;
       if (evSessionKey && evSessionKey !== sessionKeyRef.current) return;
       if (!evSessionKey && sessionKeyRef.current) return;
 
