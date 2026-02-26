@@ -260,6 +260,7 @@ export function useChat(sessionKey?: string) {
     content: string;
     toolCalls: Map<string, ToolCall>;
   } | null>(null);
+  const streamIdCounter = useRef(0);
   const runIdRef = useRef<string | null>(null);
   const streamingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sessionKeyRef = useRef(sessionKey);
@@ -452,7 +453,7 @@ export function useChat(sessionKey?: string) {
         startStreamingTimeout();
         setAgentStatusDebug({ phase: "writing" });
         if (!streamBuf.current) {
-          streamBuf.current = { id: `stream-${Date.now()}`, content: "", toolCalls: new Map() };
+          streamBuf.current = { id: `stream-${Date.now()}-${++streamIdCounter.current}`, content: "", toolCalls: new Map() };
         }
         streamBuf.current.content += chunk;
         const snap = streamBuf.current;
@@ -481,7 +482,7 @@ export function useChat(sessionKey?: string) {
         setAgentStatusDebug({ phase: "tool", toolName: name });
         const args = data.args as string | undefined;
         if (!streamBuf.current) {
-          streamBuf.current = { id: `stream-${Date.now()}`, content: "", toolCalls: new Map() };
+          streamBuf.current = { id: `stream-${Date.now()}-${++streamIdCounter.current}`, content: "", toolCalls: new Map() };
         }
         streamBuf.current.toolCalls.set(callId, { callId, name, args, status: "running" });
         const snapTool = streamBuf.current;
@@ -513,6 +514,21 @@ export function useChat(sessionKey?: string) {
             return prev;
           });
         }
+      } else if (stream === "inbound" && data) {
+        // Messages from other surfaces (Telegram, other devices, etc.)
+        const text = ((data.text ?? data.content ?? "") as string);
+        const role = (data.role ?? "user") as "user" | "assistant";
+        if (text) {
+          const cleanedText = role === "user" ? stripInboundMeta(text) : text;
+          const inboundId = `inbound-${Date.now()}-${++streamIdCounter.current}`;
+          setMessages((prev) => [...prev, {
+            id: inboundId,
+            role,
+            content: cleanedText,
+            timestamp: new Date().toISOString(),
+            toolCalls: [],
+          }]);
+        }
       } else if (stream === "lifecycle" && data?.phase === "start") {
         setStreaming(true);
         startStreamingTimeout();
@@ -521,7 +537,7 @@ export function useChat(sessionKey?: string) {
       } else if (stream === "lifecycle" && data?.phase === "end") {
         clearStreamingTimeout();
         setStreaming(false);
-        setAgentStatusDebug({ phase: "waiting" });
+        setAgentStatusDebug({ phase: "idle" });
         if (streamBuf.current) {
           const finalId = streamBuf.current.id;
           let finalContent = stripTemplateVars(streamBuf.current.content);
@@ -542,7 +558,7 @@ export function useChat(sessionKey?: string) {
       } else if (stream === "done" || stream === "end" || stream === "finish") {
         clearStreamingTimeout();
         setStreaming(false);
-        setAgentStatusDebug({ phase: "waiting" });
+        setAgentStatusDebug({ phase: "idle" });
         if (streamBuf.current) {
           const finalId = streamBuf.current.id;
           let finalContent = stripTemplateVars((data?.text as string) || streamBuf.current.content);
