@@ -241,7 +241,7 @@ export function useChat(sessionKey?: string) {
 
   // ─── Send message ───
   const sendMessage = useCallback(
-    async (text: string, attachments?: Array<{ data: string; mimeType: string; fileName?: string }>) => {
+    async (text: string, attachments?: Array<{ content: string; data?: string; mimeType: string; fileName?: string }>) => {
       if (!client || state !== "connected" || !sessionKey) return;
       if (!text.trim() && (!attachments || attachments.length === 0)) return;
 
@@ -262,7 +262,7 @@ export function useChat(sessionKey?: string) {
         };
         if (attachments && attachments.length > 0) {
           payload.attachments = attachments.map((a) => ({
-            data: a.data,
+            content: a.content ?? a.data,
             mimeType: a.mimeType,
             fileName: a.fileName || `image-${Date.now()}.jpg`,
           }));
