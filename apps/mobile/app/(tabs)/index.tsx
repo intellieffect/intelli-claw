@@ -360,7 +360,7 @@ export default function ChatScreen() {
     const chatAttachments = attachments
       .filter((a) => a.base64)
       .map((a) => ({
-        data: `data:${a.mimeType || "image/jpeg"};base64,${a.base64}`,
+        content: a.base64,
         mimeType: a.mimeType || "image/jpeg",
         fileName: `photo-${Date.now()}.jpg`,
       }));
