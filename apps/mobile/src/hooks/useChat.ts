@@ -16,6 +16,8 @@ export interface DisplayMessage {
   timestamp: string;
   toolCalls: ToolCall[];
   streaming?: boolean;
+  /** Local image URIs for user-sent attachments (display only) */
+  imageUris?: string[];
 }
 
 export type AgentStatus =
@@ -241,7 +243,7 @@ export function useChat(sessionKey?: string) {
 
   // ─── Send message ───
   const sendMessage = useCallback(
-    async (text: string, attachments?: Array<{ content: string; data?: string; mimeType: string; fileName?: string }>) => {
+    async (text: string, attachments?: Array<{ content: string; data?: string; mimeType: string; fileName?: string }>, imageUris?: string[]) => {
       if (!client || state !== "connected" || !sessionKey) return;
       if (!text.trim() && (!attachments || attachments.length === 0)) return;
 
@@ -251,6 +253,7 @@ export function useChat(sessionKey?: string) {
         content: text.trim() || (attachments?.length ? "(이미지)" : ""),
         timestamp: new Date().toISOString(),
         toolCalls: [],
+        imageUris: imageUris?.length ? imageUris : undefined,
       };
       setMessages((prev) => [...prev, userMsg]);
 
