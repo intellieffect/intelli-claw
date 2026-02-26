@@ -22,9 +22,9 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
-import { Paperclip, Send, Square, ChevronDown, X } from "lucide-react-native";
+import { Paperclip, Send, Square, ChevronDown, X, Settings, WifiOff } from "lucide-react-native";
 import { useGateway, parseSessionKey, sessionDisplayName } from "@intelli-claw/shared";
-import { registerSessionPicker, unregisterSessionPicker } from "../_layout";
+import SettingsScreen from "../../src/components/SettingsScreen";
 import { useChat, type DisplayMessage, type AgentStatus } from "../../src/hooks/useChat";
 import { useSessionStore } from "../../src/stores/sessionStore";
 import { useSessions } from "../../src/hooks/useSessions";
@@ -276,16 +276,11 @@ export default function ChatScreen() {
 
   const [text, setText] = useState("");
   const [sessionPickerOpen, setSessionPickerOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [attachments, setAttachments] = useState<{ uri: string; base64?: string; mimeType?: string }[]>([]);
   const flatListRef = useRef<FlatList>(null);
   const [userScrolledUp, setUserScrolledUp] = useState(false);
   const isAtBottomRef = useRef(true);
-
-  // Register session picker callback for appbar
-  useEffect(() => {
-    registerSessionPicker(() => { refreshSessions(); setSessionPickerOpen(true); });
-    return () => unregisterSessionPicker();
-  }, [refreshSessions]);
 
   // ─── Smart auto-scroll ───
   const handleScroll = useCallback((e: any) => {
@@ -384,11 +379,46 @@ export default function ChatScreen() {
   const renderItem = useCallback(({ item }: { item: DisplayMessage }) => <MessageBubble msg={item} />, []);
   const keyExtractor = useCallback((item: DisplayMessage) => item.id, []);
 
+  const dotColor = state === "connected" ? "#22C55E" : state === "connecting" ? "#EAB308" : state === "authenticating" ? "#3B82F6" : "#EF4444";
+  const isConnected = state === "connected";
+
   return (
+    <View style={[s.flex1, { paddingTop: insets.top }]}>
+      {/* ─── AppBar ─── */}
+      <View style={s.appBar}>
+        <TouchableOpacity
+          style={s.appBarLeft}
+          onPress={() => { refreshSessions(); setSessionPickerOpen(true); }}
+          activeOpacity={0.7}
+          disabled={!isConnected}
+        >
+          <View style={[s.appBarDot, { backgroundColor: dotColor }]} />
+          <Text style={s.appBarAgent} numberOfLines={1}>{agentLabel}</Text>
+          {sessionLabel && sessionLabel !== "main" && (
+            <Text style={s.appBarSession}>/ {sessionLabel}</Text>
+          )}
+          {isConnected && <ChevronDown size={14} color="#9CA3AF" style={{ marginLeft: 2 }} />}
+        </TouchableOpacity>
+
+        <View style={s.appBarRight}>
+          {!isConnected && (
+            <View style={s.statusChip}>
+              <WifiOff size={11} color="#DC2626" />
+              <Text style={s.statusChipText}>
+                {state === "connecting" ? "연결 중" : state === "authenticating" ? "인증 중" : "끊김"}
+              </Text>
+            </View>
+          )}
+          <TouchableOpacity onPress={() => setSettingsOpen(true)} style={s.appBarIconBtn} activeOpacity={0.7}>
+            <Settings size={20} color="#6B7280" />
+          </TouchableOpacity>
+        </View>
+      </View>
+
     <KeyboardAvoidingView
       style={s.flex1}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
-      keyboardVerticalOffset={90}
+      keyboardVerticalOffset={insets.top + 44}
     >
       <Pressable style={s.flex1} onPress={Keyboard.dismiss}>
 
@@ -557,6 +587,20 @@ export default function ChatScreen() {
         </View>
       </Modal>
     </KeyboardAvoidingView>
+
+      {/* Settings modal */}
+      <Modal visible={settingsOpen} animationType="slide" onRequestClose={() => setSettingsOpen(false)}>
+        <View style={[s.settingsModal, { paddingTop: insets.top }]}>
+          <View style={s.settingsHeader}>
+            <Text style={s.settingsTitle}>Settings</Text>
+            <TouchableOpacity onPress={() => setSettingsOpen(false)}>
+              <Text style={s.settingsClose}>닫기</Text>
+            </TouchableOpacity>
+          </View>
+          <SettingsScreen />
+        </View>
+      </Modal>
+    </View>
   );
 }
 
@@ -567,6 +611,23 @@ import React from "react";
 
 const s = StyleSheet.create({
   flex1: { flex: 1, backgroundColor: "#FFFFFF" },
+
+  // AppBar
+  appBar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", height: 48, paddingHorizontal: 16, backgroundColor: "#FFFFFF", borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: "#E5E7EB" },
+  appBarLeft: { flexDirection: "row", alignItems: "center", flex: 1 },
+  appBarDot: { width: 9, height: 9, borderRadius: 5, marginRight: 10 },
+  appBarAgent: { fontSize: 17, fontWeight: "700", color: "#111827" },
+  appBarSession: { fontSize: 13, color: "#9CA3AF", marginLeft: 4 },
+  appBarRight: { flexDirection: "row", alignItems: "center", gap: 8 },
+  appBarIconBtn: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" },
+  statusChip: { flexDirection: "row", alignItems: "center", gap: 3, paddingVertical: 4, paddingHorizontal: 8, borderRadius: 6, backgroundColor: "#FEF2F2" },
+  statusChipText: { fontSize: 11, fontWeight: "500", color: "#DC2626" },
+
+  // Settings modal
+  settingsModal: { flex: 1, backgroundColor: "#FFFFFF" },
+  settingsHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", height: 48, paddingHorizontal: 16, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: "#E5E7EB" },
+  settingsTitle: { fontSize: 17, fontWeight: "700", color: "#111827" },
+  settingsClose: { fontSize: 14, fontWeight: "600", color: "#2563EB" },
   center: { flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 32 },
   loadingText: { fontSize: 13, color: "#9CA3AF", marginTop: 8 },
   emptyEmoji: { fontSize: 56, marginBottom: 16 },
