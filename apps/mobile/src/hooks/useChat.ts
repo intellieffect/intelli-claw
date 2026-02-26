@@ -64,9 +64,15 @@ export function useChat(sessionKey?: string) {
       );
       const HIDDEN = /^(NO_REPLY|HEARTBEAT_OK)\s*$/;
       const histMsgs: DisplayMessage[] = (res?.messages || [])
-        .filter((m) => (m.role === "user" || m.role === "assistant") && !HIDDEN.test(m.content.trim()))
+        .filter((m) => {
+          if (m.role !== "user" && m.role !== "assistant") return false;
+          const raw = typeof m.content === "string" ? m.content
+            : Array.isArray(m.content) ? m.content.map((b: any) => b.text || "").join("") : String(m.content || "");
+          return !HIDDEN.test(raw.trim());
+        })
         .map((m, i) => {
-          let text = typeof m.content === "string" ? m.content : String(m.content || "");
+          let text = typeof m.content === "string" ? m.content
+            : Array.isArray(m.content) ? m.content.map((b: any) => b.text || "").join("") : String(m.content || "");
           // Strip MEDIA: lines for mobile (no media support yet)
           text = text.replace(/^MEDIA:.+$/gm, "").replace(/\n{3,}/g, "\n\n").trim();
           return {

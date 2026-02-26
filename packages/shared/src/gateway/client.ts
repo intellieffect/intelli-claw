@@ -1,5 +1,4 @@
-import { makeReq, parseFrame, type Frame, type ResFrame, type EventFrame, type ErrorShape, type DeviceIdentity } from "./protocol";
-import { signChallenge } from "./device-identity";
+import { makeReq, parseFrame, type Frame, type ResFrame, type EventFrame, type ErrorShape } from "./protocol";
 
 export type ConnectionState = "disconnected" | "connecting" | "authenticating" | "connected";
 type EventHandler = (event: EventFrame) => void;
@@ -109,7 +108,8 @@ export class GatewayClient {
   // --- Private ---
 
   private send(frame: Frame): void {
-    if (this.ws?.readyState === WebSocket.OPEN) {
+    // Use readyState === 1 directly (WebSocket.OPEN may be undefined in React Native)
+    if (this.ws && this.ws.readyState === 1) {
       this.ws.send(JSON.stringify(frame));
     }
   }
@@ -132,12 +132,14 @@ export class GatewayClient {
   }
 
   private handleMessage(e: MessageEvent): void {
-    const frame = parseFrame(typeof e.data === "string" ? e.data : "");
+    // React Native WebSocket may deliver data as non-string types
+    const raw = typeof e.data === "string" ? e.data : String(e.data ?? "");
+    const frame = parseFrame(raw);
     if (!frame) return;
 
     switch (frame.type) {
       case "event":
-        this.handleEvent(frame as EventFrame);
+        this.handleEvent(frame as EventFrame).catch((err) => console.error("[AWF] handleEvent error:", err));
         break;
       case "res":
         this.handleResponse(frame as ResFrame);
@@ -147,19 +149,7 @@ export class GatewayClient {
 
   private async handleEvent(frame: EventFrame): Promise<void> {
     if (frame.event === "connect.challenge") {
-      // Resolve device identity from Web Crypto + IndexedDB
-      const payload = frame.payload as { nonce?: string } | undefined;
-      const nonce = payload?.nonce || "";
-
-      let device: DeviceIdentity | undefined;
-      try {
-        device = await signChallenge(nonce);
-        console.log("[AWF] Device identity:", device.id);
-      } catch (err) {
-        console.warn("[AWF] device identity unavailable, connecting without it:", err);
-      }
-
-      // Respond with Protocol v3 connect handshake
+      // Respond with Protocol v3 connect handshake (no device identity — gateway validates client.id)
       const authFrame = makeReq("connect", {
         minProtocol: 3,
         maxProtocol: 3,
@@ -171,7 +161,6 @@ export class GatewayClient {
         },
         role: "operator",
         scopes: ["operator.read", "operator.write", "operator.admin"],
-        device,
         auth: { token: this.token },
       });
       this.send(authFrame);
