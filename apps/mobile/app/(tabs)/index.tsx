@@ -55,14 +55,22 @@ interface SectionData {
   data: SessionItem[];
 }
 
-const AGENT_COLORS: Record<string, string> = {
-  ops: "#6366F1", brxce: "#EC4899", dev: "#F59E0B", marketing: "#10B981",
-  intelli: "#8B5CF6", finance: "#14B8A6", roomfit: "#F97316", iponoff: "#EF4444",
-  newscash: "#06B6D4", intelliclaw: "#3B82F6", odoo: "#84CC16", awc: "#A855F7",
-};
+/**
+ * Generate a deterministic color from an agent ID string.
+ * No hardcoded agent list — works for any agent ID.
+ */
+const PALETTE = [
+  "#6366F1", "#EC4899", "#F59E0B", "#10B981", "#8B5CF6",
+  "#14B8A6", "#F97316", "#EF4444", "#06B6D4", "#3B82F6",
+  "#84CC16", "#A855F7", "#0EA5E9", "#D946EF", "#F43F5E",
+];
 
 function getAgentColor(agentId: string): string {
-  return AGENT_COLORS[agentId] || "#6B7280";
+  let hash = 0;
+  for (let i = 0; i < agentId.length; i++) {
+    hash = ((hash << 5) - hash + agentId.charCodeAt(i)) | 0;
+  }
+  return PALETTE[Math.abs(hash) % PALETTE.length];
 }
 
 function timeAgo(iso?: string | number): string {
