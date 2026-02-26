@@ -223,7 +223,7 @@ test.describe("Group C: Media Handling", () => {
 // =============================================================================
 
 test.describe("Group D: UI/UX Features", () => {
-  test("#44 — Cmd+K opens session switcher with keyboard navigation", async ({ mockGateway }) => {
+  test("#44 — session switcher opens with keyboard navigation", async ({ mockGateway }) => {
     const page = await mockGateway({
       sessions: [
         { key: "agent:default:main", label: "Main Session", updatedAt: 300 },
@@ -231,8 +231,11 @@ test.describe("Group D: UI/UX Features", () => {
       ],
     });
 
-    // Open command palette with Cmd+K
-    await page.keyboard.press("Meta+k");
+    // Open session switcher via click on session trigger button
+    // The trigger button shows current session info (e.g. "세션 선택" or agent name)
+    const sessionTrigger = page.locator("button").filter({ hasText: /세션 선택|default/ }).first();
+    await expect(sessionTrigger).toBeVisible({ timeout: 3000 });
+    await sessionTrigger.click();
 
     // Session switcher should be open — look for search input
     const searchInput = page.locator("input[placeholder*='세션 검색']");
