@@ -182,6 +182,15 @@ const MessageBubble = React.memo(function MessageBubble({ msg }: { msg: DisplayM
           onLongPress={!isUser ? handleCopy : undefined}
           style={[s.bubble, isUser ? s.bubbleUser : s.bubbleAssistant]}
         >
+          {/* User-sent image attachments */}
+          {isUser && msg.imageUris && msg.imageUris.length > 0 && (
+            <View style={s.userImagesRow}>
+              {msg.imageUris.map((uri, i) => (
+                <Image key={i} source={{ uri }} style={s.userAttachedImg} resizeMode="cover" />
+              ))}
+            </View>
+          )}
+
           {text ? (
             isUser ? (
               <Text style={[s.bubbleText, s.textWhite]} selectable>
@@ -281,6 +290,13 @@ export default function ChatScreen() {
   const flatListRef = useRef<FlatList>(null);
   const [userScrolledUp, setUserScrolledUp] = useState(false);
   const isAtBottomRef = useRef(true);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener("keyboardWillShow", () => setKeyboardVisible(true));
+    const hideSub = Keyboard.addListener("keyboardWillHide", () => setKeyboardVisible(false));
+    return () => { showSub.remove(); hideSub.remove(); };
+  }, []);
 
   // ─── Smart auto-scroll ───
   const handleScroll = useCallback((e: any) => {
@@ -357,14 +373,14 @@ export default function ChatScreen() {
   // ─── Send ───
   const handleSend = useCallback(() => {
     if ((!text.trim() && attachments.length === 0) || streaming) return;
-    const chatAttachments = attachments
-      .filter((a) => a.base64)
-      .map((a) => ({
-        content: a.base64,
+    const withBase64 = attachments.filter((a) => a.base64);
+    const chatAttachments = withBase64.map((a) => ({
+        content: a.base64!,
         mimeType: a.mimeType || "image/jpeg",
         fileName: `photo-${Date.now()}.jpg`,
       }));
-    sendMessage(text.trim(), chatAttachments.length > 0 ? chatAttachments : undefined);
+    const imageUris = withBase64.map((a) => a.uri);
+    sendMessage(text.trim(), chatAttachments.length > 0 ? chatAttachments : undefined, imageUris.length > 0 ? imageUris : undefined);
     setText("");
     setAttachments([]);
     // Auto-scroll on send
@@ -474,7 +490,7 @@ export default function ChatScreen() {
       )}
 
       {/* Input bar */}
-      <View style={[s.inputBar, { paddingBottom: Math.max(8, insets.bottom) }]}>
+      <View style={[s.inputBar, { paddingBottom: keyboardVisible ? 8 : Math.max(8, insets.bottom) }]}>
         <TouchableOpacity
           onPress={() => {
             if (Platform.OS === "ios") {
@@ -703,6 +719,10 @@ const s = StyleSheet.create({
   attachRemoveText: { color: "#FFF", fontSize: 11, fontWeight: "700" },
   attachBtn: { paddingHorizontal: 4, paddingVertical: 8, justifyContent: "center" },
   attachIcon: { fontSize: 20 },
+
+  // User attached images
+  userImagesRow: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: 6, marginBottom: 6 },
+  userAttachedImg: { width: 140, height: 140, borderRadius: 12 },
 
   // Media
   mediaImage: { width: "100%" as any, height: 200, borderRadius: 12, marginTop: 8 },
