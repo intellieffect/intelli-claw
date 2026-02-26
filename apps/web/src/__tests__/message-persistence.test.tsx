@@ -500,6 +500,7 @@ describe("Bug #48: Responses should appear without refresh", () => {
       toolCalls: Map<string, { callId: string; name: string; status: string }>;
     } | null = null;
     let streaming = false;
+    let streamIdCounter = 0;
     const messages: Array<{
       id: string;
       role: string;
@@ -528,7 +529,7 @@ describe("Bug #48: Responses should appear without refresh", () => {
 
         if (!streamBuf) {
           streamBuf = {
-            id: `stream-${Date.now()}`,
+            id: `stream-${Date.now()}-${++streamIdCounter}`,
             content: "",
             toolCalls: new Map(),
           };
