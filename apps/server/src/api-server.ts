@@ -57,7 +57,11 @@ const MAX_SIZE = 100 * 1024 * 1024;
 
 function validatePath(p: string | null): string | null {
   if (!p) return null;
-  if (p.includes("..") || p.includes("~")) return null;
+  if (p.includes("..")) return null;
+  // Expand ~ to home directory so agents can reference ~/path/to/file
+  if (p.startsWith("~/") || p === "~") {
+    return join(homedir(), p.slice(1));
+  }
   return p;
 }
 
