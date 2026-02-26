@@ -265,9 +265,20 @@ export interface Session {
   messageCount?: number;
 }
 
+/** A single part of a multipart content array (e.g., text + image) */
+export interface ContentPart {
+  type: string;
+  text?: string;
+  image_url?: { url: string };
+  url?: string;
+  source?: { type: string; media_type: string; data: string };
+  [key: string]: unknown;
+}
+
 export interface ChatMessage {
   role: "user" | "assistant" | "system" | "tool";
-  content: string;
+  /** May be a plain string or a multipart array (image+text) from the gateway (#51) */
+  content: string | ContentPart[];
   timestamp?: string;
   toolCalls?: ToolCall[];
 }
