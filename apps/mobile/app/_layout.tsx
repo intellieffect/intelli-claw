@@ -48,9 +48,18 @@ let _openSessionPicker: (() => void) | null = null;
 export function registerSessionPicker(fn: () => void) { _openSessionPicker = fn; }
 export function unregisterSessionPicker() { _openSessionPicker = null; }
 
+const ACTIVE_SESSION_KEY = "intelli-claw:activeSessionKey";
+
 export default function RootLayout() {
   const config = loadGatewayConfig();
-  const [activeSessionKey, setActiveSessionKey] = useState<string | null>(null);
+  const [activeSessionKey, setActiveSessionKeyRaw] = useState<string | null>(() => {
+    return mmkvStorage.getString(ACTIVE_SESSION_KEY) ?? null;
+  });
+  const setActiveSessionKey = useCallback((key: string | null) => {
+    setActiveSessionKeyRaw(key);
+    if (key) mmkvStorage.set(ACTIVE_SESSION_KEY, key);
+    else mmkvStorage.delete(ACTIVE_SESSION_KEY);
+  }, []);
 
   const openSessionPicker = useCallback(() => {
     _openSessionPicker?.();
