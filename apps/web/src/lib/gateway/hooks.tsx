@@ -264,6 +264,7 @@ export function useChat(sessionKey?: string) {
   const runIdRef = useRef<string | null>(null);
   const streamingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sessionKeyRef = useRef(sessionKey);
+  const loadVersionRef = useRef(0);
 
   const STREAMING_TIMEOUT_MS = 45_000;
 
@@ -300,6 +301,8 @@ export function useChat(sessionKey?: string) {
   useEffect(() => {
     if (sessionKeyRef.current !== sessionKey) {
       sessionKeyRef.current = sessionKey;
+      // Invalidate any in-flight loadHistory before clearing messages (#63)
+      ++loadVersionRef.current;
       setMessages([]);
       setStreaming(false);
       clearStreamingTimeout();
@@ -327,12 +330,20 @@ export function useChat(sessionKey?: string) {
 
   const loadHistory = useCallback(async () => {
     if (!client || state !== "connected") return;
+    // Bump version to detect stale responses from concurrent loadHistory calls.
+    // When sessionKey changes mid-flight, the old callback must not overwrite
+    // messages loaded by the new callback (#63).
+    const thisLoadVersion = ++loadVersionRef.current;
     setLoading(true);
     try {
       const res = await client.request<{ messages: ChatMessage[] }>(
         "chat.history",
         { sessionKey, limit: 100 }
       );
+
+      // Stale response guard — another loadHistory started while we awaited
+      if (loadVersionRef.current !== thisLoadVersion) return;
+
       const HIDDEN_PATTERNS = /^(NO_REPLY|HEARTBEAT_OK|NO_)\s*$|Pre-compaction memory flush|^Read HEARTBEAT\.md|reply with NO_REPLY|Store durable memories now|\[System\] 이전 세션이 컨텍스트 한도로 갱신|\[이전 세션 맥락\]/;
       const isHiddenMessage = (role: string, text: string) => {
         if (role === "system") return true;
@@ -373,10 +384,33 @@ export function useChat(sessionKey?: string) {
             textContent = String(m.content || '');
           }
 
+          // Extract gateway-level attachments (e.g., user-sent images stored
+          // separately from multipart content) (#64)
+          const rawMsg = m as unknown as Record<string, unknown>;
+          if (Array.isArray(rawMsg.attachments)) {
+            for (const att of rawMsg.attachments as Array<Record<string, unknown>>) {
+              const content = att.content as string | undefined;
+              const mimeType = (att.mimeType as string) || 'application/octet-stream';
+              const fileName = (att.fileName as string) || 'attachment';
+              if (content && mimeType.startsWith('image/')) {
+                const dataUrl = content.startsWith('data:') ? content : `data:${mimeType};base64,${content}`;
+                imgAttachments.push({ fileName, mimeType, dataUrl });
+              } else if (att.url && typeof att.url === 'string') {
+                imgAttachments.push({
+                  fileName,
+                  mimeType,
+                  dataUrl: mimeType.startsWith('image/') ? (att.url as string) : undefined,
+                  downloadUrl: att.url as string,
+                });
+              }
+            }
+          }
+
           if (m.role === 'user') textContent = stripInboundMeta(textContent);
 
+          // Extract MEDIA: lines from both user and assistant messages (#64)
           let mediaAttachments: DisplayAttachment[] = [];
-          if (m.role === 'assistant' && textContent.includes('MEDIA:')) {
+          if (textContent.includes('MEDIA:')) {
             const extracted = extractMediaAttachments(textContent);
             textContent = extracted.cleanedText;
             mediaAttachments = extracted.attachments;
@@ -403,6 +437,9 @@ export function useChat(sessionKey?: string) {
         })
         .filter((m) => !isHiddenMessage(m.role, m.content));
 
+      // Final stale check before writing state
+      if (loadVersionRef.current !== thisLoadVersion) return;
+
       const savedQueue = queueStorageKey ? localStorage.getItem(queueStorageKey) : null;
       if (savedQueue) {
         try {
@@ -420,7 +457,9 @@ export function useChat(sessionKey?: string) {
     } catch {
       // silently fail
     } finally {
-      setLoading(false);
+      if (loadVersionRef.current === thisLoadVersion) {
+        setLoading(false);
+      }
     }
   }, [client, state, sessionKey, queueStorageKey]);
 
