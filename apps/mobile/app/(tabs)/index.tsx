@@ -18,17 +18,17 @@ import {
   Animated,
   Clipboard,
   Keyboard,
-  ActionSheetIOS,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import * as ImagePicker from "expo-image-picker";
-import { Paperclip, Send, Square, ChevronDown, X, Settings, WifiOff } from "lucide-react-native";
+import { Send, Square, ChevronDown, Settings, WifiOff } from "lucide-react-native";
 import { useGateway, parseSessionKey, sessionDisplayName } from "@intelli-claw/shared";
 import SettingsScreen from "../../src/components/SettingsScreen";
 import { useChat, type DisplayMessage, type AgentStatus } from "../../src/hooks/useChat";
 import { useSessionStore } from "../../src/stores/sessionStore";
 import { useSessions } from "../../src/hooks/useSessions";
 import { Markdown } from "../../src/components/Markdown";
+import { ToolCallCard } from "../../src/components/ToolCallCard";
+import { AttachmentPreview, AttachButton, useFileAttachments } from "../../src/components/FileAttachments";
 
 // ─── Media helpers ───
 
@@ -228,11 +228,7 @@ const MessageBubble = React.memo(function MessageBubble({ msg }: { msg: DisplayM
           {msg.toolCalls.length > 0 && (
             <View style={s.toolSection}>
               {msg.toolCalls.map((tc) => (
-                <View key={tc.callId} style={s.toolRow}>
-                  <View style={[s.toolDot, tc.status === "running" ? s.toolDotRunning : s.toolDotDone]} />
-                  <Text style={s.toolText}>{tc.name}</Text>
-                  {tc.status === "running" && <ActivityIndicator size={10} color="#9CA3AF" style={{ marginLeft: 4 }} />}
-                </View>
+                <ToolCallCard key={tc.callId} toolCall={tc} />
               ))}
             </View>
           )}
@@ -294,7 +290,7 @@ export default function ChatScreen() {
   const [text, setText] = useState("");
   const [sessionPickerOpen, setSessionPickerOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [attachments, setAttachments] = useState<{ uri: string; base64?: string; mimeType?: string }[]>([]);
+  const { attachments, addAttachments, removeAttachment, clearAttachments, toPayloads, imageUris: getImageUris } = useFileAttachments();
   const flatListRef = useRef<FlatList>(null);
   const [userScrolledUp, setUserScrolledUp] = useState(false);
   const isAtBottomRef = useRef(true);
@@ -354,46 +350,16 @@ export default function ChatScreen() {
       .sort((a, b) => String(b.data[0]?.updatedAt || "").localeCompare(String(a.data[0]?.updatedAt || "")));
   }, [sessions]);
 
-  // ─── Image pick / camera ───
-  const pickImage = useCallback(async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"], quality: 0.8, base64: true, allowsMultipleSelection: true, selectionLimit: 5,
-    });
-    if (!result.canceled) {
-      setAttachments((prev) => [...prev, ...result.assets.map((a) => ({ uri: a.uri, base64: a.base64 || undefined, mimeType: a.mimeType || "image/jpeg" }))]);
-    }
-  }, []);
-
-  const takePhoto = useCallback(async () => {
-    const perm = await ImagePicker.requestCameraPermissionsAsync();
-    if (!perm.granted) return;
-    const result = await ImagePicker.launchCameraAsync({ quality: 0.8, base64: true });
-    if (!result.canceled && result.assets[0]) {
-      const a = result.assets[0];
-      setAttachments((prev) => [...prev, { uri: a.uri, base64: a.base64 || undefined, mimeType: a.mimeType || "image/jpeg" }]);
-    }
-  }, []);
-
-  const removeAttachment = useCallback((idx: number) => {
-    setAttachments((prev) => prev.filter((_, i) => i !== idx));
-  }, []);
-
   // ─── Send ───
   const handleSend = useCallback(() => {
     if ((!text.trim() && attachments.length === 0) || streaming) return;
-    const withBase64 = attachments.filter((a) => a.base64);
-    const chatAttachments = withBase64.map((a) => ({
-        content: a.base64!,
-        mimeType: a.mimeType || "image/jpeg",
-        fileName: `photo-${Date.now()}.jpg`,
-      }));
-    const imageUris = withBase64.map((a) => a.uri);
-    sendMessage(text.trim(), chatAttachments.length > 0 ? chatAttachments : undefined, imageUris.length > 0 ? imageUris : undefined);
+    const payloads = toPayloads();
+    const uris = getImageUris();
+    sendMessage(text.trim(), payloads.length > 0 ? payloads : undefined, uris.length > 0 ? uris : undefined);
     setText("");
-    setAttachments([]);
-    // Auto-scroll on send
+    clearAttachments();
     setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
-  }, [text, attachments, streaming, sendMessage]);
+  }, [text, attachments, streaming, sendMessage, toPayloads, getImageUris, clearAttachments]);
 
   const filteredMessages = useMemo(() =>
     messages.filter((m) => m.content || m.streaming || m.toolCalls.length > 0),
@@ -483,38 +449,11 @@ export default function ChatScreen() {
       <AgentStatusBar status={agentStatus} />
 
       {/* Attachment preview */}
-      {attachments.length > 0 && (
-        <View style={s.attachBar}>
-          {attachments.map((att, i) => (
-            <View key={i} style={s.attachThumb}>
-              <Image source={{ uri: att.uri }} style={s.attachImg} />
-              <TouchableOpacity style={s.attachRemove} onPress={() => removeAttachment(i)}>
-                <X size={12} color="#FFFFFF" />
-              </TouchableOpacity>
-            </View>
-          ))}
-        </View>
-      )}
+      <AttachmentPreview attachments={attachments} onRemove={removeAttachment} />
 
       {/* Input bar */}
       <View style={[s.inputBar, { paddingBottom: keyboardVisible ? 0 : Math.max(8, insets.bottom) }]}>
-        <TouchableOpacity
-          onPress={() => {
-            if (Platform.OS === "ios") {
-              ActionSheetIOS.showActionSheetWithOptions(
-                { options: ["취소", "갤러리에서 선택", "카메라로 촬영"], cancelButtonIndex: 0 },
-                (idx) => { if (idx === 1) pickImage(); else if (idx === 2) takePhoto(); },
-              );
-            } else {
-              pickImage(); // Android: default to gallery
-            }
-          }}
-          style={s.attachBtn}
-          activeOpacity={0.7}
-          disabled={state !== "connected"}
-        >
-          <Paperclip size={20} color={state === "connected" ? "#6B7280" : "#D1D5DB"} />
-        </TouchableOpacity>
+        <AttachButton onAttach={addAttachments} disabled={state !== "connected"} />
 
         <TextInput
           style={s.input}
@@ -687,11 +626,6 @@ const s = StyleSheet.create({
 
   // Tool calls
   toolSection: { marginTop: 8, paddingTop: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: "#E5E7EB" },
-  toolRow: { flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 2 },
-  toolDot: { width: 6, height: 6, borderRadius: 3 },
-  toolDotRunning: { backgroundColor: "#F59E0B" },
-  toolDotDone: { backgroundColor: "#10B981" },
-  toolText: { fontSize: 12, color: "#6B7280" },
 
   // Status bar
   statusBar: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 16, paddingVertical: 6, backgroundColor: "#EFF6FF" },
@@ -716,14 +650,6 @@ const s = StyleSheet.create({
   sendDisabled: { backgroundColor: "#D1D5DB" },
   abortBtn: { marginLeft: 8, width: 40, height: 40, borderRadius: 20, backgroundColor: "#EF4444", alignItems: "center", justifyContent: "center" },
 
-  // Attachments
-  attachBar: { flexDirection: "row", paddingHorizontal: 12, paddingTop: 8, gap: 8, backgroundColor: "#FFFFFF", borderTopWidth: 1, borderTopColor: "#F3F4F6" },
-  attachThumb: { position: "relative" },
-  attachImg: { width: 60, height: 60, borderRadius: 8 },
-  attachRemove: { position: "absolute", top: -6, right: -6, width: 20, height: 20, borderRadius: 10, backgroundColor: "#EF4444", alignItems: "center", justifyContent: "center" },
-  attachRemoveText: { color: "#FFF", fontSize: 11, fontWeight: "700" },
-  attachBtn: { paddingHorizontal: 4, paddingVertical: 8, justifyContent: "center" },
-  attachIcon: { fontSize: 20 },
 
   // User attached images
   userImagesRow: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: 6, marginBottom: 6 },
