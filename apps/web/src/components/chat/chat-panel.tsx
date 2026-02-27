@@ -121,6 +121,32 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
         e.preventDefault();
         abort();
       }
+      // Cmd+T: create new session tab
+      if (matchesShortcutId(e, "new-tab")) {
+        e.preventDefault();
+        createSessionForAgent(agentId);
+        return;
+      }
+      // Cmd+W: close current tab (except main session)
+      if (matchesShortcutId(e, "close-tab")) {
+        e.preventDefault();
+        if (effectiveSessionKey) {
+          const p = parseSessionKey(effectiveSessionKey);
+          if (p.type !== "main") {
+            handleDelete(effectiveSessionKey);
+          }
+        }
+        return;
+      }
+      // Cmd+1~9: switch to specific tab (9 = last tab)
+      if (e.key >= "1" && e.key <= "9" && matchesShortcutId(e, `switch-tab-${e.key}`)) {
+        e.preventDefault();
+        const idx = e.key === "9" ? agentSessions.length - 1 : parseInt(e.key) - 1;
+        if (idx >= 0 && idx < agentSessions.length) {
+          setSessionKey(agentSessions[idx].key);
+        }
+        return;
+      }
       // '/' — focus chat input (only when not already in an input/textarea)
       if (e.key === "/" && !e.metaKey && !e.ctrlKey && !e.altKey) {
         const tag = (e.target as HTMLElement).tagName;
@@ -153,7 +179,7 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
       document.removeEventListener("keydown", handleKeyDown);
       document.removeEventListener("keydown", handleTab, true);
     };
-  }, [isActive, agentId, setSessionKey, refreshSessions, agentSessions, effectiveSessionKey, streaming, abort, sessions]);
+  }, [isActive, agentId, setSessionKey, refreshSessions, agentSessions, effectiveSessionKey, streaming, abort, sessions, handleDelete]);
 
   // Restore focus to this panel's textarea
   const refocusPanel = useCallback(() => {
