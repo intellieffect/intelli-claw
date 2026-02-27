@@ -107,7 +107,9 @@ export function useChat(sessionKey?: string) {
       const raw = frame.payload as Record<string, unknown>;
       const stream = raw.stream as string | undefined;
       const data = raw.data as Record<string, unknown> | undefined;
-      const evtSessionKey = raw.sessionKey as string | undefined;
+      // Check both top-level sessionKey and data.sessionKey — gateway may
+      // nest the key inside data depending on event type (#48)
+      const evtSessionKey = (raw.sessionKey ?? data?.sessionKey) as string | undefined;
 
       // Only process events for our session
       if (sessionKey && evtSessionKey && evtSessionKey !== sessionKey) return;
