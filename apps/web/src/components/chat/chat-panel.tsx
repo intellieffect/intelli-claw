@@ -101,6 +101,32 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
       });
   }, [sessions, agentId]);
 
+  // Restore focus to this panel's textarea
+  const refocusPanel = useCallback(() => {
+    setTimeout(() => {
+      const textarea = panelRef.current?.querySelector("textarea");
+      textarea?.focus();
+    }, 120);
+  }, []);
+
+  const isConnected = state === "connected";
+
+  const handleDelete = useCallback(
+    async (key: string) => {
+      if (!client || !isConnected) return;
+      try {
+        await client.request("sessions.delete", { key });
+        if (sessionKey === key) setSessionKey(undefined);
+        await refreshSessions();
+      } catch (err) {
+        console.error("[AWF] sessions.delete error:", err);
+      } finally {
+        refocusPanel();
+      }
+    },
+    [client, isConnected, sessionKey, setSessionKey, refreshSessions, refocusPanel]
+  );
+
   // Shortcuts (active panel only)
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -181,20 +207,10 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
     };
   }, [isActive, agentId, setSessionKey, refreshSessions, agentSessions, effectiveSessionKey, streaming, abort, sessions, handleDelete]);
 
-  // Restore focus to this panel's textarea
-  const refocusPanel = useCallback(() => {
-    setTimeout(() => {
-      const textarea = panelRef.current?.querySelector("textarea");
-      textarea?.focus();
-    }, 120);
-  }, []);
-
   // Focus textarea when panel becomes active
   useEffect(() => {
     if (isActive) refocusPanel();
   }, [isActive, refocusPanel]);
-
-  const isConnected = state === "connected";
 
   const makeDefaultThreadLabel = useCallback((agent: string) => {
     const now = new Date();
@@ -500,22 +516,6 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
       }
     },
     [client, isConnected, refreshSessions, refocusPanel]
-  );
-
-  const handleDelete = useCallback(
-    async (key: string) => {
-      if (!client || !isConnected) return;
-      try {
-        await client.request("sessions.delete", { key });
-        if (sessionKey === key) setSessionKey(undefined);
-        await refreshSessions();
-      } catch (err) {
-        console.error("[AWF] sessions.delete error:", err);
-      } finally {
-        refocusPanel();
-      }
-    },
-    [client, isConnected, sessionKey, setSessionKey, refreshSessions, refocusPanel]
   );
 
   const handleReset = useCallback(
