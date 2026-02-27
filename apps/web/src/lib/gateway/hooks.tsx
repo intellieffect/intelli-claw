@@ -265,6 +265,9 @@ export function useChat(sessionKey?: string) {
   const streamingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sessionKeyRef = useRef(sessionKey);
   const loadVersionRef = useRef(0);
+  const sendContextBridgeRef = useRef<(() => Promise<void>) | null>(null);
+  const buildContextSummaryRef = useRef<(() => string | null) | null>(null);
+  const contextBridgeSentRef = useRef<string | null>(null);
 
   const STREAMING_TIMEOUT_MS = 45_000;
 
@@ -308,6 +311,7 @@ export function useChat(sessionKey?: string) {
       clearStreamingTimeout();
       setAgentStatusDebug({ phase: "idle" });
       streamBuf.current = null;
+      contextBridgeSentRef.current = null; // 새 채팅 전환 시 dedup 리셋
     }
   }, [sessionKey, clearStreamingTimeout]);
 
@@ -775,15 +779,25 @@ export function useChat(sessionKey?: string) {
   );
 
   const buildContextSummary = useCallback((): string | null => {
-    const lastUser = [...messages].reverse().find((m) => m.role === "user" && m.content.trim());
-    if (!lastUser) return null;
-    const userText = lastUser.content.slice(0, 150).replace(/\n/g, " ").trim();
-    const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant" && m.content.trim());
-    const assistantExcerpt = lastAssistant ? lastAssistant.content.slice(0, 120).replace(/\n/g, " ").trim() : null;
-    const lines = ["[System] 이전 세션이 컨텍스트 한도로 갱신되었습니다.", `마지막 요청: ${userText}`];
-    if (assistantExcerpt) lines.push(`마지막 응답 요약: ${assistantExcerpt}…`);
+    const relevant = messages
+      .filter((m) => (m.role === "user" || m.role === "assistant") && m.content.trim())
+      .slice(-5);
+    if (relevant.length === 0) return null;
+
+    const MAX_PER_MSG = 500;
+    const lines: string[] = ["[System] 이전 세션이 컨텍스트 한도로 갱신되었습니다. 아래는 최근 대화 요약입니다."];
+
+    for (const m of relevant) {
+      const label = m.role === "user" ? "사용자" : "어시스턴트";
+      const text = m.content.slice(0, MAX_PER_MSG).replace(/\n/g, " ").trim();
+      const toolNames = m.toolCalls?.map((tc) => tc.name).filter(Boolean);
+      const toolSuffix = toolNames && toolNames.length > 0 ? ` [tools: ${toolNames.join(", ")}]` : "";
+      lines.push(`${label}: ${text}${text.length >= MAX_PER_MSG ? "…" : ""}${toolSuffix}`);
+    }
+
     lines.push("위 맥락을 참고하여 대화를 이어주세요. 이 메시지에 대해 별도 답변하지 마세요.");
-    return lines.join("\n");
+    const full = lines.join("\n");
+    return full.length > 2000 ? full.slice(0, 1997) + "…" : full;
   }, [messages]);
 
   const sendContextBridge = useCallback(async () => {
@@ -796,16 +810,41 @@ export function useChat(sessionKey?: string) {
     } catch (err) { console.error("[AWF] Context bridge send error:", err); }
   }, [client, state, sessionKey, buildContextSummary]);
 
+  // Keep refs in sync so the mount-time onSessionReset handler sees the latest closures
+  useEffect(() => { sendContextBridgeRef.current = sendContextBridge; }, [sendContextBridge]);
+  useEffect(() => { buildContextSummaryRef.current = buildContextSummary; }, [buildContextSummary]);
+
   useEffect(() => {
     const unsub = onSessionReset((event) => {
       if (event.key !== sessionKeyRef.current) return;
       console.log(`[AWF] Session reset for current chat: ${event.key}`);
+
+      // Boundary UI message (기존 동작 유지)
       const boundaryMsg: DisplayMessage = {
         id: `boundary-${event.oldSessionId.slice(0, 8)}-${Date.now()}`,
         role: "session-boundary", content: "", timestamp: new Date().toISOString(),
         toolCalls: [], oldSessionId: event.oldSessionId, newSessionId: event.newSessionId,
       };
       setMessages((prev) => [...prev, boundaryMsg]);
+
+      // Auto context bridge: 500ms 후 자동 전송 (새 sessionId 안착 대기)
+      if (contextBridgeSentRef.current === event.newSessionId) return; // 중복 방지
+      setTimeout(async () => {
+        try {
+          // IndexedDB에 요약 저장
+          const summary = buildContextSummaryRef.current?.();
+          if (summary) {
+            markSessionEnded(event.key, event.oldSessionId, { summary }).catch(() => {});
+          }
+          // 자동 전송
+          await sendContextBridgeRef.current?.();
+          contextBridgeSentRef.current = event.newSessionId;
+          console.log("[AWF] Auto context bridge sent successfully");
+        } catch (err) {
+          console.error("[AWF] Auto context bridge failed:", err);
+          contextBridgeSentRef.current = null; // 실패 시 리셋 → 수동 재시도 가능
+        }
+      }, 500);
     });
     return unsub;
   }, []);
