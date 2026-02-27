@@ -326,19 +326,25 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
-/** Format timestamp to HH:MM (today) or MM/DD HH:MM (other days), KST */
+/** Format timestamp to MM-DD-YYYY HH:MM:SS (KST) */
 function formatTime(ts?: string): string | null {
   if (!ts) return null;
   try {
     const d = new Date(ts);
     if (isNaN(d.getTime())) return null;
     const tz = { timeZone: "Asia/Seoul" as const };
-    const time = d.toLocaleTimeString("ko-KR", { ...tz, hour: "2-digit", minute: "2-digit", hour12: false });
-    const kstDate = d.toLocaleDateString("fr-CA", { ...tz, year: "numeric", month: "2-digit", day: "2-digit" }); // YYYY-MM-DD
-    const kstToday = new Date().toLocaleDateString("fr-CA", { ...tz, year: "numeric", month: "2-digit", day: "2-digit" });
-    if (kstDate === kstToday) return time;
-    const short = d.toLocaleDateString("ko-KR", { ...tz, month: "2-digit", day: "2-digit" });
-    return `${short} ${time}`;
+    const parts = new Intl.DateTimeFormat("en-US", {
+      ...tz,
+      month: "2-digit",
+      day: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    }).formatToParts(d);
+    const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+    return `${get("month")}-${get("day")}-${get("year")} ${get("hour")}:${get("minute")}:${get("second")}`;
   } catch { return null; }
 }
 
