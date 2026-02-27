@@ -42,6 +42,32 @@ export function useChat(sessionKey?: string) {
   } | null>(null);
   const runIdRef = useRef<string | null>(null);
   const sessionKeyRef = useRef(sessionKey);
+  const streamingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const STREAMING_TIMEOUT_MS = 45_000;
+
+  const clearStreamingTimeout = useCallback(() => {
+    if (streamingTimeoutRef.current) {
+      clearTimeout(streamingTimeoutRef.current);
+      streamingTimeoutRef.current = null;
+    }
+  }, []);
+
+  const startStreamingTimeout = useCallback(() => {
+    clearStreamingTimeout();
+    streamingTimeoutRef.current = setTimeout(() => {
+      console.warn("[useChat] streaming timeout — forcing idle");
+      setStreaming(false);
+      setAgentStatus({ phase: "idle" });
+      if (streamBuf.current) {
+        const finalId = streamBuf.current.id;
+        setMessages((prev) =>
+          prev.map((m) => m.id === finalId ? { ...m, streaming: false } : m),
+        );
+        streamBuf.current = null;
+      }
+    }, STREAMING_TIMEOUT_MS);
+  }, [clearStreamingTimeout]);
 
   // ─── Reset on session change ───
   useEffect(() => {
@@ -49,11 +75,12 @@ export function useChat(sessionKey?: string) {
       sessionKeyRef.current = sessionKey;
       setMessages([]);
       setStreaming(false);
+      clearStreamingTimeout();
       setAgentStatus({ phase: "idle" });
       streamBuf.current = null;
       runIdRef.current = null;
     }
-  }, [sessionKey]);
+  }, [sessionKey, clearStreamingTimeout]);
 
   // ─── Load history ───
   const loadHistory = useCallback(async () => {
@@ -111,14 +138,16 @@ export function useChat(sessionKey?: string) {
       // nest the key inside data depending on event type (#48)
       const evtSessionKey = (raw.sessionKey ?? data?.sessionKey) as string | undefined;
 
-      // Only process events for our session
-      if (sessionKey && evtSessionKey && evtSessionKey !== sessionKey) return;
-      if (!evtSessionKey && sessionKey) return;
+      // Only process events for our session (use ref to avoid stale closure)
+      const currentKey = sessionKeyRef.current;
+      if (currentKey && evtSessionKey && evtSessionKey !== currentKey) return;
+      if (!evtSessionKey && currentKey) return;
 
       // ── assistant text delta ──
       if (stream === "assistant" && (typeof data?.delta === "string" || typeof data?.text === "string")) {
         const chunk = (data?.delta as string | undefined) ?? (data?.text as string);
         setStreaming(true);
+        startStreamingTimeout();
         setAgentStatus({ phase: "writing" });
 
         if (!streamBuf.current) {
@@ -185,11 +214,13 @@ export function useChat(sessionKey?: string) {
       // ── lifecycle start ──
       } else if (stream === "lifecycle" && data?.phase === "start") {
         setStreaming(true);
+        startStreamingTimeout();
         runIdRef.current = (raw.runId as string) ?? null;
         setAgentStatus({ phase: "thinking" });
 
       // ── lifecycle end ──
       } else if (stream === "lifecycle" && data?.phase === "end") {
+        clearStreamingTimeout();
         setStreaming(false);
         setAgentStatus({ phase: "idle" });
 
@@ -207,6 +238,7 @@ export function useChat(sessionKey?: string) {
 
       // ── done/end/finish (alternative end signals) ──
       } else if (stream === "done" || stream === "end" || stream === "finish") {
+        clearStreamingTimeout();
         setStreaming(false);
         setAgentStatus({ phase: "idle" });
 
@@ -224,6 +256,7 @@ export function useChat(sessionKey?: string) {
 
       // ── error ──
       } else if (stream === "error") {
+        clearStreamingTimeout();
         setStreaming(false);
         setAgentStatus({ phase: "idle" });
         const errMsg = String(data?.message || data?.error || "Unknown error");
@@ -240,8 +273,11 @@ export function useChat(sessionKey?: string) {
       }
     });
 
-    return unsub;
-  }, [client, sessionKey]);
+    return () => {
+      unsub();
+      clearStreamingTimeout();
+    };
+  }, [client, startStreamingTimeout, clearStreamingTimeout]);
 
   // ─── Send message ───
   const sendMessage = useCallback(
