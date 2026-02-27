@@ -13,14 +13,12 @@ import {
   Linking,
   StyleSheet,
   Modal,
-  SectionList,
-  RefreshControl,
   Animated,
   Clipboard,
   Keyboard,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Send, Square, ChevronDown, Settings, WifiOff } from "lucide-react-native";
+import { Send, Square, ChevronDown, Settings, WifiOff, Bot, Puzzle } from "lucide-react-native";
 import { useGateway, parseSessionKey, sessionDisplayName } from "@intelli-claw/shared";
 import SettingsScreen from "../../src/components/SettingsScreen";
 import { useChat, type DisplayMessage, type AgentStatus } from "../../src/hooks/useChat";
@@ -29,6 +27,11 @@ import { useSessions } from "../../src/hooks/useSessions";
 import { Markdown } from "../../src/components/Markdown";
 import { ToolCallCard } from "../../src/components/ToolCallCard";
 import { AttachmentPreview, AttachButton, useFileAttachments } from "../../src/components/FileAttachments";
+import { SessionSwitcher } from "../../src/components/SessionSwitcher";
+import { AgentSelector } from "../../src/components/AgentSelector";
+import { SlashCommands, shouldShowSlashPicker } from "../../src/components/SlashCommands";
+import { SkillPicker } from "../../src/components/SkillPicker";
+import { TaskMemo } from "../../src/components/TaskMemo";
 
 // ─── Media helpers ───
 
@@ -40,50 +43,6 @@ interface MediaItem {
   url: string;
 }
 
-interface SessionItem {
-  key: string;
-  agentId: string;
-  sessionId: string;
-  title: string;
-  lastMessage?: string;
-  updatedAt?: string;
-}
-
-interface SectionData {
-  title: string;
-  agentId: string;
-  data: SessionItem[];
-}
-
-/**
- * Generate a deterministic color from an agent ID string.
- * No hardcoded agent list — works for any agent ID.
- */
-const PALETTE = [
-  "#6366F1", "#EC4899", "#F59E0B", "#10B981", "#8B5CF6",
-  "#14B8A6", "#F97316", "#EF4444", "#06B6D4", "#3B82F6",
-  "#84CC16", "#A855F7", "#0EA5E9", "#D946EF", "#F43F5E",
-];
-
-function getAgentColor(agentId: string): string {
-  let hash = 0;
-  for (let i = 0; i < agentId.length; i++) {
-    hash = ((hash << 5) - hash + agentId.charCodeAt(i)) | 0;
-  }
-  return PALETTE[Math.abs(hash) % PALETTE.length];
-}
-
-function timeAgo(iso?: string | number): string {
-  if (!iso) return "";
-  const diff = Date.now() - new Date(iso).getTime();
-  if (isNaN(diff)) return "";
-  const min = Math.floor(diff / 60000);
-  if (min < 1) return "방금";
-  if (min < 60) return `${min}분`;
-  const hr = Math.floor(min / 60);
-  if (hr < 24) return `${hr}시간`;
-  return `${Math.floor(hr / 24)}일`;
-}
 
 /** Format timestamp HH:MM (today) or MM/DD HH:MM (other) KST */
 function formatTime(ts?: string): string | null {
@@ -291,6 +250,10 @@ export default function ChatScreen() {
   const [sessionPickerOpen, setSessionPickerOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const { attachments, addAttachments, removeAttachment, clearAttachments, toPayloads, imageUris: getImageUris } = useFileAttachments();
+  const [agentSelectorOpen, setAgentSelectorOpen] = useState(false);
+  const [skillPickerOpen, setSkillPickerOpen] = useState(false);
+  const [selectedAgentId, setSelectedAgentId] = useState<string | undefined>();
+  const showSlashPicker = shouldShowSlashPicker(text);
   const flatListRef = useRef<FlatList>(null);
   const [userScrolledUp, setUserScrolledUp] = useState(false);
   const isAtBottomRef = useRef(true);
@@ -322,33 +285,29 @@ export default function ChatScreen() {
     isAtBottomRef.current = true;
   }, []);
 
-  // ─── Session sections ───
-  const sessionSections = useCallback((): SectionData[] => {
-    const grouped = new Map<string, SessionItem[]>();
-    for (const sess of sessions) {
-      const p = parseSessionKey(sess.key);
-      const aid = p?.agentId || "unknown";
-      const sid = p ? (p.type === "main" ? "main" : p.detail || p.type) : sess.key;
-      const item: SessionItem = {
-        key: sess.key, agentId: aid, sessionId: sid,
-        title: sess.title || sessionDisplayName({ key: sess.key, label: sess.title }),
-        lastMessage: sess.lastMessage, updatedAt: sess.updatedAt,
-      };
-      const list = grouped.get(aid) || [];
-      list.push(item);
-      grouped.set(aid, list);
-    }
-    return Array.from(grouped.entries())
-      .map(([aid, data]) => ({
-        title: aid, agentId: aid,
-        data: data.sort((a, b) => {
-          if (a.sessionId === "main" && b.sessionId !== "main") return -1;
-          if (b.sessionId === "main" && a.sessionId !== "main") return 1;
-          return String(b.updatedAt || "").localeCompare(String(a.updatedAt || ""));
-        }),
-      }))
-      .sort((a, b) => String(b.data[0]?.updatedAt || "").localeCompare(String(a.data[0]?.updatedAt || "")));
-  }, [sessions]);
+  // ─── Slash command handler ───
+  const handleSlashSelect = useCallback(
+    (command: string, immediate?: boolean) => {
+      if (immediate) {
+        // Execute slash command immediately
+        if (command === "/stop") {
+          abort();
+        } else if (command === "/new") {
+          setActiveSessionKey(null);
+        } else if (command === "/reset") {
+          // Send as message for server-side handling
+          sendMessage(command);
+        } else {
+          sendMessage(command);
+        }
+        setText("");
+      } else {
+        // Append to input (e.g., /model needs a parameter)
+        setText(command);
+      }
+    },
+    [abort, setActiveSessionKey, sendMessage],
+  );
 
   // ─── Send ───
   const handleSend = useCallback(() => {
@@ -399,6 +358,16 @@ export default function ChatScreen() {
               </Text>
             </View>
           )}
+          {isConnected && (
+            <TouchableOpacity onPress={() => setAgentSelectorOpen(true)} style={s.appBarIconBtn} activeOpacity={0.7}>
+              <Bot size={18} color="#6B7280" />
+            </TouchableOpacity>
+          )}
+          {isConnected && (
+            <TouchableOpacity onPress={() => setSkillPickerOpen(true)} style={s.appBarIconBtn} activeOpacity={0.7}>
+              <Puzzle size={18} color="#6B7280" />
+            </TouchableOpacity>
+          )}
           <TouchableOpacity onPress={() => setSettingsOpen(true)} style={s.appBarIconBtn} activeOpacity={0.7}>
             <Settings size={20} color="#6B7280" />
           </TouchableOpacity>
@@ -448,8 +417,25 @@ export default function ChatScreen() {
 
       <AgentStatusBar status={agentStatus} />
 
+      {/* Task memo (collapsible) */}
+      {currentKey && (
+        <TaskMemo
+          sessionKey={currentKey}
+          messages={messages as unknown as Array<Record<string, unknown>>}
+        />
+      )}
+
       {/* Attachment preview */}
       <AttachmentPreview attachments={attachments} onRemove={removeAttachment} />
+
+      {/* Slash command suggestions */}
+      {showSlashPicker && (
+        <SlashCommands
+          inputText={text}
+          onSelect={handleSlashSelect}
+          onDismiss={() => setText("")}
+        />
+      )}
 
       {/* Input bar */}
       <View style={[s.inputBar, { paddingBottom: keyboardVisible ? 0 : Math.max(8, insets.bottom) }]}>
@@ -481,71 +467,34 @@ export default function ChatScreen() {
         )}
       </View>
 
-      {/* Session picker modal */}
-      <Modal visible={sessionPickerOpen} animationType="slide" transparent onRequestClose={() => setSessionPickerOpen(false)}>
-        <View style={s.modalBackdrop}>
-          <View style={s.modalSheet}>
-            <View style={s.modalHandle} />
-            <View style={s.modalHeader}>
-              <Text style={s.modalTitle}>세션 선택</Text>
-              <TouchableOpacity onPress={() => setSessionPickerOpen(false)}>
-                <Text style={s.modalClose}>닫기</Text>
-              </TouchableOpacity>
-            </View>
+      {/* Session switcher (extracted component) */}
+      <SessionSwitcher
+        visible={sessionPickerOpen}
+        onClose={() => setSessionPickerOpen(false)}
+        sessions={sessions}
+        sessionsLoading={sessionsLoading}
+        onRefresh={refreshSessions}
+        currentKey={currentKey}
+        mainSessionKey={mainSessionKey}
+        onSelect={(key) => {
+          if (key === mainSessionKey) setActiveSessionKey(null);
+          else setActiveSessionKey(key);
+        }}
+      />
 
-            <SectionList
-              sections={sessionSections()}
-              keyExtractor={(item) => item.key}
-              stickySectionHeadersEnabled={false}
-              refreshControl={<RefreshControl refreshing={sessionsLoading} onRefresh={refreshSessions} tintColor="#3B82F6" />}
-              contentContainerStyle={s.modalListContent}
-              renderSectionHeader={({ section }) => (
-                <View style={s.modalSectionHeader}>
-                  <Text style={[s.modalSectionTitle, { color: getAgentColor(section.agentId) }]}>{section.title}</Text>
-                  <View style={[s.modalSectionBadge, { backgroundColor: getAgentColor(section.agentId) + "20" }]}>
-                    <Text style={[s.modalSectionCount, { color: getAgentColor(section.agentId) }]}>{section.data.length}</Text>
-                  </View>
-                </View>
-              )}
-              renderItem={({ item }) => {
-                const isActive = item.key === currentKey;
-                const color = getAgentColor(item.agentId);
-                return (
-                  <TouchableOpacity
-                    style={[s.modalRow, isActive && { backgroundColor: `${color}14`, borderLeftWidth: 3, borderLeftColor: color }]}
-                    onPress={() => {
-                      if (item.key === mainSessionKey) setActiveSessionKey(null);
-                      else setActiveSessionKey(item.key);
-                      setSessionPickerOpen(false);
-                    }}
-                    activeOpacity={0.7}
-                  >
-                    <View style={s.modalRowMain}>
-                      <Text style={[s.modalRowTitle, isActive && { color, fontWeight: "700" }]} numberOfLines={1}>
-                        {item.sessionId === "main" ? `${item.agentId} / main` : item.title}
-                      </Text>
-                      {item.lastMessage ? <Text style={s.modalRowSub} numberOfLines={1}>{item.lastMessage}</Text> : null}
-                    </View>
-                    <Text style={s.modalTime}>{timeAgo(item.updatedAt)}</Text>
-                  </TouchableOpacity>
-                );
-              }}
-              ListHeaderComponent={
-                <TouchableOpacity
-                  style={[s.modalRow, !activeSessionKey && s.modalDefaultRow]}
-                  onPress={() => { setActiveSessionKey(null); setSessionPickerOpen(false); }}
-                  activeOpacity={0.7}
-                >
-                  <View style={s.modalRowMain}>
-                    <Text style={[s.modalRowTitle, { fontWeight: "600" }]}>기본 세션 (auto)</Text>
-                    <Text style={s.modalRowSub} numberOfLines={1}>{mainSessionKey || "main"}</Text>
-                  </View>
-                </TouchableOpacity>
-              }
-            />
-          </View>
-        </View>
-      </Modal>
+      {/* Agent selector */}
+      <AgentSelector
+        visible={agentSelectorOpen}
+        onClose={() => setAgentSelectorOpen(false)}
+        selectedId={selectedAgentId}
+        onSelect={setSelectedAgentId}
+      />
+
+      {/* Skill picker */}
+      <SkillPicker
+        visible={skillPickerOpen}
+        onClose={() => setSkillPickerOpen(false)}
+      />
     </KeyboardAvoidingView>
 
       {/* Settings modal */}
@@ -661,22 +610,4 @@ const s = StyleSheet.create({
 
 
 
-  // Session modal
-  modalBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.32)", justifyContent: "flex-end" },
-  modalSheet: { maxHeight: "82%", backgroundColor: "#FFFFFF", borderTopLeftRadius: 18, borderTopRightRadius: 18, paddingTop: 6 },
-  modalHandle: { width: 36, height: 4, borderRadius: 2, backgroundColor: "#D1D5DB", alignSelf: "center", marginBottom: 8 },
-  modalHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: "#F3F4F6" },
-  modalTitle: { fontSize: 17, fontWeight: "700", color: "#111827" },
-  modalClose: { fontSize: 14, fontWeight: "600", color: "#2563EB" },
-  modalListContent: { paddingBottom: 24 },
-  modalSectionHeader: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingTop: 16, paddingBottom: 6, gap: 8 },
-  modalSectionTitle: { fontSize: 12, textTransform: "uppercase", fontWeight: "700", letterSpacing: 0.3 },
-  modalSectionBadge: { paddingHorizontal: 6, paddingVertical: 1, borderRadius: 8 },
-  modalSectionCount: { fontSize: 10, fontWeight: "600" },
-  modalRow: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: "#F3F4F6" },
-  modalDefaultRow: { backgroundColor: "#F0F9FF" },
-  modalRowMain: { flex: 1, marginRight: 12 },
-  modalRowTitle: { fontSize: 14, color: "#111827", fontWeight: "500" },
-  modalRowSub: { fontSize: 12, color: "#9CA3AF", marginTop: 2 },
-  modalTime: { fontSize: 11, color: "#D1D5DB" },
 });

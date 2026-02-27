@@ -26,4 +26,5 @@ public/agents/*.jpg
 # local dev
 .mcp.json
 .playwright-mcp/
+playwright-report/
 certificates/
