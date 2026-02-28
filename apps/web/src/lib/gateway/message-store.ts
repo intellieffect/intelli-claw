@@ -121,3 +121,63 @@ export async function clearMessages(sessionKey: string): Promise<void> {
     };
   });
 }
+
+// --- Backfill from API ---
+
+const BACKFILL_KEY = "intelli-claw-backfill-done";
+
+/** Check if backfill has been done for a session key + sessionId combo */
+export function isBackfillDone(sessionKey: string, sessionId: string): boolean {
+  try {
+    const done = JSON.parse(localStorage.getItem(BACKFILL_KEY) || "{}");
+    return !!done[`${sessionKey}:${sessionId}`];
+  } catch {
+    return false;
+  }
+}
+
+/** Mark backfill as done */
+export function markBackfillDone(sessionKey: string, sessionId: string): void {
+  try {
+    const done = JSON.parse(localStorage.getItem(BACKFILL_KEY) || "{}");
+    done[`${sessionKey}:${sessionId}`] = Date.now();
+    localStorage.setItem(BACKFILL_KEY, JSON.stringify(done));
+  } catch { /* ignore */ }
+}
+
+/** Backfill messages from API server for a specific session log */
+export async function backfillFromApi(
+  sessionKey: string,
+  sessionId: string,
+  apiBase: string,
+  agentId: string,
+): Promise<StoredMessage[]> {
+  if (isBackfillDone(sessionKey, sessionId)) return [];
+
+  try {
+    const res = await fetch(
+      `${apiBase}/api/session-history/${encodeURIComponent(agentId)}?sessionId=${encodeURIComponent(sessionId)}`,
+    );
+    if (!res.ok) return [];
+
+    const data = await res.json();
+    const messages: StoredMessage[] = (data.messages || []).map(
+      (m: { id: string; role: string; content: string; timestamp: string }) => ({
+        sessionKey,
+        id: `log-${sessionId.slice(0, 8)}-${m.id}`,
+        role: m.role as StoredMessage["role"],
+        content: m.content,
+        timestamp: m.timestamp,
+      }),
+    );
+
+    if (messages.length > 0) {
+      await saveMessages(sessionKey, messages);
+    }
+    markBackfillDone(sessionKey, sessionId);
+    return messages;
+  } catch (e) {
+    console.warn("[message-store] Backfill failed:", e);
+    return [];
+  }
+}
