@@ -44,6 +44,12 @@ import {
   getCurrentSessionId,
 } from "./topic-store";
 
+import {
+  saveMessages as saveLocalMessages,
+  getLocalMessages,
+  type StoredMessage,
+} from "./message-store";
+
 // --- Web Config Persistence ---
 
 export function loadGatewayConfig(): GatewayConfig {
@@ -444,6 +450,72 @@ export function useChat(sessionKey?: string) {
       // Final stale check before writing state
       if (loadVersionRef.current !== thisLoadVersion) return;
 
+      // --- Merge local messages (pre-compaction) with gateway history ---
+      let mergedMsgs = histMsgs;
+      try {
+        const localMsgs = await getLocalMessages(sessionKey);
+        if (localMsgs.length > 0 && histMsgs.length > 0) {
+          const gatewayIds = new Set(histMsgs.map((m) => m.id));
+          const oldestGatewayTs = Math.min(
+            ...histMsgs.map((m) => new Date(m.timestamp).getTime()),
+          );
+          // Prepend local messages that are older than gateway's oldest
+          // and not already in gateway response
+          const prependMsgs: DisplayMessage[] = localMsgs
+            .filter(
+              (lm) =>
+                !gatewayIds.has(lm.id) &&
+                new Date(lm.timestamp).getTime() < oldestGatewayTs,
+            )
+            .map((lm) => ({
+              id: lm.id,
+              role: lm.role as DisplayMessage["role"],
+              content: lm.content,
+              timestamp: lm.timestamp,
+              toolCalls: (lm.toolCalls || []) as ToolCall[],
+              attachments: lm.attachments as DisplayAttachment[] | undefined,
+              oldSessionId: lm.oldSessionId,
+              newSessionId: lm.newSessionId,
+            }));
+          if (prependMsgs.length > 0) {
+            mergedMsgs = [...prependMsgs, ...histMsgs];
+            console.log(
+              `[AWF] Restored ${prependMsgs.length} pre-compaction messages from local store`,
+            );
+          }
+        } else if (localMsgs.length > 0 && histMsgs.length === 0) {
+          // Gateway returned nothing — show local messages
+          mergedMsgs = localMsgs.map((lm) => ({
+            id: lm.id,
+            role: lm.role as DisplayMessage["role"],
+            content: lm.content,
+            timestamp: lm.timestamp,
+            toolCalls: (lm.toolCalls || []) as ToolCall[],
+            attachments: lm.attachments as DisplayAttachment[] | undefined,
+            oldSessionId: lm.oldSessionId,
+            newSessionId: lm.newSessionId,
+          }));
+        }
+      } catch (e) {
+        console.warn("[AWF] Failed to load local messages:", e);
+      }
+
+      // Persist gateway history to local store for future recovery
+      const toStore: StoredMessage[] = histMsgs
+        .filter((m) => !m.id.startsWith("local-"))
+        .map((m) => ({
+          sessionKey,
+          id: m.id,
+          role: m.role as StoredMessage["role"],
+          content: m.content,
+          timestamp: m.timestamp,
+          toolCalls: m.toolCalls,
+          attachments: m.attachments,
+          oldSessionId: m.oldSessionId,
+          newSessionId: m.newSessionId,
+        }));
+      saveLocalMessages(sessionKey, toStore).catch(() => {});
+
       const savedQueue = queueStorageKey ? localStorage.getItem(queueStorageKey) : null;
       if (savedQueue) {
         try {
@@ -453,10 +525,10 @@ export function useChat(sessionKey?: string) {
             id: q.id, role: "user" as const, content: q.text,
             timestamp: new Date().toISOString(), toolCalls: [], queued: true,
           }));
-          setMessages([...histMsgs, ...queuedMsgs]);
-        } catch { setMessages(histMsgs); }
+          setMessages([...mergedMsgs, ...queuedMsgs]);
+        } catch { setMessages(mergedMsgs); }
       } else {
-        setMessages(histMsgs);
+        setMessages(mergedMsgs);
       }
     } catch {
       // silently fail
@@ -596,6 +668,16 @@ export function useChat(sessionKey?: string) {
               ? { ...m, content: finalContent, toolCalls: finalTools, streaming: false, attachments: finalAttachments || m.attachments }
               : m)
           );
+          // Persist assistant message to local store
+          saveLocalMessages(sessionKeyRef.current, [{
+            sessionKey: sessionKeyRef.current,
+            id: finalId,
+            role: "assistant",
+            content: finalContent,
+            timestamp: new Date().toISOString(),
+            toolCalls: finalTools,
+            attachments: finalAttachments,
+          }]).catch(() => {});
           streamBuf.current = null;
         }
       } else if (stream === "done" || stream === "end" || stream === "finish") {
@@ -718,6 +800,15 @@ export function useChat(sessionKey?: string) {
         timestamp: new Date().toISOString(), toolCalls: [], queued: streaming,
       };
       setMessages((prev) => [...prev, userMsg]);
+      // Persist user message to local store
+      saveLocalMessages(sessionKey, [{
+        sessionKey,
+        id: msgId,
+        role: "user",
+        content: text,
+        timestamp: userMsg.timestamp,
+        attachments: userMsg.attachments,
+      }]).catch(() => {});
       if (streaming) { queueRef.current.push({ id: msgId, text }); persistQueue(); }
       else { doSend(text, msgId); }
     },
@@ -826,6 +917,16 @@ export function useChat(sessionKey?: string) {
         toolCalls: [], oldSessionId: event.oldSessionId, newSessionId: event.newSessionId,
       };
       setMessages((prev) => [...prev, boundaryMsg]);
+      // Persist boundary to local store
+      saveLocalMessages(event.key, [{
+        sessionKey: event.key,
+        id: boundaryMsg.id,
+        role: "session-boundary",
+        content: "",
+        timestamp: boundaryMsg.timestamp,
+        oldSessionId: event.oldSessionId,
+        newSessionId: event.newSessionId,
+      }]).catch(() => {});
 
       // Auto context bridge: 500ms 후 자동 전송 (새 sessionId 안착 대기)
       if (contextBridgeSentRef.current === event.newSessionId) return; // 중복 방지

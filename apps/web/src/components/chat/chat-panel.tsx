@@ -9,6 +9,7 @@ import { SessionSwitcher } from "./session-switcher";
 import { AgentBrowser } from "./agent-browser";
 import { DropZone, useFileAttachments, attachmentToPayload } from "./file-attachments";
 import { parseSessionKey, sessionDisplayName, type GatewaySession } from "@/lib/gateway/session-utils";
+import { isSessionHidden, hideSession } from "@/lib/gateway/hidden-sessions";
 import { TaskMemo } from "./task-memo";
 import { SessionSettings } from "@/components/settings/session-settings";
 import { ChatHeader } from "./chat-header";
@@ -86,11 +87,16 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
   const panelRef = useRef<HTMLDivElement>(null);
 
   // Build ordered session list for current agent (matches header tab order: main first, then by updatedAt desc)
+  const [hiddenVersion, setHiddenVersion] = useState(0);
   const agentSessions = useMemo(() => {
     return (sessions as GatewaySession[])
       .filter((s) => {
         const p = parseSessionKey(s.key);
-        return p.agentId === agentId && (p.type === "main" || p.type === "thread");
+        if (p.agentId !== agentId) return false;
+        if (p.type !== "main" && p.type !== "thread") return false;
+        // Hide hidden sessions (main always visible)
+        if (p.type !== "main" && isSessionHidden(s.key)) return false;
+        return true;
       })
       .sort((a, b) => {
         const aType = parseSessionKey(a.key).type;
@@ -99,7 +105,8 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
         if (bType === "main" && aType !== "main") return 1;
         return (b.updatedAt || 0) - (a.updatedAt || 0);
       });
-  }, [sessions, agentId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessions, agentId, hiddenVersion]);
 
   // Restore focus to this panel's textarea
   const refocusPanel = useCallback(() => {
@@ -533,6 +540,15 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
     [client, isConnected, refreshSessions, refocusPanel]
   );
 
+  const handleHide = useCallback(
+    (_key: string) => {
+      // Trigger re-render of agentSessions and refresh sessions list
+      setHiddenVersion((v) => v + 1);
+      refreshSessions();
+    },
+    [refreshSessions],
+  );
+
   // Derive agent from session key
   const parsedSession = effectiveSessionKey ? parseSessionKey(effectiveSessionKey) : null;
   const currentAgentId = parsedSession?.agentId || agentId;
@@ -568,6 +584,7 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
           onSelectSession={setSessionKey}
           onNewSession={handleNewSession}
           onDeleteSession={(key) => handleDelete(key)}
+          onHideSession={handleHide}
           onRenameSession={(key, label) => handleRename(key, label)}
           onOpenSessionManager={() => setSessionManagerOpen(true)}
           onOpenTopicHistory={() => setTopicHistoryOpen(true)}
@@ -612,6 +629,7 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
               onRename={handleRename}
               onDelete={handleDelete}
               onReset={handleReset}
+              onHide={handleHide}
               open={sessionSwitcherOpen}
               onOpenChange={setSessionSwitcherOpen}
               portalContainer={panelRef.current}
