@@ -31,7 +31,6 @@ import { SessionSwitcher } from "../../src/components/SessionSwitcher";
 import { AgentSelector } from "../../src/components/AgentSelector";
 import { SlashCommands, shouldShowSlashPicker } from "../../src/components/SlashCommands";
 import { SkillPicker } from "../../src/components/SkillPicker";
-import { TaskMemo } from "../../src/components/TaskMemo";
 
 // ─── Media helpers ───
 
@@ -417,12 +416,20 @@ export default function ChatScreen() {
 
       <AgentStatusBar status={agentStatus} />
 
-      {/* Task memo (collapsible) */}
-      {currentKey && (
-        <TaskMemo
-          sessionKey={currentKey}
-          messages={messages as unknown as Array<Record<string, unknown>>}
-        />
+      {/* Agent indicator above input — tap to open session list */}
+      {currentKey && parsed?.agentId && (
+        <TouchableOpacity
+          style={s.agentIndicator}
+          activeOpacity={0.6}
+          onPress={() => { refreshSessions(); setSessionPickerOpen(true); }}
+        >
+          <Bot size={12} color="#6366F1" />
+          <Text style={s.agentIndicatorText}>{parsed.agentId}</Text>
+          {parsed.type !== "main" && (
+            <Text style={s.agentIndicatorSub}>/ {parsed.detail || parsed.type}</Text>
+          )}
+          <ChevronDown size={12} color="#9CA3AF" />
+        </TouchableOpacity>
       )}
 
       {/* Attachment preview */}
@@ -592,6 +599,9 @@ const s = StyleSheet.create({
   scrollBtnText: { fontSize: 18, color: "#6B7280", fontWeight: "600" },
 
   // Input
+  agentIndicator: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 16, paddingVertical: 4, backgroundColor: "#F9FAFB", borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: "#E5E7EB" },
+  agentIndicatorText: { fontSize: 12, fontWeight: "600", color: "#6366F1" },
+  agentIndicatorSub: { fontSize: 11, color: "#9CA3AF" },
   inputBar: { flexDirection: "row", alignItems: "flex-end", paddingHorizontal: 12, paddingTop: 8, borderTopWidth: 1, borderTopColor: "#E5E7EB", backgroundColor: "#FFFFFF" },
   input: { flex: 1, minHeight: 40, maxHeight: 120, paddingHorizontal: 16, paddingVertical: 10, backgroundColor: "#F3F4F6", borderRadius: 20, fontSize: 15, color: "#111827" },
   sendBtn: { marginLeft: 8, width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
