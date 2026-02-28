@@ -223,7 +223,7 @@ const s = StyleSheet.create({
   userText: { fontSize: 15, lineHeight: 22, color: colors.userBubbleText, letterSpacing: 0.1 },
 
   assistantBubbleWrap: { flex: 1, maxWidth: "88%" },
-  bubbleAssistant: { paddingVertical: 3, paddingHorizontal: 4 },
+  bubbleAssistant: { paddingVertical: 10, paddingHorizontal: 14, backgroundColor: "#141414", borderRadius: 18, borderBottomLeftRadius: 6 },
 
   copiedBadge: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 6, paddingLeft: 2 },
   copiedText: { ...typography.tiny, color: colors.success, fontWeight: "600" },
