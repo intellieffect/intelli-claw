@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import {
   View,
-  Text,
+  Text as RNText,
   TouchableOpacity,
   Pressable,
   Image,
@@ -14,7 +14,6 @@ import { Check } from "lucide-react-native";
 import type { DisplayMessage } from "../../hooks/useChat";
 import { Markdown } from "../Markdown";
 import { ToolCallCard } from "../ToolCallCard";
-import { colors, shadows, radii, typography } from "../../theme/colors";
 import { PulseDots } from "./PulseDots";
 import { DateSeparator } from "./DateSeparator";
 
@@ -107,14 +106,15 @@ export const MessageBubble = React.memo(function MessageBubble({ msg, previousMs
     ]).start();
   }, [fadeAnim, slideAnim]);
 
+  // System message
   if (msg.role === "system") {
     return (
       <>
         {dateLabel && <DateSeparator label={dateLabel} />}
-        <Animated.View style={[s.systemRow, { opacity: fadeAnim }]}>
-          <View style={s.systemLine} />
-          <Text style={s.systemText}>{msg.content}</Text>
-          <View style={s.systemLine} />
+        <Animated.View style={{ opacity: fadeAnim }} className="flex-row items-center px-6 py-3.5 gap-3.5">
+          <View className="flex-1 h-[0.5px] bg-border" />
+          <RNText className="text-xs font-medium text-muted-foreground">{msg.content}</RNText>
+          <View className="flex-1 h-[0.5px] bg-border" />
         </Animated.View>
       </>
     );
@@ -135,31 +135,28 @@ export const MessageBubble = React.memo(function MessageBubble({ msg, previousMs
     <>
       {dateLabel && <DateSeparator label={dateLabel} />}
       {time && (
-        <View style={s.timestampRow}>
-          <Text style={s.timestampText}>{time}</Text>
+        <View className="items-center py-2.5">
+          <RNText className="text-[11px] font-medium text-muted-foreground tracking-wider">{time}</RNText>
         </View>
       )}
       <Animated.View
-        style={[
-          s.bubbleRow,
-          isUser ? s.bubbleRowRight : s.bubbleRowLeft,
-          { opacity: fadeAnim, transform: [{ translateY: slideAnim }] },
-        ]}
+        style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}
+        className={`flex-row px-3.5 py-1 items-start ${isUser ? "justify-end" : "justify-start"}`}
       >
-        <View style={isUser ? s.userBubbleWrap : s.assistantBubbleWrap}>
+        <View className={isUser ? "max-w-[78%]" : "flex-1 max-w-[88%]"}>
           {isUser ? (
-            <View style={s.bubbleUser}>
+            <View className="bg-primary rounded-2xl rounded-br-md px-4 py-2.5">
               {msg.imageUris && msg.imageUris.length > 0 && (
-                <View style={s.userImagesRow}>
+                <View className="flex-row flex-wrap gap-1.5 mb-2">
                   {msg.imageUris.map((uri, i) => (
-                    <Image key={i} source={{ uri }} style={s.userAttachedImg} resizeMode="cover" />
+                    <Image key={i} source={{ uri }} style={{ width: 140, height: 140, borderRadius: 12 }} resizeMode="cover" />
                   ))}
                 </View>
               )}
-              {text ? <Text style={s.userText} selectable>{text}</Text> : null}
+              {text ? <RNText className="text-[15px] leading-[22px] text-primary-foreground tracking-wide" selectable>{text}</RNText> : null}
             </View>
           ) : (
-            <Pressable onLongPress={handleCopy} style={s.bubbleAssistant}>
+            <Pressable onLongPress={handleCopy} className="bg-card rounded-2xl rounded-bl-md px-3.5 py-2.5 border border-border">
               {text ? (
                 <Markdown>{text}</Markdown>
               ) : msg.streaming ? (
@@ -169,17 +166,17 @@ export const MessageBubble = React.memo(function MessageBubble({ msg, previousMs
               {media.map((m, i) =>
                 m.type === "image" ? (
                   <TouchableOpacity key={i} onPress={() => Linking.openURL(m.url)} activeOpacity={0.8}>
-                    <Image source={{ uri: m.url }} style={s.mediaImage} resizeMode="contain" />
+                    <Image source={{ uri: m.url }} style={{ width: "100%" as any, height: 200, borderRadius: 12, marginTop: 10 }} resizeMode="contain" />
                   </TouchableOpacity>
                 ) : (
                   <TouchableOpacity key={i} onPress={() => Linking.openURL(m.url)} activeOpacity={0.7}>
-                    <Text style={s.mediaLink}>{m.url.split("/").pop()}</Text>
+                    <RNText className="text-sm text-primary mt-1.5 underline">{m.url.split("/").pop()}</RNText>
                   </TouchableOpacity>
                 )
               )}
 
               {msg.toolCalls.length > 0 && (
-                <View style={s.toolSection}>
+                <View className="mt-2.5">
                   {msg.toolCalls.map((tc) => (
                     <ToolCallCard key={tc.callId} toolCall={tc} />
                   ))}
@@ -189,50 +186,13 @@ export const MessageBubble = React.memo(function MessageBubble({ msg, previousMs
           )}
 
           {!isUser && copied && (
-            <View style={s.copiedBadge}>
-              <Check size={10} color={colors.success} strokeWidth={3} />
-              <Text style={s.copiedText}>복사됨</Text>
+            <View className="flex-row items-center gap-1 mt-1.5 pl-0.5">
+              <Check size={10} color="#10B981" strokeWidth={3} />
+              <RNText className="text-[11px] font-semibold text-green-500">복사됨</RNText>
             </View>
           )}
         </View>
       </Animated.View>
     </>
   );
-});
-
-const s = StyleSheet.create({
-  timestampRow: { alignItems: "center", paddingVertical: 10 },
-  timestampText: { ...typography.tiny, color: colors.textTertiary },
-
-  systemRow: { flexDirection: "row", alignItems: "center", paddingHorizontal: 24, paddingVertical: 14, gap: 14 },
-  systemLine: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: colors.border },
-  systemText: { ...typography.caption, color: colors.textTertiary },
-
-  bubbleRow: { flexDirection: "row", paddingHorizontal: 14, paddingVertical: 3, alignItems: "flex-start" },
-  bubbleRowRight: { justifyContent: "flex-end" },
-  bubbleRowLeft: { justifyContent: "flex-start" },
-
-  userBubbleWrap: { maxWidth: "78%" },
-  bubbleUser: {
-    backgroundColor: colors.userBubble,
-    borderRadius: radii.xl,
-    borderBottomRightRadius: 6,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-  },
-  userText: { fontSize: 15, lineHeight: 22, color: colors.userBubbleText, letterSpacing: 0.1 },
-
-  assistantBubbleWrap: { flex: 1, maxWidth: "88%" },
-  bubbleAssistant: { paddingVertical: 10, paddingHorizontal: 14, backgroundColor: "#141414", borderRadius: 18, borderBottomLeftRadius: 6 },
-
-  copiedBadge: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 6, paddingLeft: 2 },
-  copiedText: { ...typography.tiny, color: colors.success, fontWeight: "600" },
-
-  userImagesRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 8 },
-  userAttachedImg: { width: 140, height: 140, borderRadius: radii.md },
-
-  mediaImage: { width: "100%" as any, height: 200, borderRadius: radii.md, marginTop: 10 },
-  mediaLink: { fontSize: 13, color: colors.primary, marginTop: 6, textDecorationLine: "underline" as any },
-
-  toolSection: { marginTop: 10 },
 });
