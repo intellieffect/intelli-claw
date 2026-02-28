@@ -5,6 +5,7 @@ import {
   MessageCircle, Bot, Settings, History,
 } from "lucide-react";
 import { parseSessionKey } from "@/lib/gateway/session-utils";
+import { isSessionHidden, hideSession } from "@/lib/gateway/hidden-sessions";
 import type { Agent, Session } from "@/lib/gateway/protocol";
 import type { AgentStatus } from "@/lib/gateway/hooks";
 import { AgentAvatar } from "@/components/ui/agent-avatar";
@@ -26,6 +27,7 @@ interface ChatHeaderProps {
   onSelectSession?: (key: string) => void;
   onNewSession?: () => void;
   onDeleteSession?: (key: string) => void;
+  onHideSession?: (key: string) => void;
   onRenameSession?: (key: string, label: string) => void;
   onOpenSessionManager?: () => void;
   onOpenTopicHistory?: () => void;
@@ -154,6 +156,7 @@ export function ChatHeader({
   onSelectSession,
   onNewSession,
   onDeleteSession,
+  onHideSession,
   onRenameSession,
   onOpenSessionManager,
   onOpenTopicHistory,
@@ -183,7 +186,11 @@ export function ChatHeader({
       .filter((s) => {
         if (!s.key) return false;
         const p = parseSessionKey(s.key as string);
-        return p.agentId === agentId && (p.type === "main" || p.type === "thread");
+        if (p.agentId !== agentId) return false;
+        if (p.type !== "main" && p.type !== "thread") return false;
+        // Hide hidden sessions from tabs (main is always visible)
+        if (p.type !== "main" && isSessionHidden(s.key as string)) return false;
+        return true;
       })
       .sort((a, b) => {
         // Main always first
@@ -302,17 +309,22 @@ export function ChatHeader({
             </span>
           )}
 
-          {/* Close button (not for main, visible on hover) */}
+          {/* Hide button (not for main, visible on hover) */}
           {!isMain && (
             <span
               role="button"
-              onClick={(e) => { e.stopPropagation(); setConfirmDeleteKey(key); }}
+              onClick={(e) => {
+                e.stopPropagation();
+                hideSession(key);
+                onHideSession?.(key);
+              }}
               className={cn(
                 "flex-shrink-0 rounded p-0.5 opacity-0 group-hover:opacity-100 transition-opacity",
                 isActive
                   ? "hover:bg-amber-700/80 text-white/70 hover:text-white"
                   : "hover:bg-zinc-600 text-zinc-500 hover:text-zinc-200"
               )}
+              title="숨기기"
             >
               <X size={10} />
             </span>
