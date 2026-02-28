@@ -47,8 +47,12 @@ import {
 import {
   saveMessages as saveLocalMessages,
   getLocalMessages,
+  backfillFromApi,
+  isBackfillDone,
   type StoredMessage,
 } from "./message-store";
+
+import { getTopicHistory } from "./topic-store";
 
 // --- Web Config Persistence ---
 
@@ -540,6 +544,42 @@ export function useChat(sessionKey?: string) {
   }, [client, state, sessionKey, queueStorageKey]);
 
   useEffect(() => { loadHistory(); }, [loadHistory]);
+
+  // Backfill previous session messages from API server logs
+  useEffect(() => {
+    if (!sessionKey || state !== "connected") return;
+    const agentId = sessionKey.split(":")[1] || sessionKey;
+    const apiBase = import.meta.env.VITE_API_URL || `${window.location.protocol}//${window.location.hostname}:4001`;
+
+    (async () => {
+      try {
+        const topics = await getTopicHistory(sessionKey);
+        const previousSessions = topics.filter((t) => t.endedAt);
+        for (const topic of previousSessions) {
+          if (isBackfillDone(sessionKey, topic.sessionId)) continue;
+          const backfilled = await backfillFromApi(
+            sessionKey,
+            topic.sessionId,
+            apiBase,
+            agentId,
+          );
+          if (backfilled.length > 0) {
+            console.log(
+              `[AWF] Backfilled ${backfilled.length} messages from session ${topic.sessionId.slice(0, 8)}`,
+            );
+          }
+        }
+        // Reload to pick up backfilled messages
+        const topics2 = await getTopicHistory(sessionKey);
+        if (topics2.some((t) => t.endedAt && !isBackfillDone(sessionKey, t.sessionId) === false)) {
+          // Re-run loadHistory to merge any newly backfilled messages
+          loadHistory();
+        }
+      } catch (e) {
+        console.warn("[AWF] Backfill error:", e);
+      }
+    })();
+  }, [sessionKey, state]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Handle agent events
   useEffect(() => {

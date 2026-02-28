@@ -277,6 +277,14 @@ export function createHandler() {
     } else if (path.startsWith("/api/showcase/")) {
       const relPath = decodeURIComponent(path.slice("/api/showcase/".length));
       await handleShowcaseServe(req, res, relPath);
+    } else if (path.startsWith("/api/session-history/")) {
+      const agentId = decodeURIComponent(path.slice("/api/session-history/".length).split("/")[0]);
+      if (!agentId || agentId.includes("..")) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "invalid agentId" }));
+      } else {
+        await handleSessionHistory(req, res, agentId, url);
+      }
     } else {
       res.writeHead(404, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "not found" }));
@@ -296,4 +304,127 @@ if (process.argv[1] && resolve(process.argv[1]) === resolve(__filename)) {
   server.listen(port, () => {
     console.log(`[api-server] listening on :${port}`);
   });
+}
+
+// ---- Session History handler ----
+// Returns parsed messages from OpenClaw session JSONL logs.
+// GET /api/session-history/:agentId
+//   ?sessionId=xxx  — specific session
+//   (no sessionId)  — list all sessions with metadata
+
+const OPENCLAW_DIR = join(homedir(), ".openclaw");
+
+interface SessionMeta {
+  sessionId: string;
+  startedAt: string;
+  messageCount: number;
+}
+
+interface ParsedMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  timestamp: string;
+  attachments?: Array<{ type: string; url?: string }>;
+}
+
+function parseJsonlMessages(lines: string[]): ParsedMessage[] {
+  const messages: ParsedMessage[] = [];
+  for (const line of lines) {
+    try {
+      const d = JSON.parse(line);
+      if (d.type !== "message") continue;
+      const msg = d.message || d;
+      const role = msg.role;
+      if (role !== "user" && role !== "assistant") continue;
+
+      let content = "";
+      const rawContent = msg.content;
+      if (typeof rawContent === "string") {
+        content = rawContent;
+      } else if (Array.isArray(rawContent)) {
+        content = rawContent
+          .filter((p: any) => p.type === "text" && typeof p.text === "string")
+          .map((p: any) => p.text)
+          .join("");
+      }
+
+      if (!content.trim()) continue;
+
+      messages.push({
+        id: d.id || `log-${d.timestamp || Date.now()}`,
+        role,
+        content,
+        timestamp: d.timestamp || new Date().toISOString(),
+      });
+    } catch {
+      // skip malformed lines
+    }
+  }
+  return messages;
+}
+
+async function handleSessionHistory(
+  _req: http.IncomingMessage,
+  res: http.ServerResponse,
+  agentId: string,
+  url: URL,
+) {
+  const sessionsDir = join(OPENCLAW_DIR, "agents", agentId, "sessions");
+  const requestedSessionId = url.searchParams.get("sessionId");
+
+  try {
+    if (requestedSessionId) {
+      // Return messages for a specific session
+      const filePath = join(sessionsDir, `${requestedSessionId}.jsonl`);
+      const resolved = resolve(filePath);
+      if (!resolved.startsWith(resolve(sessionsDir))) {
+        res.writeHead(403, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "forbidden" }));
+        return;
+      }
+
+      const data = await readFile(filePath, "utf-8");
+      const lines = data.split("\n").filter(Boolean);
+      const messages = parseJsonlMessages(lines);
+
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ sessionId: requestedSessionId, messages }));
+    } else {
+      // List all sessions with metadata
+      const files = await readdir(sessionsDir);
+      const sessions: SessionMeta[] = [];
+      for (const file of files) {
+        if (!file.endsWith(".jsonl")) continue;
+        const sessionId = file.replace(".jsonl", "");
+        const filePath = join(sessionsDir, file);
+        const data = await readFile(filePath, "utf-8");
+        const lines = data.split("\n").filter(Boolean);
+        let startedAt = "";
+        let messageCount = 0;
+        for (const line of lines) {
+          try {
+            const d = JSON.parse(line);
+            if (d.type === "session" && d.timestamp) startedAt = d.timestamp;
+            if (d.type === "message") {
+              const role = d.message?.role || d.role;
+              if (role === "user" || role === "assistant") messageCount++;
+            }
+          } catch { /* skip */ }
+        }
+        sessions.push({ sessionId, startedAt, messageCount });
+      }
+      sessions.sort((a, b) => a.startedAt.localeCompare(b.startedAt));
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ sessions }));
+    }
+  } catch (e: any) {
+    if (e.code === "ENOENT") {
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "not found" }));
+    } else {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+  }
 }
