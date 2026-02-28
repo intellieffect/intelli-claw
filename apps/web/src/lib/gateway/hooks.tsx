@@ -500,17 +500,28 @@ export function useChat(sessionKey?: string) {
             .map(toDisplayMsg);
 
           // Restore attachments stripped by compaction (e.g. images)
-          const localById = new Map(localMsgs.map((lm) => [lm.id, lm]));
-          const localByRoleTs = new Map(
-            localMsgs
-              .filter((lm) => lm.attachments && (lm.attachments as DisplayAttachment[]).length > 0)
-              .map((lm) => [`${lm.role}:${lm.timestamp}`, lm]),
+          const localWithAtts = localMsgs.filter(
+            (lm) => lm.attachments && (lm.attachments as DisplayAttachment[]).length > 0
           );
+          const IMAGE_PLACEHOLDERS = new Set(["(image)", "(첨부 파일)", ""]);
           for (const hm of histMsgs) {
             if (hm.attachments && hm.attachments.length > 0) continue;
-            const local = localById.get(hm.id) ?? localByRoleTs.get(`${hm.role}:${hm.timestamp}`);
+            // 1. Match by content
+            let local = localWithAtts.find(
+              (lm) => lm.role === hm.role && lm.content.slice(0, 100) === hm.content.slice(0, 100)
+            );
+            // 2. Fallback: match image placeholders by role + close timestamp
+            if (!local && IMAGE_PLACEHOLDERS.has(hm.content.trim())) {
+              const hmTs = new Date(hm.timestamp).getTime();
+              local = localWithAtts.find(
+                (lm) => lm.role === hm.role
+                  && IMAGE_PLACEHOLDERS.has(lm.content.trim())
+                  && Math.abs(new Date(lm.timestamp).getTime() - hmTs) < 30000
+              );
+            }
             if (local?.attachments && (local.attachments as DisplayAttachment[]).length > 0) {
               hm.attachments = local.attachments as DisplayAttachment[];
+              if (IMAGE_PLACEHOLDERS.has(hm.content.trim())) hm.content = local.content;
             }
           }
 
@@ -1006,7 +1017,9 @@ export function useChat(sessionKey?: string) {
       content: text,
       timestamp: userMsg.timestamp,
       attachments: attachments,
-    }]).catch(() => {});
+    }]).then(() => {
+      if (attachments?.length) console.log('[AWF] Saved user msg with', attachments.length, 'attachments, id:', msgId);
+    }).catch((err) => { console.error('[AWF] Failed to save user message:', err); });
   }, [streaming]);
 
   const addLocalMessage = useCallback((content: string, role: "user" | "assistant" | "system" = "system") => {

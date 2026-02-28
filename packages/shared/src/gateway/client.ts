@@ -12,6 +12,8 @@ type PendingReq = {
 const REQUEST_TIMEOUT = 30_000;
 const AUTH_TIMEOUT = 10_000;
 const RECONNECT_DELAYS = [1000, 2000, 4000, 8000, 16000];
+const PING_INTERVAL = 25_000;
+const PONG_TIMEOUT = 10_000;
 
 export class GatewayClient {
   private ws: WebSocket | null = null;
@@ -24,7 +26,10 @@ export class GatewayClient {
   private reconnectAttempt = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private authTimer: ReturnType<typeof setTimeout> | null = null;
+  private pingTimer: ReturnType<typeof setInterval> | null = null;
+  private pongTimer: ReturnType<typeof setTimeout> | null = null;
   private intentionalClose = false;
+  private wasConnected = false;
   public mainSessionKey = "";
   public serverVersion = "";
   public serverCommit = "";
@@ -58,6 +63,7 @@ export class GatewayClient {
     this.intentionalClose = true;
     this.clearReconnect();
     this.clearAuthTimer();
+    this.stopPing();
     if (this.ws) {
       this.ws.onclose = null;
       this.ws.close();
@@ -108,7 +114,6 @@ export class GatewayClient {
   // --- Private ---
 
   private send(frame: Frame): void {
-    // Use readyState === 1 directly (WebSocket.OPEN may be undefined in React Native)
     if (this.ws && this.ws.readyState === 1) {
       this.ws.send(JSON.stringify(frame));
     }
@@ -132,8 +137,14 @@ export class GatewayClient {
   }
 
   private handleMessage(e: MessageEvent): void {
-    // React Native WebSocket may deliver data as non-string types
+    // Any message from server counts as a pong (connection is alive)
+    this.clearPongTimer();
+
     const raw = typeof e.data === "string" ? e.data : String(e.data ?? "");
+
+    // Handle pong response
+    if (raw === '{"type":"pong"}' || raw === '"pong"') return;
+
     const frame = parseFrame(raw);
     if (!frame) return;
 
@@ -149,7 +160,6 @@ export class GatewayClient {
 
   private async handleEvent(frame: EventFrame): Promise<void> {
     if (frame.event === "connect.challenge") {
-      // Respond with Protocol v3 connect handshake (no device identity — gateway validates client.id)
       const authFrame = makeReq("connect", {
         minProtocol: 3,
         maxProtocol: 3,
@@ -167,24 +177,20 @@ export class GatewayClient {
       return;
     }
 
-    // Forward all other events
     console.log("[AWF] Event:", frame.event, JSON.stringify(frame.payload).slice(0, 200));
     this.eventHandlers.forEach((h) => h(frame));
   }
 
   private handleResponse(frame: ResFrame): void {
-    // Log auth failures (connect frame is sent via send(), not request(), so it's not in pending)
     if (!frame.ok) {
       const errObj = frame.error as ErrorShape | undefined;
       console.error("[AWF] Server error:", errObj?.code, errObj?.message, frame.error);
-      // Save connect-level errors for UI display
       if (errObj) {
         this.lastError = errObj;
         this.stateHandlers.forEach((h) => h(this.state, this.lastError));
       }
     }
 
-    // Check if this is the connect response (hello-ok)
     const payload = frame.payload as Record<string, unknown> | undefined;
     if (frame.ok && payload?.type === "hello-ok") {
       this.clearAuthTimer();
@@ -194,10 +200,24 @@ export class GatewayClient {
       const server = payload.server as Record<string, unknown> | undefined;
       this.serverVersion = (server?.version as string) || "";
       this.serverCommit = (server?.commit as string) || "";
-      console.log("[AWF] hello-ok: mainSessionKey=", this.mainSessionKey, "version=", this.serverVersion, "commit=", this.serverCommit);
+      const isReconnect = this.wasConnected;
+      console.log("[AWF] hello-ok: mainSessionKey=", this.mainSessionKey, "version=", this.serverVersion, "commit=", this.serverCommit, isReconnect ? "(reconnect)" : "(initial)");
       this.reconnectAttempt = 0;
       this.lastError = null;
+      this.wasConnected = true;
       this.setState("connected");
+      // Ping disabled — gateway doesn't support app-level ping frames
+      // this.startPing();
+
+      // Emit synthetic reconnect event so UI can reload history
+      if (isReconnect) {
+        const reconnectFrame: EventFrame = {
+          type: "event",
+          event: "client.reconnected",
+          payload: {},
+        };
+        this.eventHandlers.forEach((h) => h(reconnectFrame));
+      }
     }
 
     const pending = this.pending.get(frame.id);
@@ -218,15 +238,47 @@ export class GatewayClient {
 
   private handleClose(): void {
     this.clearAuthTimer();
+    this.stopPing();
     this.ws = null;
     this.rejectAll("Connection closed");
-    // Keep lastError from previous handleResponse if it exists
     this.setState("disconnected");
 
     if (!this.intentionalClose) {
       this.scheduleReconnect();
     }
   }
+
+  // --- Ping / Pong keepalive ---
+
+  private startPing(): void {
+    this.stopPing();
+    this.pingTimer = setInterval(() => {
+      if (this.ws && this.ws.readyState === 1) {
+        this.ws.send(JSON.stringify({ type: "ping" }));
+        this.pongTimer = setTimeout(() => {
+          console.warn("[AWF] Pong timeout — connection stale, closing");
+          this.ws?.close();
+        }, PONG_TIMEOUT);
+      }
+    }, PING_INTERVAL);
+  }
+
+  private stopPing(): void {
+    if (this.pingTimer) {
+      clearInterval(this.pingTimer);
+      this.pingTimer = null;
+    }
+    this.clearPongTimer();
+  }
+
+  private clearPongTimer(): void {
+    if (this.pongTimer) {
+      clearTimeout(this.pongTimer);
+      this.pongTimer = null;
+    }
+  }
+
+  // --- Reconnect ---
 
   private scheduleReconnect(): void {
     this.clearReconnect();

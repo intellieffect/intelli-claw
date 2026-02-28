@@ -8,6 +8,8 @@ export interface ChatAttachment {
   file: File;
   preview?: string; // data URL for images/video thumbnails
   type: "image" | "video" | "file";
+  /** Absolute file path (available in Electron via File.path) */
+  filePath?: string;
 }
 
 function formatSize(bytes: number): string {
@@ -59,26 +61,28 @@ function isPdf(file: File): boolean {
 
 async function fileToAttachment(file: File): Promise<ChatAttachment> {
   const id = `att-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  // Electron File objects expose .path with the absolute filesystem path
+  const filePath = (file as unknown as { path?: string }).path || undefined;
 
   if (file.type.startsWith("image/")) {
     return new Promise((resolve) => {
       const reader = new FileReader();
-      reader.onload = () => resolve({ id, file, preview: reader.result as string, type: "image" });
+      reader.onload = () => resolve({ id, file, preview: reader.result as string, type: "image", filePath });
       reader.readAsDataURL(file);
     });
   }
 
   if (file.type.startsWith("video/")) {
     const thumbnail = await videoThumbnail(file);
-    return { id, file, preview: thumbnail, type: "video" };
+    return { id, file, preview: thumbnail, type: "video", filePath };
   }
 
   if (isPdf(file)) {
     const preview = await extractPdfPreview(file).catch(() => undefined);
-    return { id, file, preview, type: "file" };
+    return { id, file, preview, type: "file", filePath };
   }
 
-  return { id, file, type: "file" };
+  return { id, file, type: "file", filePath };
 }
 
 /** Read text content from a file for inline preview (e.g. .md files) */
