@@ -416,6 +416,15 @@ function MessageBubble({ message, showAvatar = true, onCancel, agentId }: { mess
                       </div>
                     );
                   }
+                  // PDF with preview thumbnail
+                  if (att.dataUrl && att.mimeType.includes("pdf")) {
+                    return (
+                      <div key={i} className="flex flex-col gap-1 rounded-lg border border-zinc-600/40 bg-zinc-800/50 p-2 max-w-xs">
+                        <img src={att.dataUrl} alt={att.fileName} className="max-h-48 rounded object-contain" />
+                        <div className="text-[11px] text-zinc-400 truncate px-1">📎 {att.fileName}</div>
+                      </div>
+                    );
+                  }
                   return (
                     <div key={i} className="rounded-lg bg-white/10 px-3 py-1.5 text-xs">
                       📎 {att.fileName}

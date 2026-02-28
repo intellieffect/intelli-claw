@@ -161,14 +161,18 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
         return;
       }
       // Cmd+W: close current tab (except main session)
+      // If it's the main session (not closable), let the event propagate
+      // so Electron's native menu can handle window close
       if (matchesShortcutId(e, "close-tab")) {
-        e.preventDefault();
         if (effectiveSessionKey) {
           const p = parseSessionKey(effectiveSessionKey);
           if (p.type !== "main") {
+            e.preventDefault();
             handleDelete(effectiveSessionKey);
+            return;
           }
         }
+        // Don't preventDefault — let Electron close the window
         return;
       }
       // Cmd+1~9: switch to specific tab (9 = last tab)
@@ -408,11 +412,22 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
       if (attachments.length > 0) {
         await maybeAutoLabelSession(effectiveSessionKey, text);
 
-        // Convert attachments — PDFs become extracted text + page images
-        const results = await Promise.all(attachments.map(attachmentToPayload));
+        // Separate PDFs with absolute paths (send path to agent) from other attachments
+        const pdfPathHints: string[] = [];
+        const nonPdfAttachments = attachments.filter((att) => {
+          if (att.filePath && (att.file.type === "application/pdf" || att.file.name.toLowerCase().endsWith(".pdf"))) {
+            pdfPathHints.push(`📎 [PDF: ${att.file.name}] ${att.filePath}`);
+            return false; // exclude from base64 payload
+          }
+          return true;
+        });
+
+        // Convert remaining attachments (images, etc.) to base64 payloads
+        const results = await Promise.all(nonPdfAttachments.map(attachmentToPayload));
         const payloads = results.flatMap((r) => r.payloads);
         const pdfTexts = results.map((r) => r.prependText).filter(Boolean).join("\n\n");
-        const userMsg = [text, pdfTexts].filter(Boolean).join("\n\n") || (payloads.length > 0 ? "(image)" : "");
+        const pathHintText = pdfPathHints.join("\n");
+        const userMsg = [text, pathHintText, pdfTexts].filter(Boolean).join("\n\n") || (payloads.length > 0 ? "(image)" : "");
 
         const displayAtts = await Promise.all(
           attachments.map(async (att) => {
@@ -425,6 +440,7 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
               fileName: att.file.name,
               mimeType: att.file.type || "application/octet-stream",
               dataUrl: att.preview || undefined,
+              downloadUrl: att.filePath || undefined,
               textContent,
             };
           })
