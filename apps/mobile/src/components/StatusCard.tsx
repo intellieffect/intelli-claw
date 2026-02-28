@@ -133,14 +133,14 @@ const styles = StyleSheet.create({
     marginVertical: 6,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#E5E7EB",
-    backgroundColor: "#F9FAFB",
+    borderColor: "#222222",
+    backgroundColor: "#141414",
     padding: 14,
   },
   agentName: {
     fontSize: 14,
     fontWeight: "700",
-    color: "#374151",
+    color: "#d4d4d4",
     marginBottom: 8,
   },
   row: {
@@ -157,14 +157,14 @@ const styles = StyleSheet.create({
     fontFamily: "monospace",
     fontSize: 12,
     lineHeight: 20,
-    color: "#6B7280",
+    color: "#888888",
     flex: 1,
   },
   highlight: {
-    color: "#374151",
+    color: "#d4d4d4",
   },
   dimValue: {
-    color: "#9CA3AF",
+    color: "#666666",
   },
   dimmerValue: {
     color: "#D1D5DB",

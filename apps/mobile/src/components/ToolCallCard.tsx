@@ -127,8 +127,8 @@ const styles = StyleSheet.create({
     marginVertical: 4,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: "#E5E7EB",
-    backgroundColor: "#F9FAFB",
+    borderColor: "#222222",
+    backgroundColor: "#141414",
     overflow: "hidden",
   },
   header: {
@@ -140,7 +140,7 @@ const styles = StyleSheet.create({
   },
   chevron: {
     fontSize: 12,
-    color: "#6B7280",
+    color: "#888888",
     width: 14,
   },
   statusDot: {
@@ -151,16 +151,16 @@ const styles = StyleSheet.create({
   toolName: {
     fontFamily: "monospace",
     fontSize: 12,
-    color: "#374151",
+    color: "#d4d4d4",
     flex: 1,
   },
   runningLabel: {
     fontSize: 11,
-    color: "#9CA3AF",
+    color: "#666666",
   },
   body: {
     borderTopWidth: 1,
-    borderTopColor: "#E5E7EB",
+    borderTopColor: "#222222",
     paddingHorizontal: 10,
     paddingVertical: 8,
   },
@@ -169,19 +169,19 @@ const styles = StyleSheet.create({
   },
   sectionLabel: {
     fontSize: 11,
-    color: "#9CA3AF",
+    color: "#666666",
     marginBottom: 4,
   },
   codeScroll: {
     maxHeight: 140,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#1a1a1a",
     borderRadius: 6,
     padding: 8,
   },
   codeText: {
     fontFamily: "monospace",
     fontSize: 11,
-    color: "#6B7280",
+    color: "#888888",
     lineHeight: 16,
   },
 });

@@ -432,7 +432,7 @@ const s = StyleSheet.create({
   rowSubRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2 },
   rowSub: { fontSize: 12, color: "#666666", flex: 1 },
   rowRight: { alignItems: "flex-end", gap: 4 },
-  rowTime: { fontSize: 11, color: "#D1D5DB" },
+  rowTime: { fontSize: 11, color: "#444444" },
 
   // Empty
   emptyBox: { paddingVertical: 32, alignItems: "center" },

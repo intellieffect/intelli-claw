@@ -185,9 +185,9 @@ export function useFileAttachments() {
 
 const styles = StyleSheet.create({
   previewBar: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#0a0a0a",
     borderTopWidth: 1,
-    borderTopColor: "#F3F4F6",
+    borderTopColor: "#222222",
   },
   previewContent: {
     paddingHorizontal: 12,
@@ -203,7 +203,7 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
     borderRadius: 8,
-    backgroundColor: "#F3F4F6",
+    backgroundColor: "#1a1a1a",
   },
   removeBtn: {
     position: "absolute",
@@ -223,7 +223,7 @@ const styles = StyleSheet.create({
   },
   thumbName: {
     fontSize: 9,
-    color: "#9CA3AF",
+    color: "#666666",
     marginTop: 2,
     maxWidth: 60,
     textAlign: "center",
