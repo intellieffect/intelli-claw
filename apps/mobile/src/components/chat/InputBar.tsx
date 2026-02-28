@@ -60,7 +60,9 @@ export function InputBar({
     <View style={[s.container, { paddingBottom: keyboardVisible ? 6 : Math.max(10, bottomInset) }]}>
       <View style={s.inputRow}>
         {/* Attach button */}
-        <AttachButton onAttach={onAttach} disabled={!connected} />
+        <View style={s.btnWrap}>
+          <AttachButton onAttach={onAttach} disabled={!connected} />
+        </View>
 
         {/* Input */}
         <TextInput
@@ -75,6 +77,7 @@ export function InputBar({
         />
 
         {/* Send / Abort button */}
+        <View style={s.btnWrap}>
         <Animated.View style={{ opacity: sendOpacity, transform: [{ scale: sendScale }] }}>
           {streaming ? (
             <TouchableOpacity onPress={onAbort} style={s.abortBtn} activeOpacity={0.7}>
@@ -91,6 +94,7 @@ export function InputBar({
             </TouchableOpacity>
           )}
         </Animated.View>
+        </View>
       </View>
     </View>
   );
@@ -111,25 +115,28 @@ const s = StyleSheet.create({
     borderColor: colors.borderSubtle,
     paddingHorizontal: 6,
     paddingVertical: 5,
+    minHeight: 44,
     ...shadows.input,
   },
-  attachBtn: {
-    width: 34,
+  btnWrap: {
     height: 34,
-    borderRadius: 17,
+    width: 34,
     alignItems: "center",
     justifyContent: "center",
+    alignSelf: "flex-end",
   },
   input: {
     flex: 1,
     minHeight: 34,
     maxHeight: 120,
-    paddingHorizontal: 6,
-    paddingVertical: 7,
+    paddingHorizontal: 8,
+    paddingTop: 7,
+    paddingBottom: 7,
     fontSize: 15,
     lineHeight: 21,
     letterSpacing: 0.1,
     color: colors.text,
+    textAlignVertical: "center",
   },
   sendBtn: {
     width: 34,
