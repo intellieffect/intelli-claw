@@ -91,7 +91,7 @@ export function useChat(sessionKey?: string) {
         "chat.history",
         { sessionKey, limit: 100 },
       );
-      const HIDDEN = /^(NO_REPLY|HEARTBEAT_OK)\s*$/;
+      const HIDDEN = /^(NO_REPLY|HEARTBEAT_OK|NO_)\s*$|^System:|^\[System|Pre-compaction memory flush|^Read HEARTBEAT\.md|reply with NO_REPLY|Store durable memories now/;
       const histMsgs: DisplayMessage[] = (res?.messages || [])
         .filter((m) => {
           if (m.role !== "user" && m.role !== "assistant") return false;
@@ -228,11 +228,16 @@ export function useChat(sessionKey?: string) {
           const finalId = streamBuf.current.id;
           const finalContent = streamBuf.current.content;
           const finalTools = Array.from(streamBuf.current.toolCalls.values());
-          setMessages((prev) =>
-            prev.map((m) => m.id === finalId
-              ? { ...m, content: finalContent, toolCalls: finalTools, streaming: false }
-              : m),
-          );
+          const HIDDEN_STREAM = /^(NO_REPLY|HEARTBEAT_OK|NO_)\s*$|^System:|^\[System|Pre-compaction memory flush|^Read HEARTBEAT\.md|reply with NO_REPLY|Store durable memories now/;
+          if (HIDDEN_STREAM.test(finalContent.trim())) {
+            setMessages((prev) => prev.filter((m) => m.id !== finalId));
+          } else {
+            setMessages((prev) =>
+              prev.map((m) => m.id === finalId
+                ? { ...m, content: finalContent, toolCalls: finalTools, streaming: false }
+                : m),
+            );
+          }
           streamBuf.current = null;
         }
 
@@ -246,6 +251,12 @@ export function useChat(sessionKey?: string) {
           const finalId = streamBuf.current.id;
           const finalContent = (data?.text as string) || streamBuf.current.content;
           const finalTools = Array.from(streamBuf.current.toolCalls.values());
+          const HIDDEN_STREAM2 = /^(NO_REPLY|HEARTBEAT_OK|NO_)\s*$|^System:|^\[System|Pre-compaction memory flush|^Read HEARTBEAT\.md|reply with NO_REPLY|Store durable memories now/;
+          if (HIDDEN_STREAM2.test(finalContent.trim())) {
+            setMessages((prev) => prev.filter((m) => m.id !== finalId));
+            streamBuf.current = null;
+            return;
+          }
           setMessages((prev) =>
             prev.map((m) => m.id === finalId
               ? { ...m, content: finalContent, toolCalls: finalTools, streaming: false }
