@@ -177,10 +177,10 @@ const s = StyleSheet.create({
     paddingBottom: 4,
   },
   card: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#0a0a0a",
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#E5E7EB",
+    borderColor: "#222222",
     overflow: "hidden",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: -2 },
@@ -197,7 +197,7 @@ const s = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: "#E5E7EB",
   },
-  headerText: { fontSize: 11, color: "#9CA3AF", fontWeight: "500" },
+  headerText: { fontSize: 11, color: "#666666", fontWeight: "500" },
   headerCount: { fontSize: 10, color: "#D1D5DB" },
 
   list: { maxHeight: 240 },
@@ -211,12 +211,12 @@ const s = StyleSheet.create({
   },
   emoji: { fontSize: 18, width: 26, textAlign: "center" },
   rowMain: { flex: 1 },
-  cmdName: { fontSize: 14, fontWeight: "600", color: "#111827" },
-  cmdDesc: { fontSize: 12, color: "#9CA3AF", marginTop: 1 },
+  cmdName: { fontSize: 14, fontWeight: "600", color: "#fafafa" },
+  cmdDesc: { fontSize: 12, color: "#666666", marginTop: 1 },
 
   divider: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: "#E5E7EB",
+    backgroundColor: "#222222",
     marginHorizontal: 12,
     marginVertical: 4,
   },

@@ -31,5 +31,5 @@ const styles = StyleSheet.create({
   row: { flexDirection: "row", alignItems: "center" },
   dot: { width: 8, height: 8, borderRadius: 4, marginRight: 8 },
   label: { fontSize: 13, fontWeight: "500" },
-  error: { fontSize: 11, color: "#DC2626", marginTop: 4 },
+  error: { fontSize: 11, color: "#EF4444", marginTop: 4 },
 });
