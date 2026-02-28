@@ -338,7 +338,16 @@ export function ChatHeader({
     <div className="flex-shrink-0 border-b border-zinc-700/50 bg-zinc-900/90">
       {/* Agent name row */}
       <div className="flex items-center gap-3 px-5 pt-3.5 pb-2">
-        <AgentAvatar agentId={parsed.agentId} size={36} />
+        <div className="relative flex-shrink-0">
+          <AgentAvatar agentId={parsed.agentId} size={36} />
+          {/* Online/active status dot */}
+          <span className={cn(
+            "absolute -bottom-0.5 -right-0.5 block h-3 w-3 rounded-full border-2 border-zinc-900",
+            agentStatus && agentStatus.phase !== "idle"
+              ? "bg-green-400"
+              : "bg-zinc-600"
+          )} />
+        </div>
         <span className="text-xl font-extrabold text-white truncate tracking-tight leading-tight">
           {agentName}
         </span>
@@ -385,6 +394,8 @@ export function ChatHeader({
             </span>
           );
         })()}
+
+
       </div>
 
       {/* Session tabs */}
