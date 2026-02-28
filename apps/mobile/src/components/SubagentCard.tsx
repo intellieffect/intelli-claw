@@ -177,7 +177,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     borderWidth: 1,
     borderColor: "#E5E7EB80",
-    backgroundColor: "#F9FAFB",
+    backgroundColor: "#141414",
     overflow: "hidden",
   },
   header: {
@@ -194,19 +194,19 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 12,
     fontWeight: "600",
-    color: "#374151",
+    color: "#d4d4d4",
   },
   toolIndicator: {
     fontSize: 10,
-    color: "#9CA3AF",
+    color: "#666666",
   },
   elapsed: {
     fontSize: 10,
-    color: "#9CA3AF",
+    color: "#666666",
   },
   chevron: {
     fontSize: 12,
-    color: "#9CA3AF",
+    color: "#666666",
   },
   preview: {
     borderTopWidth: 1,
@@ -217,7 +217,7 @@ const styles = StyleSheet.create({
   previewText: {
     fontFamily: "monospace",
     fontSize: 11,
-    color: "#9CA3AF",
+    color: "#666666",
   },
   body: {
     borderTopWidth: 1,
@@ -227,7 +227,7 @@ const styles = StyleSheet.create({
   },
   taskText: {
     fontSize: 11,
-    color: "#9CA3AF",
+    color: "#666666",
     marginBottom: 6,
   },
   contentScroll: {
@@ -237,6 +237,6 @@ const styles = StyleSheet.create({
     fontFamily: "monospace",
     fontSize: 11,
     lineHeight: 16,
-    color: "#9CA3AF",
+    color: "#666666",
   },
 });

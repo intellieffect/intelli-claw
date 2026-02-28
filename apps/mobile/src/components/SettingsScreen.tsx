@@ -75,18 +75,18 @@ export default function SettingsScreen() {
 }
 
 const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#FFFFFF", padding: 16 },
-  section: { backgroundColor: "#F9FAFB", borderRadius: 12, padding: 16, marginBottom: 16 },
-  sectionTitle: { fontSize: 11, fontWeight: "600", color: "#9CA3AF", textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 },
+  container: { flex: 1, backgroundColor: "#0a0a0a", padding: 16 },
+  section: { backgroundColor: "#141414", borderRadius: 12, padding: 16, marginBottom: 16 },
+  sectionTitle: { fontSize: 11, fontWeight: "600", color: "#666666", textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 },
   infoRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 10 },
-  infoLabel: { fontSize: 13, color: "#6B7280" },
-  infoValue: { fontSize: 13, color: "#111827", fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace", maxWidth: "60%", textAlign: "right" },
-  fieldLabel: { fontSize: 11, color: "#6B7280", marginBottom: 4 },
-  textInput: { height: 40, paddingHorizontal: 12, backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 8, fontSize: 13, marginBottom: 12 },
+  infoLabel: { fontSize: 13, color: "#888888" },
+  infoValue: { fontSize: 13, color: "#fafafa", fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace", maxWidth: "60%", textAlign: "right" },
+  fieldLabel: { fontSize: 11, color: "#888888", marginBottom: 4 },
+  textInput: { height: 40, paddingHorizontal: 12, backgroundColor: "#0a0a0a", borderWidth: 1, borderColor: "#222222", borderRadius: 8, fontSize: 13, marginBottom: 12 },
   btnRow: { flexDirection: "row", gap: 8 },
   btn: { flex: 1, paddingVertical: 10, borderRadius: 8, alignItems: "center" },
   btnPrimary: { backgroundColor: "#3B82F6" },
   btnPrimaryText: { color: "#FFFFFF", fontWeight: "500", fontSize: 13 },
-  btnSecondary: { backgroundColor: "#E5E7EB" },
-  btnSecondaryText: { color: "#374151", fontWeight: "500", fontSize: 13 },
+  btnSecondary: { backgroundColor: "#222222" },
+  btnSecondaryText: { color: "#d4d4d4", fontWeight: "500", fontSize: 13 },
 });

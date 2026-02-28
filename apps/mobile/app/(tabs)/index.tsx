@@ -228,7 +228,7 @@ export default function ChatScreen() {
           onChangeText={setText}
           onSend={handleSend}
           onAbort={abort}
-          onAttach={() => addAttachments()}
+          onAttach={addAttachments}
           streaming={streaming}
           connected={isConnected}
           hasContent={!!(text.trim() || attachments.length > 0)}

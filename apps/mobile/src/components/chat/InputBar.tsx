@@ -6,7 +6,8 @@ import {
   StyleSheet,
   Animated,
 } from "react-native";
-import { ArrowUp, Square, Paperclip } from "lucide-react-native";
+import { ArrowUp, Square } from "lucide-react-native";
+import { AttachButton } from "../FileAttachments";
 import { colors, shadows, radii } from "../../theme/colors";
 
 interface InputBarProps {
@@ -14,7 +15,7 @@ interface InputBarProps {
   onChangeText: (text: string) => void;
   onSend: () => void;
   onAbort: () => void;
-  onAttach: () => void;
+  onAttach: (attachments: any[]) => void;
   streaming: boolean;
   connected: boolean;
   hasContent: boolean;
@@ -59,14 +60,7 @@ export function InputBar({
     <View style={[s.container, { paddingBottom: keyboardVisible ? 6 : Math.max(10, bottomInset) }]}>
       <View style={s.inputRow}>
         {/* Attach button */}
-        <TouchableOpacity
-          onPress={onAttach}
-          style={s.attachBtn}
-          activeOpacity={0.5}
-          disabled={!connected}
-        >
-          <Paperclip size={19} color={connected ? colors.textTertiary : colors.textMuted} strokeWidth={2} />
-        </TouchableOpacity>
+        <AttachButton onAttach={onAttach} disabled={!connected} />
 
         {/* Input */}
         <TextInput

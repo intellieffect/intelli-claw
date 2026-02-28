@@ -136,7 +136,7 @@ const s = StyleSheet.create({
   backdropTouch: { flex: 1 },
   sheet: {
     maxHeight: "70%",
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#0a0a0a",
     borderTopLeftRadius: 18,
     borderTopRightRadius: 18,
     paddingTop: 6,
@@ -145,7 +145,7 @@ const s = StyleSheet.create({
     width: 36,
     height: 4,
     borderRadius: 2,
-    backgroundColor: "#D1D5DB",
+    backgroundColor: "#333333",
     alignSelf: "center",
     marginBottom: 8,
   },
@@ -156,9 +156,9 @@ const s = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: "#F3F4F6",
+    borderBottomColor: "#222222",
   },
-  title: { fontSize: 17, fontWeight: "700", color: "#111827" },
+  title: { fontSize: 17, fontWeight: "700", color: "#fafafa" },
 
   // Row
   row: {
@@ -177,12 +177,12 @@ const s = StyleSheet.create({
     justifyContent: "center",
   },
   rowMain: { flex: 1 },
-  rowName: { fontSize: 15, fontWeight: "500", color: "#111827" },
-  rowModel: { fontSize: 12, color: "#6B7280", marginTop: 1 },
-  rowDesc: { fontSize: 12, color: "#9CA3AF", marginTop: 1 },
+  rowName: { fontSize: 15, fontWeight: "500", color: "#fafafa" },
+  rowModel: { fontSize: 12, color: "#888888", marginTop: 1 },
+  rowDesc: { fontSize: 12, color: "#666666", marginTop: 1 },
 
-  divider: { height: 1, backgroundColor: "#E5E7EB", marginHorizontal: 16 },
+  divider: { height: 1, backgroundColor: "#222222", marginHorizontal: 16 },
   listContent: { paddingBottom: 24 },
   emptyBox: { paddingVertical: 32, alignItems: "center" },
-  emptyText: { fontSize: 13, color: "#9CA3AF" },
+  emptyText: { fontSize: 13, color: "#666666" },
 });

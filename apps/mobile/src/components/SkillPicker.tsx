@@ -107,8 +107,8 @@ export function SkillPicker({ visible, onClose }: SkillPickerProps) {
               value={isEnabled}
               onValueChange={() => handleToggle(item)}
               disabled={isBlocked}
-              trackColor={{ false: "#D1D5DB", true: "#93C5FD" }}
-              thumbColor={isEnabled ? "#3B82F6" : "#F3F4F6"}
+              trackColor={{ false: "#333333", true: "#FF6B3580" }}
+              thumbColor={isEnabled ? "#FF6B35" : "#666666"}
             />
           )}
         </View>
@@ -174,7 +174,7 @@ const s = StyleSheet.create({
   backdropTouch: { flex: 1 },
   sheet: {
     maxHeight: "80%",
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#0a0a0a",
     borderTopLeftRadius: 18,
     borderTopRightRadius: 18,
     paddingTop: 6,
@@ -183,7 +183,7 @@ const s = StyleSheet.create({
     width: 36,
     height: 4,
     borderRadius: 2,
-    backgroundColor: "#D1D5DB",
+    backgroundColor: "#333333",
     alignSelf: "center",
     marginBottom: 8,
   },
@@ -196,18 +196,18 @@ const s = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: "#F3F4F6",
+    borderBottomColor: "#222222",
   },
   headerLeft: { flexDirection: "row", alignItems: "center", gap: 8 },
   headerRight: { flexDirection: "row", alignItems: "center", gap: 12 },
-  title: { fontSize: 17, fontWeight: "700", color: "#111827" },
+  title: { fontSize: 17, fontWeight: "700", color: "#fafafa" },
   countBadge: {
     backgroundColor: "#EFF6FF",
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 10,
   },
-  countText: { fontSize: 11, fontWeight: "600", color: "#3B82F6" },
+  countText: { fontSize: 11, fontWeight: "600", color: "#FF6B35" },
   refreshBtn: { padding: 4 },
 
   // Error
@@ -231,16 +231,16 @@ const s = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#F3F4F6",
+    borderBottomColor: "#222222",
   },
   rowBlocked: { opacity: 0.5 },
   rowLeft: { flex: 1, flexDirection: "row", alignItems: "flex-start", gap: 10 },
   rowMain: { flex: 1 },
   emoji: { fontSize: 20, width: 28, textAlign: "center", marginTop: 2 },
   nameRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  name: { fontSize: 14, fontWeight: "600", color: "#111827" },
-  nameBlocked: { color: "#9CA3AF" },
-  desc: { fontSize: 12, color: "#6B7280", marginTop: 2, lineHeight: 16 },
+  name: { fontSize: 14, fontWeight: "600", color: "#fafafa" },
+  nameBlocked: { color: "#666666" },
+  desc: { fontSize: 12, color: "#888888", marginTop: 2, lineHeight: 16 },
   sourceBadge: {
     backgroundColor: "#ECFDF5",
     paddingHorizontal: 5,
@@ -254,5 +254,5 @@ const s = StyleSheet.create({
 
   // Empty
   emptyBox: { paddingVertical: 32, alignItems: "center" },
-  emptyText: { fontSize: 13, color: "#9CA3AF" },
+  emptyText: { fontSize: 13, color: "#666666" },
 });
