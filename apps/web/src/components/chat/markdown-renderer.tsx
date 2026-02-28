@@ -2,6 +2,7 @@
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkBreaks from "remark-breaks";
 import rehypeHighlight from "rehype-highlight";
 import {
   Check, Copy, ExternalLink, Eye, Code2, Download,
@@ -549,7 +550,7 @@ export function MarkdownFilePreview({ src, fileName }: { src: string; fileName: 
             <div className="text-xs text-zinc-500">(빈 파일)</div>
           ) : (
             <div className="prose prose-sm prose-invert max-w-none">
-              <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]} components={components}>
+              <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]} rehypePlugins={[rehypeHighlight]} components={components}>
                 {content}
               </ReactMarkdown>
             </div>
@@ -642,7 +643,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
       )}
       {cleaned && (
         <ReactMarkdown
-          remarkPlugins={[remarkGfm]}
+          remarkPlugins={[remarkGfm, remarkBreaks]}
           rehypePlugins={[rehypeHighlight]}
           components={components}
         >
