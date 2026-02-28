@@ -26,6 +26,9 @@ export default defineConfig({
         input: path.resolve(__dirname, "../web/src/index.html"),
       },
     },
+    server: {
+      port: 5174,  // dev uses 5174, production build doesn't use dev server
+    },
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {

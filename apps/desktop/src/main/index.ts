@@ -3,9 +3,17 @@ import { join } from "path";
 import { readFileSync, writeFileSync } from "fs";
 import { registerIpcHandlers } from "./ipc-handlers";
 
+// --- Dev mode detection & isolation ---
+const isDev = !app.isPackaged;
+
+if (isDev) {
+  // Use separate userData directory so dev and production don't share state
+  app.setPath("userData", join(app.getPath("userData"), "-dev"));
+}
+
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (process.platform === "win32") {
-  app.setAppUserModelId(app.getName());
+  app.setAppUserModelId(isDev ? "com.openclaw.intelli-claw.dev" : app.getName());
 }
 
 let mainWindow: BrowserWindow | null = null;
@@ -81,7 +89,8 @@ function createWindow(opts?: CreateWindowOpts): BrowserWindow {
     minHeight: 600,
     titleBarStyle: "hiddenInset",
     trafficLightPosition: { x: 16, y: 16 },
-    backgroundColor: "#0a0a0a",
+    backgroundColor: isDev ? "#0d1117" : "#0a0a0a",
+    title: isDev ? "iClaw [DEV]" : "iClaw",
     webPreferences: {
       preload: join(__dirname, "../preload/index.js"),
       contextIsolation: true,
@@ -110,6 +119,16 @@ function createWindow(opts?: CreateWindowOpts): BrowserWindow {
       callback({ requestHeaders: details.requestHeaders });
     },
   );
+
+  // Auto-reload renderer on crash (GPU process death can kill the renderer)
+  win.webContents.on("render-process-gone", (_event, details) => {
+    console.warn("[main] Renderer crashed:", details.reason, "— reloading in 1s");
+    if (details.reason !== "clean-exit") {
+      setTimeout(() => {
+        if (!win.isDestroyed()) win.reload();
+      }, 1000);
+    }
+  });
 
   // Dev: load from Vite dev server, Prod: load built HTML
   const rendererUrl = process.env.ELECTRON_RENDERER_URL;
@@ -168,6 +187,16 @@ app.on("certificate-error", (event, _webContents, _url, _error, _certificate, ca
 app.on("before-quit", () => {
   isQuitting = true;
   saveWindowStates();
+});
+
+// Prevent GPU/child process crashes from killing the app
+app.on("child-process-gone", (_event, details) => {
+  console.warn("[main] child-process-gone:", details.type, "reason:", details.reason, "exitCode:", details.exitCode);
+  // Don't quit — let Chromium restart the GPU process
+});
+
+app.on("render-process-gone", (_event, _webContents, details) => {
+  console.warn("[main] render-process-gone:", details.reason, "exitCode:", details.exitCode);
 });
 
 app.whenReady().then(() => {
