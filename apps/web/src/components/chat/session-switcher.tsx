@@ -18,12 +18,20 @@ import {
   ArrowRight,
   Check,
   Command,
+  EyeOff,
+  Eye,
 } from "lucide-react";
 import {
   parseSessionKey,
   sessionDisplayName,
   type GatewaySession,
 } from "@/lib/gateway/session-utils";
+import {
+  isSessionHidden,
+  hideSession,
+  unhideSession,
+  getHiddenSessions,
+} from "@/lib/gateway/hidden-sessions";
 import type { Session } from "@/lib/gateway/protocol";
 
 // ---- Type icon per session type ----
@@ -93,6 +101,7 @@ export interface SessionSwitcherProps {
   onRename?: (key: string, label: string) => Promise<void>;
   onDelete?: (key: string) => Promise<void>;
   onReset?: (key: string) => Promise<void>;
+  onHide?: (key: string) => void;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   /** Portal target — palette centers inside this element instead of viewport */
@@ -107,6 +116,7 @@ export function SessionSwitcher({
   onRename,
   onDelete,
   onReset,
+  onHide,
   open: controlledOpen,
   onOpenChange,
   portalContainer,
@@ -128,6 +138,7 @@ export function SessionSwitcher({
 
   const [search, setSearch] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [showHidden, setShowHidden] = useState(false);
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [editLabel, setEditLabel] = useState("");
   const [actionBusy, setActionBusy] = useState(false);
@@ -176,12 +187,19 @@ export function SessionSwitcher({
   }, [gwSessions]);
 
   // Filter
+  const hiddenSet = useMemo(() => getHiddenSessions(), [sorted, showHidden]);
+  const hiddenCount = useMemo(() => {
+    return sorted.filter((s) => hiddenSet.has(s.key)).length;
+  }, [sorted, hiddenSet]);
+
   const filtered = useMemo(() => {
     // Hide cron and subagent sessions from the list (unless explicitly searched)
     const isSystemSearch = search.toLowerCase().includes("cron") || search.toLowerCase().includes("subagent");
     const visible = sorted.filter((s) => {
       const parsed = parseSessionKey(s.key);
       if (!isSystemSearch && (parsed.type === "cron" || parsed.type === "subagent")) return false;
+      // Hide hidden sessions unless showHidden is on
+      if (!showHidden && hiddenSet.has(s.key)) return false;
       return true;
     });
     if (!search.trim()) return visible;
@@ -193,7 +211,7 @@ export function SessionSwitcher({
       const agent = parsed.agentId.toLowerCase();
       return name.includes(q) || key.includes(q) || agent.includes(q);
     });
-  }, [sorted, search]);
+  }, [sorted, search, showHidden, hiddenSet]);
 
   const displayed = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount]);
 
@@ -405,10 +423,25 @@ export function SessionSwitcher({
               </kbd>
             </div>
 
-            {/* Session count */}
-            <div className="border-b border-border px-4 py-1.5 text-xs text-muted-foreground">
-              {filtered.length}개 세션{" "}
-              {search && `(${gwSessions.length}개 중)`}
+            {/* Session count + hidden toggle */}
+            <div className="flex items-center justify-between border-b border-border px-4 py-1.5 text-xs text-muted-foreground">
+              <span>
+                {filtered.length}개 세션{" "}
+                {search && `(${gwSessions.length}개 중)`}
+              </span>
+              {hiddenCount > 0 && (
+                <button
+                  onClick={() => setShowHidden((v) => !v)}
+                  className={`flex items-center gap-1 rounded px-1.5 py-0.5 transition ${
+                    showHidden
+                      ? "bg-muted text-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {showHidden ? <Eye size={12} /> : <EyeOff size={12} />}
+                  <span>숨김 {hiddenCount}개</span>
+                </button>
+              )}
             </div>
 
             {/* Session list */}
@@ -434,6 +467,8 @@ export function SessionSwitcher({
                 const isEditing = editingKey === session.key;
                 const isCurrent = currentKey === session.key;
                 const isSelected = selectedIndex === index;
+                const isHidden = hiddenSet.has(session.key);
+                const isMain = parsed.type === "main";
 
                 return (
                   <div
@@ -441,7 +476,7 @@ export function SessionSwitcher({
                     data-session-item
                     className={`group mx-1 flex items-center gap-3 rounded-lg px-3 py-2.5 min-h-[44px] transition-colors ${
                       isSelected ? "bg-muted/70" : "hover:bg-muted"
-                    }`}
+                    } ${isHidden ? "opacity-50" : ""}`}
                     onMouseMove={() => {
                       if (!isKeyboardNav.current && selectedIndex !== index) setSelectedIndex(index);
                     }}
@@ -502,6 +537,12 @@ export function SessionSwitcher({
                         )}
                       </div>
 
+                      {isHidden && !isEditing && (
+                        <EyeOff
+                          size={12}
+                          className="shrink-0 text-muted-foreground"
+                        />
+                      )}
                       {isCurrent && !isEditing && (
                         <Check
                           size={14}
@@ -517,6 +558,34 @@ export function SessionSwitcher({
                           isSelected ? "flex" : "hidden group-hover:flex"
                         }`}
                       >
+                        {/* Hide / Unhide button (not for main sessions) */}
+                        {!isMain && onHide && (
+                          isHidden ? (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                unhideSession(session.key);
+                                onHide(session.key);
+                              }}
+                              className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+                              title="숨김 해제"
+                            >
+                              <Eye size={12} />
+                            </button>
+                          ) : (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                hideSession(session.key);
+                                onHide(session.key);
+                              }}
+                              className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+                              title="숨기기"
+                            >
+                              <EyeOff size={12} />
+                            </button>
+                          )
+                        )}
                         {onRename && (
                           <button
                             onClick={(e) => {
