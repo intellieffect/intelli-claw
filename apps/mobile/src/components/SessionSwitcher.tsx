@@ -121,9 +121,9 @@ export function SessionSwitcher({
 }: SessionSwitcherProps) {
   const [search, setSearch] = useState("");
 
-  // Build sections from sessions
-  const sections = useMemo((): SectionData[] => {
-    const grouped = new Map<string, SessionItem[]>();
+  // Build flat list sorted by updatedAt desc (like web version)
+  const sortedItems = useMemo((): SessionItem[] => {
+    const items: SessionItem[] = [];
     for (const sess of sessions) {
       const p = parseSessionKey(sess.key);
       const aid = p?.agentId || "unknown";
@@ -147,30 +147,21 @@ export function SessionSwitcher({
         if (!match) continue;
       }
 
-      const list = grouped.get(aid) || [];
-      list.push(item);
-      grouped.set(aid, list);
+      items.push(item);
     }
 
-    return Array.from(grouped.entries())
-      .map(([aid, data]) => ({
-        title: aid,
-        agentId: aid,
-        data: data.sort((a, b) => {
-          if (a.sessionId === "main" && b.sessionId !== "main") return -1;
-          if (b.sessionId === "main" && a.sessionId !== "main") return 1;
-          return String(b.updatedAt || "").localeCompare(String(a.updatedAt || ""));
-        }),
-      }))
-      .sort((a, b) =>
-        String(b.data[0]?.updatedAt || "").localeCompare(String(a.data[0]?.updatedAt || "")),
-      );
+    return items.sort((a, b) =>
+      String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")),
+    );
   }, [sessions, search]);
 
-  const totalCount = useMemo(
-    () => sections.reduce((sum, s) => sum + s.data.length, 0),
-    [sections],
-  );
+  // Wrap in single section for SectionList compatibility
+  const sections = useMemo((): SectionData[] => {
+    if (sortedItems.length === 0) return [];
+    return [{ title: "all", agentId: "all", data: sortedItems }];
+  }, [sortedItems]);
+
+  const totalCount = sortedItems.length;
 
   const handleSelect = useCallback(
     (key: string | null) => {
@@ -281,17 +272,7 @@ export function SessionSwitcher({
                 </View>
               ) : null
             }
-            renderSectionHeader={({ section }) => {
-              const color = getAgentColor(section.agentId);
-              return (
-                <View style={s.sectionHeader}>
-                  <Text style={[s.sectionTitle, { color }]}>{section.title}</Text>
-                  <View style={[s.sectionBadge, { backgroundColor: color + "20" }]}>
-                    <Text style={[s.sectionCount, { color }]}>{section.data.length}</Text>
-                  </View>
-                </View>
-              );
-            }}
+            renderSectionHeader={() => null}
             renderItem={({ item }) => {
               const isActive = item.key === currentKey;
               const color = getAgentColor(item.agentId);
@@ -322,21 +303,24 @@ export function SessionSwitcher({
                     <Icon size={14} color="#9CA3AF" />
                   </View>
                   <View style={s.rowMain}>
-                    <View style={s.rowTitleRow}>
-                      <Text
-                        style={[s.rowTitle, isActive && { color, fontWeight: "700" }]}
-                        numberOfLines={1}
-                      >
-                        {item.sessionId === "main"
-                          ? `${item.agentId} / main`
-                          : item.title}
-                      </Text>
+                    <Text
+                      style={[s.rowTitle, isActive && { color, fontWeight: "700" }]}
+                      numberOfLines={1}
+                    >
+                      {item.sessionId === "main"
+                        ? "main"
+                        : item.title}
+                    </Text>
+                    <View style={s.rowSubRow}>
+                      <View style={[s.agentBadge, { backgroundColor: color + "20" }]}>
+                        <Text style={[s.agentBadgeText, { color }]}>{item.agentId}</Text>
+                      </View>
+                      {item.lastMessage ? (
+                        <Text style={s.rowSub} numberOfLines={1}>
+                          {item.lastMessage}
+                        </Text>
+                      ) : null}
                     </View>
-                    {item.lastMessage ? (
-                      <Text style={s.rowSub} numberOfLines={1}>
-                        {item.lastMessage}
-                      </Text>
-                    ) : null}
                   </View>
                   <View style={s.rowRight}>
                     <Text style={s.rowTime}>{timeAgo(item.updatedAt)}</Text>
@@ -441,9 +425,12 @@ const s = StyleSheet.create({
   defaultRow: { backgroundColor: "#F0F9FF" },
   rowIcon: { width: 28, alignItems: "center" },
   rowMain: { flex: 1, marginRight: 8 },
-  rowTitleRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  rowTitleRow: { flexDirection: "row", alignItems: "center", gap: 6, flexShrink: 1 },
+  agentBadge: { paddingHorizontal: 6, paddingVertical: 1, borderRadius: 6 },
+  agentBadgeText: { fontSize: 10, fontWeight: "700" },
   rowTitle: { fontSize: 14, color: "#111827", fontWeight: "500" },
-  rowSub: { fontSize: 12, color: "#9CA3AF", marginTop: 2 },
+  rowSubRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2 },
+  rowSub: { fontSize: 12, color: "#9CA3AF", flex: 1 },
   rowRight: { alignItems: "flex-end", gap: 4 },
   rowTime: { fontSize: 11, color: "#D1D5DB" },
 
