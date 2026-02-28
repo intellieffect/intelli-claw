@@ -42,7 +42,7 @@ export function InputBar({
   // Animate send button appearance
   useEffect(() => {
     Animated.timing(sendOpacity, {
-      toValue: canSend || streaming ? 1 : 0.4,
+      toValue: canSend || streaming ? 1 : 0.6,
       duration: 150,
       useNativeDriver: true,
     }).start();
