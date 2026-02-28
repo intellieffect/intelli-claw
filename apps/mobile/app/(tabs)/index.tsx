@@ -42,14 +42,32 @@ export default function ChatScreen() {
   const insets = useSafeAreaInsets();
   const { state, mainSessionKey } = useGateway();
   const { activeSessionKey, setActiveSessionKey } = useSessionStore();
-  const currentKey = activeSessionKey || mainSessionKey || undefined;
-  const parsed = currentKey ? parseSessionKey(currentKey) : null;
+
+  const [selectedAgentId, setSelectedAgentId] = useState<string | undefined>();
+
+  // Compute effective session key: explicit session > agent-based main > gateway default
+  const effectiveSessionKey = useMemo(() => {
+    if (activeSessionKey) return activeSessionKey;
+    if (selectedAgentId) return `agent:${selectedAgentId}:main`;
+    return mainSessionKey || undefined;
+  }, [activeSessionKey, selectedAgentId, mainSessionKey]);
+
+  // Sync selectedAgentId from the current session key
+  useEffect(() => {
+    if (!effectiveSessionKey) return;
+    const p = parseSessionKey(effectiveSessionKey);
+    if (p.agentId && p.agentId !== "unknown" && p.agentId !== selectedAgentId) {
+      setSelectedAgentId(p.agentId);
+    }
+  }, [effectiveSessionKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const parsed = effectiveSessionKey ? parseSessionKey(effectiveSessionKey) : null;
   const agentLabel = parsed?.agentId || "Chat";
   const sessionLabel = parsed
     ? parsed.type === "main" ? "main" : parsed.detail || parsed.type
     : "";
 
-  const { messages, streaming, loading, agentStatus, sendMessage, abort } = useChat(currentKey);
+  const { messages, streaming, loading, agentStatus, sendMessage, abort } = useChat(effectiveSessionKey);
   const { sessions, loading: sessionsLoading, refresh: refreshSessions } = useSessions();
 
   const [text, setText] = useState("");
@@ -58,7 +76,6 @@ export default function ChatScreen() {
   const { attachments, addAttachments, removeAttachment, clearAttachments, toPayloads, imageUris: getImageUris } = useFileAttachments();
   const [agentSelectorOpen, setAgentSelectorOpen] = useState(false);
   const [skillPickerOpen, setSkillPickerOpen] = useState(false);
-  const [selectedAgentId, setSelectedAgentId] = useState<string | undefined>();
   const showSlashPicker = shouldShowSlashPicker(text);
   const flatListRef = useRef<FlatList>(null);
   const [userScrolledUp, setUserScrolledUp] = useState(false);
@@ -195,7 +212,7 @@ export default function ChatScreen() {
         <AgentStatusBar status={agentStatus} />
 
         {/* Agent indicator above input */}
-        {currentKey && parsed?.agentId && (
+        {effectiveSessionKey && parsed?.agentId && (
           <TouchableOpacity
             style={s.agentIndicator}
             activeOpacity={0.6}
@@ -243,11 +260,19 @@ export default function ChatScreen() {
           sessions={sessions}
           sessionsLoading={sessionsLoading}
           onRefresh={refreshSessions}
-          currentKey={currentKey}
+          currentKey={effectiveSessionKey}
           mainSessionKey={mainSessionKey}
           onSelect={(key) => {
-            if (key === mainSessionKey) setActiveSessionKey(null);
-            else setActiveSessionKey(key);
+            if (key === mainSessionKey) {
+              setActiveSessionKey(null);
+            } else {
+              setActiveSessionKey(key);
+            }
+            // Sync agent selection from the chosen session
+            const p = parseSessionKey(key);
+            if (p.agentId && p.agentId !== "unknown") {
+              setSelectedAgentId(p.agentId);
+            }
           }}
         />
 
@@ -256,7 +281,11 @@ export default function ChatScreen() {
           visible={agentSelectorOpen}
           onClose={() => setAgentSelectorOpen(false)}
           selectedId={selectedAgentId}
-          onSelect={setSelectedAgentId}
+          onSelect={(id) => {
+            setSelectedAgentId(id);
+            // Clear explicit session so effectiveSessionKey switches to agent:{id}:main
+            setActiveSessionKey(null);
+          }}
         />
 
         {/* Skill picker */}

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { View, Text, TextInput, TouchableOpacity, ScrollView, Alert, StyleSheet, Platform } from "react-native";
 import { useGateway } from "@intelli-claw/shared";
 import Constants from "expo-constants";
+import { colors } from "../theme/colors";
 
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
@@ -75,18 +76,18 @@ export default function SettingsScreen() {
 }
 
 const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#0a0a0a", padding: 16 },
-  section: { backgroundColor: "#141414", borderRadius: 12, padding: 16, marginBottom: 16 },
-  sectionTitle: { fontSize: 11, fontWeight: "600", color: "#666666", textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 },
+  container: { flex: 1, backgroundColor: colors.bg, padding: 16 },
+  section: { backgroundColor: colors.bgSecondary, borderRadius: 12, padding: 16, marginBottom: 16 },
+  sectionTitle: { fontSize: 11, fontWeight: "600", color: colors.textTertiary, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 },
   infoRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 10 },
-  infoLabel: { fontSize: 13, color: "#888888" },
-  infoValue: { fontSize: 13, color: "#fafafa", fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace", maxWidth: "60%", textAlign: "right" },
-  fieldLabel: { fontSize: 11, color: "#888888", marginBottom: 4 },
-  textInput: { height: 40, paddingHorizontal: 12, backgroundColor: "#0a0a0a", borderWidth: 1, borderColor: "#222222", borderRadius: 8, fontSize: 13, marginBottom: 12 },
+  infoLabel: { fontSize: 13, color: colors.textMid },
+  infoValue: { fontSize: 13, color: colors.text, fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace", maxWidth: "60%", textAlign: "right" },
+  fieldLabel: { fontSize: 11, color: colors.textMid, marginBottom: 4 },
+  textInput: { height: 40, paddingHorizontal: 12, backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border, borderRadius: 8, fontSize: 13, marginBottom: 12 },
   btnRow: { flexDirection: "row", gap: 8 },
   btn: { flex: 1, paddingVertical: 10, borderRadius: 8, alignItems: "center" },
-  btnPrimary: { backgroundColor: "#3B82F6" },
-  btnPrimaryText: { color: "#FFFFFF", fontWeight: "500", fontSize: 13 },
-  btnSecondary: { backgroundColor: "#222222" },
-  btnSecondaryText: { color: "#d4d4d4", fontWeight: "500", fontSize: 13 },
+  btnPrimary: { backgroundColor: colors.info },
+  btnPrimaryText: { color: colors.textWhite, fontWeight: "500", fontSize: 13 },
+  btnSecondary: { backgroundColor: colors.border },
+  btnSecondaryText: { color: colors.textLight, fontWeight: "500", fontSize: 13 },
 });

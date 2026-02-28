@@ -8,6 +8,7 @@ import {
   StyleSheet,
 } from "react-native";
 import { useGateway, type EventFrame } from "@intelli-claw/shared";
+import { colors } from "../theme/colors";
 
 interface SubagentStatus {
   content: string;
@@ -125,7 +126,7 @@ export function SubagentCard({
         activeOpacity={0.7}
       >
         {status.phase === "running" ? (
-          <ActivityIndicator size={12} color="#3B82F6" />
+          <ActivityIndicator size={12} color={colors.info} />
         ) : (
           <Text style={styles.phaseIcon}>{phaseIcon}</Text>
         )}
@@ -176,8 +177,8 @@ const styles = StyleSheet.create({
     marginVertical: 6,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: "#E5E7EB80",
-    backgroundColor: "#141414",
+    borderColor: colors.borderLight,
+    backgroundColor: colors.bgSecondary,
     overflow: "hidden",
   },
   header: {
@@ -194,40 +195,40 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 12,
     fontWeight: "600",
-    color: "#d4d4d4",
+    color: colors.textLight,
   },
   toolIndicator: {
     fontSize: 10,
-    color: "#666666",
+    color: colors.textTertiary,
   },
   elapsed: {
     fontSize: 10,
-    color: "#666666",
+    color: colors.textTertiary,
   },
   chevron: {
     fontSize: 12,
-    color: "#666666",
+    color: colors.textTertiary,
   },
   preview: {
     borderTopWidth: 1,
-    borderTopColor: "#E5E7EB50",
+    borderTopColor: colors.borderSubtle,
     paddingHorizontal: 10,
     paddingVertical: 5,
   },
   previewText: {
     fontFamily: "monospace",
     fontSize: 11,
-    color: "#666666",
+    color: colors.textTertiary,
   },
   body: {
     borderTopWidth: 1,
-    borderTopColor: "#E5E7EB50",
+    borderTopColor: colors.borderSubtle,
     paddingHorizontal: 10,
     paddingVertical: 8,
   },
   taskText: {
     fontSize: 11,
-    color: "#666666",
+    color: colors.textTertiary,
     marginBottom: 6,
   },
   contentScroll: {
@@ -237,6 +238,6 @@ const styles = StyleSheet.create({
     fontFamily: "monospace",
     fontSize: 11,
     lineHeight: 16,
-    color: "#666666",
+    color: colors.textTertiary,
   },
 });
