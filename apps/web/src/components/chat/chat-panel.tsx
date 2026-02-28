@@ -72,7 +72,7 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
   const effectiveSessionKey =
     sessionKey || (agentId ? `agent:${agentId}:main` : mainSessionKey) || undefined;
 
-  const { messages, streaming, loading, sendMessage, sendCommand, addUserMessage, addLocalMessage, cancelQueued, abort, sendContextBridge } = useChat(effectiveSessionKey);
+  const { messages, streaming, loading, agentStatus, sendMessage, sendCommand, addUserMessage, addLocalMessage, cancelQueued, abort, sendContextBridge } = useChat(effectiveSessionKey);
   const { agents } = useAgents();
   const { sessions, loading: sessionsLoading, refresh: refreshSessions, patchSession } = useSessions();
 
@@ -581,6 +581,7 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
           agents={agents}
           sessions={sessions as unknown as Array<Record<string, unknown>>}
           messages={messages as unknown as Array<Record<string, unknown>>}
+          agentStatus={agentStatus}
           onSelectSession={setSessionKey}
           onNewSession={handleNewSession}
           onDeleteSession={(key) => handleDelete(key)}
@@ -619,41 +620,10 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
         onAttachFiles={addFiles}
         onRemoveAttachment={removeAttachment}
         panelId={panelId}
-        toolbar={showHeader ? (
-          <>
-            <SessionSwitcher
-              sessions={sessions as GatewaySession[]}
-              currentKey={sessionKey}
-              onSelect={setSessionKey}
-              onNew={handleNewSession}
-              onRename={handleRename}
-              onDelete={handleDelete}
-              onReset={handleReset}
-              onHide={handleHide}
-              open={sessionSwitcherOpen}
-              onOpenChange={setSessionSwitcherOpen}
-              portalContainer={panelRef.current}
-            />
-            <AgentBrowser
-              sessions={sessions as GatewaySession[]}
-              currentKey={sessionKey}
-              onSelect={setSessionKey}
-              open={agentBrowserOpen}
-              onOpenChange={setAgentBrowserOpen}
-              portalContainer={panelRef.current}
-            />
-            <div className="ml-auto flex items-center gap-2">
-              {currentSession?.model && (
-                <span className="text-[10px] text-muted-foreground" title={currentSession.model}>
-                  {currentSession.model.split("/").pop()}
-                </span>
-              )}
-              {tokenStr && (
-                <span className="text-[10px] text-muted-foreground">{tokenStr} tokens</span>
-              )}
-            </div>
-          </>
-        ) : undefined}
+        toolbar={undefined}
+        model={currentSession?.model ? String(currentSession.model) : undefined}
+        tokenStr={tokenStr || undefined}
+        tokenPercent={(currentSession as any)?.percentUsed as number | undefined}
       />
 
       {/* New Session Picker */}

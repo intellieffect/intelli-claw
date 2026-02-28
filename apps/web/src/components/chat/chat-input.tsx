@@ -27,6 +27,9 @@ export function ChatInput({
   toolbar,
   agentAvatar,
   agentSlot: agentSlotProp,
+  model,
+  tokenStr,
+  tokenPercent,
 }: {
   onSend: (text: string) => void;
   onAbort: () => void;
@@ -42,6 +45,12 @@ export function ChatInput({
   agentAvatar?: { emoji: string; color: string };
   /** Custom agent slot node (overrides agentAvatar) */
   agentSlot?: React.ReactNode;
+  /** Model name */
+  model?: string;
+  /** Token display string (e.g. "62.7k") */
+  tokenStr?: string;
+  /** Token usage percent */
+  tokenPercent?: number;
 }) {
   const keyboardHeight = useKeyboardHeight();
   const isMobile = useIsMobile();
@@ -255,7 +264,7 @@ export function ChatInput({
 
   return (
     <div
-      className="relative px-[3%] py-1.5 sm:py-2 md:px-[5%] lg:px-[7%] safe-bottom electron-bottom-pad"
+      className="relative px-2 py-1.5 sm:px-3 sm:py-2 safe-bottom electron-bottom-pad"
       style={isMobile && keyboardHeight > 0 ? { paddingBottom: `max(4px, env(safe-area-inset-bottom, 0px))` } : undefined}
     >
       {/* Skill picker */}
@@ -267,7 +276,7 @@ export function ChatInput({
       />
 
       <div
-        className="mx-auto w-full max-w-[1200px]"
+        className="w-full"
       >
         <div
           className="flex-1"
@@ -287,6 +296,48 @@ export function ChatInput({
               {toolbar}
             </div>
           )}
+
+          {/* Model & token info bar */}
+          {(model || tokenStr) && (() => {
+            const isCritical = tokenPercent != null && tokenPercent >= 90;
+            const isWarning = tokenPercent != null && tokenPercent >= 70;
+            return (
+              <div className={cn(
+                "flex items-center gap-2.5 px-3 pt-2 pb-0.5 text-xs tabular-nums tracking-tight",
+                isCritical
+                  ? "text-red-400"
+                  : isWarning
+                    ? "text-amber-400"
+                    : "text-zinc-500"
+              )}>
+                {model && (
+                  <span className="font-medium">{model.split("/").pop()}</span>
+                )}
+                {tokenStr && (
+                  <>
+                    <span className="text-zinc-700">·</span>
+                    <span className="font-semibold">{tokenStr}</span>
+                  </>
+                )}
+                {tokenPercent != null && (
+                  <>
+                    <span className="text-zinc-700">·</span>
+                    <span className="font-semibold">{tokenPercent}%</span>
+                  </>
+                )}
+                {isCritical && (
+                  <span className="ml-1 text-[11px] font-medium text-red-400/90">
+                    ⚠️ 컨텍스트 한도 임박 — <code className="rounded bg-red-400/10 px-1 py-0.5 text-[10px]">/new</code> 또는 <code className="rounded bg-red-400/10 px-1 py-0.5 text-[10px]">/compact</code> 권장
+                  </span>
+                )}
+                {!isCritical && isWarning && (
+                  <span className="ml-1 text-[11px] font-medium text-amber-400/80">
+                    ⚡ 토큰 사용량 높음
+                  </span>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Attachment previews inside container */}
           {showAttachments && (
@@ -397,11 +448,7 @@ export function ChatInput({
 
         </div>
       </div>
-      {!isMobile && (
-        <p className="mt-1 text-center text-[10px] sm:text-[11px] text-muted-foreground/50">
-          Shift+Enter로 줄바꿈 · 에이전트는 실수할 수 있습니다
-        </p>
-      )}
+
     </div>
   );
 }
