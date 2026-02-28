@@ -229,8 +229,9 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   attachBtn: {
-    paddingHorizontal: 4,
-    paddingVertical: 8,
+    width: 34,
+    height: 34,
+    alignItems: "center",
     justifyContent: "center",
   },
   attachIcon: {
