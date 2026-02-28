@@ -71,7 +71,7 @@ const markdownStyles = StyleSheet.create({
     marginVertical: 6,
   },
   code_inline: {
-    backgroundColor: "#333333",
+    backgroundColor: "#2a2a2a",
     color: "#e5e7eb",
     fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
     fontSize: 13,
@@ -147,7 +147,7 @@ const markdownStyles = StyleSheet.create({
     borderColor: "#222222",
   },
   hr: {
-    backgroundColor: "#333333",
+    backgroundColor: "#2a2a2a",
     height: 1,
     marginVertical: 12,
   },
