@@ -8,8 +8,8 @@ import {
   Linking,
   StyleSheet,
   Animated,
-  Clipboard,
 } from "react-native";
+import * as Clipboard from "expo-clipboard";
 import { Check } from "lucide-react-native";
 import type { DisplayMessage } from "../../hooks/useChat";
 import { Markdown } from "../Markdown";
@@ -124,9 +124,9 @@ export const MessageBubble = React.memo(function MessageBubble({ msg, previousMs
     ? { text: msg.content, media: [] as MediaItem[] }
     : extractMedia(msg.content || "");
 
-  const handleCopy = useCallback(() => {
+  const handleCopy = useCallback(async () => {
     if (!text) return;
-    Clipboard.setString(text);
+    await Clipboard.setStringAsync(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   }, [text]);
@@ -156,7 +156,7 @@ export const MessageBubble = React.memo(function MessageBubble({ msg, previousMs
               {text ? <RNText className="text-[15px] leading-[22px] text-primary-foreground tracking-wide" selectable>{text}</RNText> : null}
             </View>
           ) : (
-            <Pressable onLongPress={handleCopy} className="bg-card rounded-2xl rounded-bl-md px-3.5 py-2.5 border border-border">
+            <Pressable onLongPress={handleCopy} className="bg-card rounded-2xl rounded-bl-md px-3.5 py-2.5 border border-border" accessibilityHint="길게 눌러 복사">
               {text ? (
                 <Markdown>{text}</Markdown>
               ) : msg.streaming ? (

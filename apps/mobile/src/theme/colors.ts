@@ -17,27 +17,41 @@ export const colors = {
   bgTertiary: "#1a1a1a",
   bgDark: "#000000",
   bgElevated: "#1a1a1a",
+  bgHandle: "#333333",
 
   text: "#fafafa",
   textSecondary: "#A0A0A0",
+  textMid: "#888888",
   textTertiary: "#666666",
   textMuted: "#444444",
+  textLight: "#d4d4d4",
   textWhite: "#FFFFFF",
+  textPlaceholder: "#9CA3AF",
 
   border: "#222222",
   borderLight: "#2a2a2a",
   borderSubtle: "rgba(255, 255, 255, 0.06)",
 
   success: "#10B981",
+  successDark: "#34D399",
+  successFaint: "rgba(16, 185, 129, 0.08)",
   warning: "#F59E0B",
   error: "#EF4444",
+  errorFaint: "rgba(239, 68, 68, 0.08)",
   info: "#3B82F6",
+  infoFaint: "rgba(59, 130, 246, 0.08)",
+
+  accentPurple: "#A78BFA",
+  accentPurpleFaint: "rgba(167, 139, 250, 0.10)",
 
   accent: "#FF6B35",
   userBubble: "#FF6B35",
   userBubbleText: "#0a0a0a",
 
+  primarySemi: "rgba(255, 107, 53, 0.50)",
+
   overlay: "rgba(0, 0, 0, 0.6)",
+  overlayDim: "rgba(0, 0, 0, 0.32)",
   overlayLight: "rgba(255, 255, 255, 0.04)",
   shadow: "#000000",
 } as const;

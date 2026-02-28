@@ -9,6 +9,7 @@ import {
 } from "react-native";
 import type { ToolCall } from "@intelli-claw/shared";
 import { SubagentCard } from "./SubagentCard";
+import { colors } from "../theme/colors";
 
 /** Tools that spawn subagents */
 const SPAWN_TOOLS = new Set(["sessions_spawn", "subagents"]);
@@ -61,10 +62,10 @@ export function ToolCallCard({ toolCall }: { toolCall: ToolCall }) {
 
   const statusColor =
     toolCall.status === "running"
-      ? "#3B82F6"
+      ? colors.info
       : toolCall.status === "done"
-        ? "#10B981"
-        : "#EF4444";
+        ? colors.success
+        : colors.error;
 
   return (
     <View style={styles.container}>
@@ -76,7 +77,7 @@ export function ToolCallCard({ toolCall }: { toolCall: ToolCall }) {
         <Text style={styles.chevron}>{expanded ? "▾" : "▸"}</Text>
 
         {toolCall.status === "running" ? (
-          <ActivityIndicator size={12} color="#3B82F6" />
+          <ActivityIndicator size={12} color={colors.info} />
         ) : (
           <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
         )}
@@ -127,8 +128,8 @@ const styles = StyleSheet.create({
     marginVertical: 4,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: "#222222",
-    backgroundColor: "#141414",
+    borderColor: colors.border,
+    backgroundColor: colors.bgSecondary,
     overflow: "hidden",
   },
   header: {
@@ -140,7 +141,7 @@ const styles = StyleSheet.create({
   },
   chevron: {
     fontSize: 12,
-    color: "#888888",
+    color: colors.textMid,
     width: 14,
   },
   statusDot: {
@@ -151,16 +152,16 @@ const styles = StyleSheet.create({
   toolName: {
     fontFamily: "monospace",
     fontSize: 12,
-    color: "#d4d4d4",
+    color: colors.textLight,
     flex: 1,
   },
   runningLabel: {
     fontSize: 11,
-    color: "#666666",
+    color: colors.textTertiary,
   },
   body: {
     borderTopWidth: 1,
-    borderTopColor: "#222222",
+    borderTopColor: colors.border,
     paddingHorizontal: 10,
     paddingVertical: 8,
   },
@@ -169,19 +170,19 @@ const styles = StyleSheet.create({
   },
   sectionLabel: {
     fontSize: 11,
-    color: "#666666",
+    color: colors.textTertiary,
     marginBottom: 4,
   },
   codeScroll: {
     maxHeight: 140,
-    backgroundColor: "#1a1a1a",
+    backgroundColor: colors.bgTertiary,
     borderRadius: 6,
     padding: 8,
   },
   codeText: {
     fontFamily: "monospace",
     fontSize: 11,
-    color: "#888888",
+    color: colors.textMid,
     lineHeight: 16,
   },
 });
