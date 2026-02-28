@@ -338,17 +338,10 @@ export function SplitView() {
             className={`relative h-full min-w-0 flex-1 overflow-hidden ${
               !isMobile ? "rounded-lg transition-all duration-300" : ""
             }`}
-            style={!isMobile ? (
-              panel.id === activePanelId
-                ? {
-                    border: "2px solid rgba(255, 107, 53, 0.5)",
-                    boxShadow: "0 0 10px rgba(255, 107, 53, 0.2), 0 0 25px rgba(255, 107, 53, 0.08), inset 0 0 10px rgba(255, 107, 53, 0.03)",
-                  }
-                : {
-                    border: "1px solid rgba(34, 34, 34, 0.8)",
+            style={!isMobile ? {
+                    border: "none",
                     boxShadow: "none",
-                  }
-            ) : undefined}
+                  } : undefined}
             data-panel-id={panel.id}
             onClick={() => setActive(panel.id)}
             onFocusCapture={() => { if (!navInProgressRef.current) setActive(panel.id); }}
