@@ -1,8 +1,7 @@
 import React, { useEffect, useRef } from "react";
-import { View, Text, StyleSheet, Animated } from "react-native";
+import { View, Text, Animated } from "react-native";
 import { Wrench } from "lucide-react-native";
 import type { AgentStatus } from "../../hooks/useChat";
-import { colors, radii, typography } from "../../theme/colors";
 
 export function AgentStatusBar({ status }: { status: AgentStatus }) {
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -11,16 +10,8 @@ export function AgentStatusBar({ status }: { status: AgentStatus }) {
 
   useEffect(() => {
     Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: isActive ? 1 : 0,
-        duration: 200,
-        useNativeDriver: true,
-      }),
-      Animated.timing(slideAnim, {
-        toValue: isActive ? 0 : 4,
-        duration: 200,
-        useNativeDriver: true,
-      }),
+      Animated.timing(fadeAnim, { toValue: isActive ? 1 : 0, duration: 200, useNativeDriver: true }),
+      Animated.timing(slideAnim, { toValue: isActive ? 0 : 4, duration: 200, useNativeDriver: true }),
     ]).start();
   }, [isActive, fadeAnim, slideAnim]);
 
@@ -32,20 +23,20 @@ export function AgentStatusBar({ status }: { status: AgentStatus }) {
     status.phase === "tool" ? status.toolName : "";
 
   return (
-    <Animated.View style={[s.container, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
-      <View style={s.inner}>
+    <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }} className="px-4 py-1.5">
+      <View className="flex-row items-center gap-2 px-3.5 py-2 rounded-lg bg-primary/5 border border-primary/10">
         {status.phase === "tool" ? (
-          <View style={s.iconWrap}>
-            <Wrench size={11} color={colors.primary} strokeWidth={2.5} />
+          <View className="w-5 h-5 rounded-full bg-primary/15 items-center justify-center">
+            <Wrench size={11} color="hsl(18 100% 56%)" strokeWidth={2.5} />
           </View>
         ) : (
-          <View style={s.dotRow}>
+          <View className="flex-row gap-1">
             {[0, 1, 2].map((i) => (
               <PulsingDot key={i} delay={i * 200} />
             ))}
           </View>
         )}
-        <Text style={s.label}>{label}</Text>
+        <Text className="text-xs font-semibold text-primary">{label}</Text>
       </View>
     </Animated.View>
   );
@@ -53,7 +44,6 @@ export function AgentStatusBar({ status }: { status: AgentStatus }) {
 
 function PulsingDot({ delay }: { delay: number }) {
   const anim = useRef(new Animated.Value(0.3)).current;
-
   useEffect(() => {
     const loop = Animated.loop(
       Animated.sequence([
@@ -66,46 +56,5 @@ function PulsingDot({ delay }: { delay: number }) {
     return () => loop.stop();
   }, [anim, delay]);
 
-  return <Animated.View style={[s.pulseDot, { opacity: anim }]} />;
+  return <Animated.View style={{ opacity: anim }} className="w-[5px] h-[5px] rounded-full bg-primary" />;
 }
-
-const s = StyleSheet.create({
-  container: {
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-  },
-  inner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: radii.md,
-    backgroundColor: colors.primaryFaint,
-    borderWidth: 1,
-    borderColor: colors.primaryMuted,
-  },
-  iconWrap: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: colors.primaryMuted,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  dotRow: {
-    flexDirection: "row",
-    gap: 3,
-  },
-  pulseDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
-    backgroundColor: colors.primary,
-  },
-  label: {
-    ...typography.caption,
-    color: colors.primary,
-    fontWeight: "600",
-  },
-});

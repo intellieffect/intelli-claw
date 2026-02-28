@@ -1,3 +1,4 @@
+import "../global.css";
 import "react-native-get-random-values"; // polyfill crypto.getRandomValues for uuid
 import { useState, useCallback, useEffect } from "react";
 import { Slot } from "expo-router";

@@ -1,14 +1,7 @@
 import React, { useRef, useEffect } from "react";
-import {
-  View,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  Animated,
-} from "react-native";
-import { ArrowUp, Square } from "lucide-react-native";
-import { AttachButton } from "../FileAttachments";
-import { colors, shadows, radii } from "../../theme/colors";
+import { View, TextInput, TouchableOpacity, Animated } from "react-native";
+import { ArrowUp, Square, Paperclip } from "lucide-react-native";
+import { cn } from "@/lib/utils";
 
 interface InputBarProps {
   text: string;
@@ -39,10 +32,9 @@ export function InputBar({
   const sendOpacity = useRef(new Animated.Value(0)).current;
   const canSend = connected && hasContent;
 
-  // Animate send button appearance
   useEffect(() => {
     Animated.timing(sendOpacity, {
-      toValue: canSend || streaming ? 1 : 0.6,
+      toValue: canSend || streaming ? 1 : 0.5,
       duration: 150,
       useNativeDriver: true,
     }).start();
@@ -50,25 +42,31 @@ export function InputBar({
 
   const handleSendPress = () => {
     Animated.sequence([
-      Animated.timing(sendScale, { toValue: 0.82, duration: 60, useNativeDriver: true }),
+      Animated.timing(sendScale, { toValue: 0.85, duration: 60, useNativeDriver: true }),
       Animated.timing(sendScale, { toValue: 1, duration: 100, useNativeDriver: true }),
     ]).start();
     onSend();
   };
 
+  // Import AttachButton lazily to avoid circular deps
+  const { AttachButton } = require("../FileAttachments");
+
   return (
-    <View style={[s.container, { paddingBottom: keyboardVisible ? 6 : Math.max(10, bottomInset) }]}>
-      <View style={s.inputRow}>
-        {/* Attach button */}
-        <View style={s.btnWrap}>
+    <View
+      className="px-3 pt-2 bg-background"
+      style={{ paddingBottom: keyboardVisible ? 6 : Math.max(10, bottomInset) }}
+    >
+      <View className="flex-row items-end bg-card rounded-3xl border border-border px-2 py-1.5 min-h-[44px]">
+        {/* Attach */}
+        <View className="w-9 h-9 items-center justify-center self-end">
           <AttachButton onAttach={onAttach} disabled={!connected} />
         </View>
 
         {/* Input */}
         <TextInput
-          style={s.input}
+          className="flex-1 min-h-[34px] max-h-[120px] px-2 py-1.5 text-[15px] leading-[21px] text-foreground"
           placeholder={connected ? "메시지 입력..." : "연결 안 됨"}
-          placeholderTextColor={colors.textMuted}
+          placeholderTextColor="hsl(0 0% 45%)"
           value={text}
           onChangeText={onChangeText}
           editable={connected}
@@ -76,87 +74,33 @@ export function InputBar({
           multiline
         />
 
-        {/* Send / Abort button */}
-        <View style={s.btnWrap}>
-        <Animated.View style={{ opacity: sendOpacity, transform: [{ scale: sendScale }] }}>
-          {streaming ? (
-            <TouchableOpacity onPress={onAbort} style={s.abortBtn} activeOpacity={0.7}>
-              <Square size={12} color={colors.textWhite} fill={colors.textWhite} />
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity
-              onPress={handleSendPress}
-              style={[s.sendBtn, canSend ? s.sendActive : s.sendDisabled]}
-              disabled={!canSend}
-              activeOpacity={0.7}
-            >
-              <ArrowUp size={18} color={colors.textWhite} strokeWidth={2.5} />
-            </TouchableOpacity>
-          )}
-        </Animated.View>
+        {/* Send / Abort */}
+        <View className="w-9 h-9 items-center justify-center self-end">
+          <Animated.View style={{ opacity: sendOpacity, transform: [{ scale: sendScale }] }}>
+            {streaming ? (
+              <TouchableOpacity
+                onPress={onAbort}
+                className="w-8 h-8 rounded-full bg-foreground items-center justify-center"
+                activeOpacity={0.7}
+              >
+                <Square size={11} color="hsl(0 0% 4%)" fill="hsl(0 0% 4%)" />
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                onPress={handleSendPress}
+                className={cn(
+                  "w-8 h-8 rounded-full items-center justify-center",
+                  canSend ? "bg-primary" : "bg-muted",
+                )}
+                disabled={!canSend}
+                activeOpacity={0.7}
+              >
+                <ArrowUp size={17} color={canSend ? "hsl(0 0% 4%)" : "hsl(0 0% 45%)"} strokeWidth={2.5} />
+              </TouchableOpacity>
+            )}
+          </Animated.View>
         </View>
       </View>
     </View>
   );
 }
-
-const s = StyleSheet.create({
-  container: {
-    paddingHorizontal: 14,
-    paddingTop: 8,
-    backgroundColor: colors.bg,
-  },
-  inputRow: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    backgroundColor: colors.bgSecondary,
-    borderRadius: radii.xxl,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
-    paddingHorizontal: 6,
-    paddingVertical: 5,
-    minHeight: 44,
-    ...shadows.input,
-  },
-  btnWrap: {
-    height: 34,
-    width: 34,
-    alignItems: "center",
-    justifyContent: "center",
-    alignSelf: "flex-end",
-  },
-  input: {
-    flex: 1,
-    minHeight: 34,
-    maxHeight: 120,
-    paddingHorizontal: 8,
-    paddingTop: 7,
-    paddingBottom: 7,
-    fontSize: 15,
-    lineHeight: 21,
-    letterSpacing: 0.1,
-    color: colors.text,
-    textAlignVertical: "center",
-  },
-  sendBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  sendActive: {
-    backgroundColor: colors.primary,
-  },
-  sendDisabled: {
-    backgroundColor: colors.textMuted,
-  },
-  abortBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: colors.text,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-});
