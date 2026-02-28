@@ -257,6 +257,21 @@ const components: Partial<Components> = {
       </div>
     );
   },
+  img({ src, alt, ...props }) {
+    if (!src) return null;
+    // Convert local absolute file paths to platform media URLs
+    const isLocalPath = src.startsWith("/") && !src.startsWith("//");
+    const resolvedSrc = isLocalPath ? platform.mediaUrl(src) : src;
+    const mediaType = detectMediaType(src);
+    if (mediaType === "video") {
+      return <MediaVideo src={resolvedSrc} />;
+    }
+    if (mediaType === "audio") {
+      const fileName = src.split("/").pop() || "audio";
+      return <MediaAudio src={resolvedSrc} fileName={fileName} />;
+    }
+    return <MediaImage src={resolvedSrc} />;
+  },
 };
 
 // ---- Media file type detection ----
@@ -369,6 +384,30 @@ function extractMediaLines(text: string): [string, MediaEntry[]] {
 function MediaImage({ src }: { src: string }) {
   const [error, setError] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [hover, setHover] = useState(false);
+  const fileName = src.split("/").pop()?.split("?")[0] || "image.png";
+
+  const handleCopy = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      const res = await fetch(src);
+      const blob = await res.blob();
+      await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // fallback: copy URL
+      await navigator.clipboard?.writeText(src);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    }
+  };
+
+  const handleDownload = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    blobDownload(forceDownloadUrl(src), fileName);
+  };
 
   if (error) {
     return (
@@ -379,13 +418,37 @@ function MediaImage({ src }: { src: string }) {
   }
 
   return (
-    <img
-      src={src}
-      alt="media"
-      className={`rounded-lg border border-zinc-700 cursor-pointer transition-all ${expanded ? "max-w-full" : "h-48 max-w-xs md:h-56 md:max-w-sm"} object-contain`}
-      onClick={() => setExpanded(e => !e)}
-      onError={() => setError(true)}
-    />
+    <div
+      className="group relative inline-block"
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+    >
+      <img
+        src={src}
+        alt="media"
+        className={`rounded-lg border border-zinc-700 cursor-pointer transition-all ${expanded ? "max-w-full" : "h-48 max-w-xs md:h-56 md:max-w-sm"} object-contain`}
+        onClick={() => setExpanded(e => !e)}
+        onError={() => setError(true)}
+      />
+      {hover && (
+        <div className="absolute top-2 right-2 flex gap-1">
+          <button
+            onClick={handleCopy}
+            className="rounded-md bg-zinc-900/80 p-1.5 text-zinc-300 backdrop-blur-sm transition hover:bg-zinc-700 hover:text-white"
+            title={copied ? "복사됨!" : "이미지 복사"}
+          >
+            {copied ? <Check size={14} /> : <Copy size={14} />}
+          </button>
+          <button
+            onClick={handleDownload}
+            className="rounded-md bg-zinc-900/80 p-1.5 text-zinc-300 backdrop-blur-sm transition hover:bg-zinc-700 hover:text-white"
+            title="다운로드"
+          >
+            <Download size={14} />
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 
