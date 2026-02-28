@@ -1,40 +1,14 @@
 import React from "react";
-import { View, Text, StyleSheet } from "react-native";
-import { colors, radii, typography } from "../../theme/colors";
+import { View, Text } from "react-native";
 
 export function DateSeparator({ label }: { label: string }) {
   return (
-    <View style={s.container}>
-      <View style={s.line} />
-      <View style={s.badge}>
-        <Text style={s.text}>{label}</Text>
+    <View className="flex-row items-center px-6 py-4 gap-3.5">
+      <View className="flex-1 h-[0.5px] bg-border" />
+      <View className="px-3.5 py-1 rounded-full bg-secondary">
+        <Text className="text-xs font-medium text-muted-foreground">{label}</Text>
       </View>
-      <View style={s.line} />
+      <View className="flex-1 h-[0.5px] bg-border" />
     </View>
   );
 }
-
-const s = StyleSheet.create({
-  container: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 24,
-    paddingVertical: 18,
-    gap: 14,
-  },
-  line: {
-    flex: 1,
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: colors.borderLight,
-  },
-  badge: {
-    paddingHorizontal: 14,
-    paddingVertical: 5,
-    borderRadius: radii.full,
-    backgroundColor: colors.bgTertiary,
-  },
-  text: {
-    ...typography.caption,
-    color: colors.textTertiary,
-  },
-});

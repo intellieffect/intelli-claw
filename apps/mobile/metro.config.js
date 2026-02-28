@@ -1,9 +1,10 @@
 const { getDefaultConfig } = require("expo/metro-config");
+const { withNativeWind } = require("nativewind/metro");
 const path = require("path");
 
 const config = getDefaultConfig(__dirname);
 
-// Force single React instance across monorepo (prevents "Invalid hook call" errors)
+// Force single React instance across monorepo
 const mobileReact = path.resolve(__dirname, "node_modules/react");
 const mobileReactNative = path.resolve(__dirname, "node_modules/react-native");
 
@@ -12,10 +13,9 @@ config.resolver.extraNodeModules = {
   "react-native": mobileReactNative,
 };
 
-// Ensure Metro resolves from mobile's node_modules first
 config.resolver.nodeModulesPaths = [
   path.resolve(__dirname, "node_modules"),
   path.resolve(__dirname, "../../node_modules"),
 ];
 
-module.exports = config;
+module.exports = withNativeWind(config, { input: "./global.css" });
