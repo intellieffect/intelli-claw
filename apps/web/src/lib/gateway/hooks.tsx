@@ -254,6 +254,8 @@ export type AgentStatus =
   | { phase: "tool"; toolName: string }
   | { phase: "waiting" };
 
+const HIDDEN_REPLY_RE = /^(NO_REPLY|HEARTBEAT_OK|NO_)\s*$|Pre-compaction memory flush|^Read HEARTBEAT\.md|reply with NO_REPLY|Store durable memories now|\[System\] 이전 세션이 컨텍스트 한도로 갱신|\[이전 세션 맥락\]/;
+
 export function useChat(sessionKey?: string) {
   const { client, state } = useGateway();
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
@@ -272,6 +274,7 @@ export function useChat(sessionKey?: string) {
   } | null>(null);
   const streamIdCounter = useRef(0);
   const runIdRef = useRef<string | null>(null);
+  const abortedRef = useRef(false);
   const streamingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sessionKeyRef = useRef(sessionKey);
   const loadVersionRef = useRef(0);
@@ -279,7 +282,7 @@ export function useChat(sessionKey?: string) {
   const buildContextSummaryRef = useRef<(() => string | null) | null>(null);
   const contextBridgeSentRef = useRef<string | null>(null);
 
-  const STREAMING_TIMEOUT_MS = 45_000;
+  const STREAMING_TIMEOUT_MS = 120_000;
 
   const clearStreamingTimeout = useCallback(() => {
     if (streamingTimeoutRef.current) {
@@ -358,10 +361,9 @@ export function useChat(sessionKey?: string) {
       // Stale response guard — another loadHistory started while we awaited
       if (loadVersionRef.current !== thisLoadVersion) return;
 
-      const HIDDEN_PATTERNS = /^(NO_REPLY|HEARTBEAT_OK|NO_)\s*$|Pre-compaction memory flush|^Read HEARTBEAT\.md|reply with NO_REPLY|Store durable memories now|\[System\] 이전 세션이 컨텍스트 한도로 갱신|\[이전 세션 맥락\]/;
       const isHiddenMessage = (role: string, text: string) => {
         if (role === "system") return true;
-        return HIDDEN_PATTERNS.test(text.trim());
+        return HIDDEN_REPLY_RE.test(text.trim());
       };
 
       const histMsgs: DisplayMessage[] = (res?.messages || [])
@@ -379,7 +381,9 @@ export function useChat(sessionKey?: string) {
               if (p.type === 'text' && typeof p.text === 'string') {
                 if (hasToolUse && m.role === 'assistant') {
                   const text = (p.text as string).trim();
-                  if (text.length < 100 && !text.includes('\n')) continue;
+                  // Keep text blocks with markdown images/media even if short
+                  const hasMedia = /!\[.*?\]\(.*?\)|^MEDIA:\s/m.test(text);
+                  if (!hasMedia && text.length < 100 && !text.includes('\n')) continue;
                 }
                 textContent += p.text;
               } else if (p.type === 'image_url' || p.type === 'image') {
@@ -459,32 +463,61 @@ export function useChat(sessionKey?: string) {
       try {
         const localMsgs = await getLocalMessages(sessionKey);
         if (localMsgs.length > 0 && histMsgs.length > 0) {
+          // Build lookup sets for dedup — match by id AND by content+role+close-timestamp
           const gatewayIds = new Set(histMsgs.map((m) => m.id));
+          const gatewayContentKeys = new Set(
+            histMsgs.map((m) => `${m.role}:${m.content.slice(0, 100)}`),
+          );
           const oldestGatewayTs = Math.min(
             ...histMsgs.map((m) => new Date(m.timestamp).getTime()),
           );
-          // Prepend local messages that are older than gateway's oldest
-          // and not already in gateway response
-          const prependMsgs: DisplayMessage[] = localMsgs
-            .filter(
-              (lm) =>
-                !gatewayIds.has(lm.id) &&
-                new Date(lm.timestamp).getTime() < oldestGatewayTs,
-            )
-            .map((lm) => ({
-              id: lm.id,
-              role: lm.role as DisplayMessage["role"],
-              content: lm.content,
-              timestamp: lm.timestamp,
-              toolCalls: (lm.toolCalls || []) as ToolCall[],
-              attachments: lm.attachments as DisplayAttachment[] | undefined,
-              oldSessionId: lm.oldSessionId,
-              newSessionId: lm.newSessionId,
-            }));
-          if (prependMsgs.length > 0) {
-            mergedMsgs = [...prependMsgs, ...histMsgs];
+          const newestGatewayTs = Math.max(
+            ...histMsgs.map((m) => new Date(m.timestamp).getTime()),
+          );
+
+          const toDisplayMsg = (lm: StoredMessage): DisplayMessage => ({
+            id: lm.id,
+            role: lm.role as DisplayMessage["role"],
+            content: lm.content,
+            timestamp: lm.timestamp,
+            toolCalls: (lm.toolCalls || []) as ToolCall[],
+            attachments: lm.attachments as DisplayAttachment[] | undefined,
+            oldSessionId: lm.oldSessionId,
+            newSessionId: lm.newSessionId,
+          });
+
+          // Local messages not in gateway — split into older (prepend) and newer (append)
+          const isNotInGateway = (lm: StoredMessage) =>
+            !gatewayIds.has(lm.id) &&
+            !gatewayContentKeys.has(`${lm.role}:${lm.content.slice(0, 100)}`);
+
+          const prependMsgs = localMsgs
+            .filter((lm) => isNotInGateway(lm) && new Date(lm.timestamp).getTime() < oldestGatewayTs)
+            .map(toDisplayMsg);
+
+          const appendMsgs = localMsgs
+            .filter((lm) => isNotInGateway(lm) && new Date(lm.timestamp).getTime() >= newestGatewayTs)
+            .map(toDisplayMsg);
+
+          // Restore attachments stripped by compaction (e.g. images)
+          const localById = new Map(localMsgs.map((lm) => [lm.id, lm]));
+          const localByRoleTs = new Map(
+            localMsgs
+              .filter((lm) => lm.attachments && (lm.attachments as DisplayAttachment[]).length > 0)
+              .map((lm) => [`${lm.role}:${lm.timestamp}`, lm]),
+          );
+          for (const hm of histMsgs) {
+            if (hm.attachments && hm.attachments.length > 0) continue;
+            const local = localById.get(hm.id) ?? localByRoleTs.get(`${hm.role}:${hm.timestamp}`);
+            if (local?.attachments && (local.attachments as DisplayAttachment[]).length > 0) {
+              hm.attachments = local.attachments as DisplayAttachment[];
+            }
+          }
+
+          if (prependMsgs.length > 0 || appendMsgs.length > 0) {
+            mergedMsgs = [...prependMsgs, ...histMsgs, ...appendMsgs];
             console.log(
-              `[AWF] Restored ${prependMsgs.length} pre-compaction messages from local store`,
+              `[AWF] Restored ${prependMsgs.length} pre + ${appendMsgs.length} post messages from local store`,
             );
           }
         } else if (localMsgs.length > 0 && histMsgs.length === 0) {
@@ -520,6 +553,24 @@ export function useChat(sessionKey?: string) {
         }));
       saveLocalMessages(sessionKey, toStore).catch(() => {});
 
+      // Preserve in-flight streaming message that isn't in history yet
+      const streamingMsg = streamBuf.current
+        ? (() => {
+            const mergedIds = new Set(mergedMsgs.map((m) => m.id));
+            if (!mergedIds.has(streamBuf.current!.id)) {
+              return {
+                id: streamBuf.current!.id,
+                role: "assistant" as const,
+                content: streamBuf.current!.content,
+                timestamp: new Date().toISOString(),
+                toolCalls: Array.from(streamBuf.current!.toolCalls.values()),
+                streaming: true,
+              } satisfies DisplayMessage;
+            }
+            return null;
+          })()
+        : null;
+
       const savedQueue = queueStorageKey ? localStorage.getItem(queueStorageKey) : null;
       if (savedQueue) {
         try {
@@ -529,10 +580,10 @@ export function useChat(sessionKey?: string) {
             id: q.id, role: "user" as const, content: q.text,
             timestamp: new Date().toISOString(), toolCalls: [], queued: true,
           }));
-          setMessages([...mergedMsgs, ...queuedMsgs]);
-        } catch { setMessages(mergedMsgs); }
+          setMessages([...mergedMsgs, ...(streamingMsg ? [streamingMsg] : []), ...queuedMsgs]);
+        } catch { setMessages([...mergedMsgs, ...(streamingMsg ? [streamingMsg] : [])]); }
       } else {
-        setMessages(mergedMsgs);
+        setMessages([...mergedMsgs, ...(streamingMsg ? [streamingMsg] : [])]);
       }
     } catch {
       // silently fail
@@ -609,6 +660,18 @@ export function useChat(sessionKey?: string) {
     })();
   }, [sessionKey, state]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Reload history on reconnect (catches messages missed during disconnect)
+  useEffect(() => {
+    if (!client) return;
+    const unsub = client.onEvent((frame: EventFrame) => {
+      if (frame.event === "client.reconnected") {
+        console.log("[AWF] Reconnected — reloading history");
+        loadHistory();
+      }
+    });
+    return unsub;
+  }, [client, loadHistory]);
+
   // Handle agent events
   useEffect(() => {
     if (!client) return;
@@ -629,6 +692,10 @@ export function useChat(sessionKey?: string) {
       const evSessionKey = (raw.sessionKey ?? data?.sessionKey) as string | undefined;
       if (evSessionKey && evSessionKey !== sessionKeyRef.current) return;
       if (!evSessionKey && sessionKeyRef.current) return;
+
+
+      // Ignore events after abort until next lifecycle start
+      if (abortedRef.current && stream !== "lifecycle") return;
 
       if (stream === "assistant" && (typeof data?.delta === "string" || typeof data?.text === "string")) {
         const chunk = (data?.delta as string | undefined) ?? (data?.text as string);
@@ -714,6 +781,7 @@ export function useChat(sessionKey?: string) {
         }
       } else if (stream === "lifecycle" && data?.phase === "start") {
         setStreaming(true);
+        abortedRef.current = false;
         startStreamingTimeout();
         runIdRef.current = (raw.runId as string) ?? null;
         setAgentStatusDebug({ phase: "thinking" });
@@ -731,13 +799,18 @@ export function useChat(sessionKey?: string) {
             finalContent = extracted.cleanedText;
             finalAttachments = extracted.attachments.length > 0 ? extracted.attachments : undefined;
           }
-          setMessages((prev) =>
-            prev.map((m) => m.id === finalId
-              ? { ...m, content: finalContent, toolCalls: finalTools, streaming: false, attachments: finalAttachments || m.attachments }
-              : m)
-          );
-          // Persist assistant message to local store
-          saveLocalMessages(sessionKeyRef.current, [{
+          if (HIDDEN_REPLY_RE.test(finalContent.trim())) {
+            // Remove hidden message (HEARTBEAT_OK, NO_REPLY, etc.) from display
+            setMessages((prev) => prev.filter((m) => m.id !== finalId));
+          } else {
+            setMessages((prev) =>
+              prev.map((m) => m.id === finalId
+                ? { ...m, content: finalContent, toolCalls: finalTools, streaming: false, attachments: finalAttachments || m.attachments }
+                : m)
+            );
+          }
+          // Persist assistant message to local store (skip hidden)
+          if (!HIDDEN_REPLY_RE.test(finalContent.trim())) saveLocalMessages(sessionKeyRef.current, [{
             sessionKey: sessionKeyRef.current,
             id: finalId,
             role: "assistant",
@@ -762,11 +835,15 @@ export function useChat(sessionKey?: string) {
             finalContent = extracted.cleanedText;
             finalAttachments = extracted.attachments.length > 0 ? extracted.attachments : undefined;
           }
-          setMessages((prev) =>
-            prev.map((m) => m.id === finalId
-              ? { ...m, content: finalContent, toolCalls: finalTools, streaming: false, attachments: finalAttachments || m.attachments }
-              : m)
-          );
+          if (HIDDEN_REPLY_RE.test(finalContent.trim())) {
+            setMessages((prev) => prev.filter((m) => m.id !== finalId));
+          } else {
+            setMessages((prev) =>
+              prev.map((m) => m.id === finalId
+                ? { ...m, content: finalContent, toolCalls: finalTools, streaming: false, attachments: finalAttachments || m.attachments }
+                : m)
+            );
+          }
           streamBuf.current = null;
         }
       } else if (stream === "error") {
@@ -893,10 +970,10 @@ export function useChat(sessionKey?: string) {
     setMessages((prev) => prev.filter((m) => m.id !== msgId));
   }, [persistQueue]);
 
-  const abort = useCallback(async () => {
-    if (!client || state !== "connected") return;
-    try { await client.request("chat.abort", { sessionKey, runId: runIdRef.current ?? undefined }); }
-    catch (err) { console.warn("[AWF] chat.abort failed:", String(err)); }
+  const abort = useCallback(() => {
+    // Immediately stop UI — don't await the RPC
+    abortedRef.current = true;
+    const currentRunId = runIdRef.current;
     clearStreamingTimeout();
     if (streamBuf.current) {
       const abortedId = streamBuf.current.id;
@@ -906,6 +983,11 @@ export function useChat(sessionKey?: string) {
     runIdRef.current = null;
     setStreaming(false);
     setAgentStatusDebug({ phase: "idle" });
+    // Fire-and-forget the gateway abort
+    if (client && state === "connected") {
+      client.request("chat.abort", { sessionKey, runId: currentRunId ?? undefined })
+        .catch((err: unknown) => console.warn("[AWF] chat.abort failed:", String(err)));
+    }
   }, [client, state, sessionKey, clearStreamingTimeout]);
 
   const addUserMessage = useCallback((text: string, attachments?: DisplayAttachment[]) => {
@@ -916,6 +998,15 @@ export function useChat(sessionKey?: string) {
     };
     setMessages((prev) => [...prev, userMsg]);
     if (!streaming) setStreaming(true);
+    // Persist user message (with attachments/images) to local store
+    saveLocalMessages(sessionKeyRef.current, [{
+      sessionKey: sessionKeyRef.current,
+      id: msgId,
+      role: "user",
+      content: text,
+      timestamp: userMsg.timestamp,
+      attachments: attachments,
+    }]).catch(() => {});
   }, [streaming]);
 
   const addLocalMessage = useCallback((content: string, role: "user" | "assistant" | "system" = "system") => {
