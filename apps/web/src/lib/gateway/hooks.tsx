@@ -549,12 +549,40 @@ export function useChat(sessionKey?: string) {
   useEffect(() => {
     if (!sessionKey || state !== "connected") return;
     const agentId = sessionKey.split(":")[1] || sessionKey;
-    const apiBase = import.meta.env.VITE_API_URL || `${window.location.protocol}//${window.location.hostname}:4001`;
+    const apiBase = import.meta.env.VITE_API_URL || "";  // Use same origin (Vite proxies /api to :4001)
 
     (async () => {
       try {
         const topics = await getTopicHistory(sessionKey);
-        const previousSessions = topics.filter((t) => t.endedAt);
+        console.log("[AWF] Backfill: topics found:", topics.length, "sessionKey:", sessionKey, topics.map(t => ({ id: t.sessionId?.slice(0,8), endedAt: !!t.endedAt })));
+
+        // If no ended topics in IndexedDB, try fetching session list from API
+        // and backfill ALL sessions except the current one
+        let previousSessions = topics.filter((t) => t.endedAt);
+        // Always fetch from API — topic-store may not have endedAt marked
+        {
+          console.log("[AWF] Fetching session list from API for backfill...");
+          try {
+            const listRes = await fetch(`${apiBase}/api/session-history/${encodeURIComponent(agentId)}`);
+            if (listRes.ok) {
+              const listData = await listRes.json();
+              const allSessions = (listData.sessions || []) as Array<{ sessionId: string; startedAt: string; messageCount: number }>;
+              // Exclude the most recent session (current)
+              const sorted = allSessions.sort((a: { startedAt: string }, b: { startedAt: string }) => a.startedAt.localeCompare(b.startedAt));
+              if (sorted.length > 1) {
+                previousSessions = sorted.slice(0, -1).map((s: { sessionId: string; startedAt: string }) => ({
+                  sessionKey,
+                  sessionId: s.sessionId,
+                  startedAt: new Date(s.startedAt).getTime(),
+                  endedAt: Date.now(),
+                }));
+                console.log("[AWF] Found", previousSessions.length, "previous sessions from API");
+              }
+            }
+          } catch (e) {
+            console.warn("[AWF] Session list fetch failed:", e);
+          }
+        }
         for (const topic of previousSessions) {
           if (isBackfillDone(sessionKey, topic.sessionId)) continue;
           const backfilled = await backfillFromApi(
