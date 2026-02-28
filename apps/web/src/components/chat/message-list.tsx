@@ -12,6 +12,7 @@ import type { DisplayMessage, DisplayAttachment } from "@/lib/gateway/hooks";
 import { AgentAvatar } from "@/components/ui/agent-avatar";
 
 import { blobDownload, forceDownloadUrl } from "@/lib/utils/download";
+import { formatTime } from "@/lib/utils/format-time";
 
 /** Get file extension from filename */
 function getExt(name: string): string {
@@ -326,27 +327,6 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
-/** Format timestamp to MM-DD-YYYY HH:MM:SS (KST) */
-function formatTime(ts?: string): string | null {
-  if (!ts) return null;
-  try {
-    const d = new Date(ts);
-    if (isNaN(d.getTime())) return null;
-    const tz = { timeZone: "Asia/Seoul" as const };
-    const parts = new Intl.DateTimeFormat("en-US", {
-      ...tz,
-      month: "2-digit",
-      day: "2-digit",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-      hour12: false,
-    }).formatToParts(d);
-    const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
-    return `${get("month")}-${get("day")}-${get("year")} ${get("hour")}:${get("minute")}:${get("second")}`;
-  } catch { return null; }
-}
 
 function MessageBubble({ message, showAvatar = true, onCancel, agentId }: { message: DisplayMessage; showAvatar?: boolean; onCancel?: (id: string) => void; agentId?: string }) {
   const isUser = message.role === "user";
