@@ -4,7 +4,6 @@ import {
   type EventFrame,
   type ChatMessage,
   type ToolCall,
-  type AgentEvent,
 } from "@intelli-claw/shared";
 
 // ─── Types ───
@@ -25,6 +24,9 @@ export type AgentStatus =
   | { phase: "thinking" }
   | { phase: "writing" }
   | { phase: "tool"; toolName: string };
+
+/** Messages matching this pattern are housekeeping noise — hide from the user. */
+const HIDDEN_RE = /^(NO_REPLY|HEARTBEAT_OK|NO_)\s*$|^System:|^\[System|Pre-compaction memory flush|^Read HEARTBEAT\.md|reply with NO_REPLY|Store durable memories now/;
 
 // ─── Hook ───
 
@@ -91,14 +93,13 @@ export function useChat(sessionKey?: string) {
         "chat.history",
         { sessionKey, limit: 100 },
       );
-      const HIDDEN = /^(NO_REPLY|HEARTBEAT_OK|NO_)\s*$|^System:|^\[System|Pre-compaction memory flush|^Read HEARTBEAT\.md|reply with NO_REPLY|Store durable memories now/;
       const histMsgs: DisplayMessage[] = (res?.messages || [])
         .filter((m) => {
           if (m.role !== "user" && m.role !== "assistant") return false;
           const blocks = m.content as any;
           const raw = typeof m.content === "string" ? m.content
             : Array.isArray(blocks) ? blocks.map((b: any) => b?.text || "").join("") : String(m.content || "");
-          return !HIDDEN.test(raw.trim());
+          return !HIDDEN_RE.test(raw.trim());
         })
         .map((m, i) => {
           const blocks = m.content as any;
@@ -228,8 +229,7 @@ export function useChat(sessionKey?: string) {
           const finalId = streamBuf.current.id;
           const finalContent = streamBuf.current.content;
           const finalTools = Array.from(streamBuf.current.toolCalls.values());
-          const HIDDEN_STREAM = /^(NO_REPLY|HEARTBEAT_OK|NO_)\s*$|^System:|^\[System|Pre-compaction memory flush|^Read HEARTBEAT\.md|reply with NO_REPLY|Store durable memories now/;
-          if (HIDDEN_STREAM.test(finalContent.trim())) {
+          if (HIDDEN_RE.test(finalContent.trim())) {
             setMessages((prev) => prev.filter((m) => m.id !== finalId));
           } else {
             setMessages((prev) =>
@@ -251,8 +251,7 @@ export function useChat(sessionKey?: string) {
           const finalId = streamBuf.current.id;
           const finalContent = (data?.text as string) || streamBuf.current.content;
           const finalTools = Array.from(streamBuf.current.toolCalls.values());
-          const HIDDEN_STREAM2 = /^(NO_REPLY|HEARTBEAT_OK|NO_)\s*$|^System:|^\[System|Pre-compaction memory flush|^Read HEARTBEAT\.md|reply with NO_REPLY|Store durable memories now/;
-          if (HIDDEN_STREAM2.test(finalContent.trim())) {
+          if (HIDDEN_RE.test(finalContent.trim())) {
             setMessages((prev) => prev.filter((m) => m.id !== finalId));
             streamBuf.current = null;
             return;

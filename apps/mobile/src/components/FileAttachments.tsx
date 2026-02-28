@@ -46,6 +46,9 @@ export function AttachmentPreview({
             style={styles.removeBtn}
             onPress={() => onRemove(att.id)}
             activeOpacity={0.7}
+            accessibilityLabel="첨부 삭제"
+            accessibilityRole="button"
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           >
             <Text style={styles.removeText}>✕</Text>
           </TouchableOpacity>
@@ -131,6 +134,9 @@ export function AttachButton({
       style={styles.attachBtn}
       activeOpacity={0.7}
       disabled={disabled}
+      accessibilityLabel="파일 첨부"
+      accessibilityRole="button"
+      hitSlop={{ top: 5, bottom: 5, left: 5, right: 5 }}
     >
       <Text style={[styles.attachIcon, disabled && styles.attachIconDisabled]}>
         📎

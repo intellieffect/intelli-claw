@@ -21,6 +21,7 @@ import {
   RefreshCw,
 } from "lucide-react-native";
 import { useSkills, type Skill } from "@intelli-claw/shared";
+import { colors } from "../theme/colors";
 
 // ─── Props ───
 
@@ -81,8 +82,8 @@ export function SkillPicker({ visible, onClose }: SkillPickerProps) {
                 </View>
               )}
               {item.source === "managed" && (
-                <View style={[s.sourceBadge, { backgroundColor: "#EDE9FE" }]}>
-                  <Text style={[s.sourceText, { color: "#7C3AED" }]}>관리</Text>
+                <View style={[s.sourceBadge, { backgroundColor: colors.accentPurpleFaint }]}>
+                  <Text style={[s.sourceText, { color: colors.accentPurple }]}>관리</Text>
                 </View>
               )}
             </View>
@@ -91,7 +92,7 @@ export function SkillPicker({ visible, onClose }: SkillPickerProps) {
             </Text>
             {isBlocked && (
               <View style={s.blockedRow}>
-                <AlertCircle size={10} color="#EF4444" />
+                <AlertCircle size={10} color={colors.error} />
                 <Text style={s.blockedText}>
                   {item.blockedByAllowlist ? "허용 목록에 없음" : "요구사항 미충족"}
                 </Text>
@@ -101,14 +102,14 @@ export function SkillPicker({ visible, onClose }: SkillPickerProps) {
         </View>
         <View style={s.rowRight}>
           {isBusy ? (
-            <ActivityIndicator size="small" color="#3B82F6" />
+            <ActivityIndicator size="small" color={colors.info} />
           ) : (
             <Switch
               value={isEnabled}
               onValueChange={() => handleToggle(item)}
               disabled={isBlocked}
-              trackColor={{ false: "#333333", true: "#FF6B3580" }}
-              thumbColor={isEnabled ? "#FF6B35" : "#666666"}
+              trackColor={{ false: colors.bgHandle, true: colors.primarySemi }}
+              thumbColor={isEnabled ? colors.primary : colors.textTertiary}
             />
           )}
         </View>
@@ -126,7 +127,7 @@ export function SkillPicker({ visible, onClose }: SkillPickerProps) {
           {/* Header */}
           <View style={s.header}>
             <View style={s.headerLeft}>
-              <Puzzle size={18} color="#3B82F6" />
+              <Puzzle size={18} color={colors.info} />
               <Text style={s.title}>Skills</Text>
               <View style={s.countBadge}>
                 <Text style={s.countText}>{enabledCount}/{skills.length}</Text>
@@ -134,17 +135,17 @@ export function SkillPicker({ visible, onClose }: SkillPickerProps) {
             </View>
             <View style={s.headerRight}>
               <TouchableOpacity onPress={refresh} hitSlop={8} style={s.refreshBtn}>
-                <RefreshCw size={16} color="#9CA3AF" />
+                <RefreshCw size={16} color={colors.textPlaceholder} />
               </TouchableOpacity>
               <TouchableOpacity onPress={onClose} hitSlop={8}>
-                <X size={20} color="#9CA3AF" />
+                <X size={20} color={colors.textPlaceholder} />
               </TouchableOpacity>
             </View>
           </View>
 
           {error && (
             <View style={s.errorBar}>
-              <AlertCircle size={12} color="#EF4444" />
+              <AlertCircle size={12} color={colors.error} />
               <Text style={s.errorText}>{error}</Text>
             </View>
           )}
@@ -170,11 +171,11 @@ export function SkillPicker({ visible, onClose }: SkillPickerProps) {
 }
 
 const s = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.32)", justifyContent: "flex-end" },
+  backdrop: { flex: 1, backgroundColor: colors.overlayDim, justifyContent: "flex-end" },
   backdropTouch: { flex: 1 },
   sheet: {
     maxHeight: "80%",
-    backgroundColor: "#0a0a0a",
+    backgroundColor: colors.bg,
     borderTopLeftRadius: 18,
     borderTopRightRadius: 18,
     paddingTop: 6,
@@ -183,7 +184,7 @@ const s = StyleSheet.create({
     width: 36,
     height: 4,
     borderRadius: 2,
-    backgroundColor: "#333333",
+    backgroundColor: colors.bgHandle,
     alignSelf: "center",
     marginBottom: 8,
   },
@@ -196,18 +197,18 @@ const s = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: "#222222",
+    borderBottomColor: colors.border,
   },
   headerLeft: { flexDirection: "row", alignItems: "center", gap: 8 },
   headerRight: { flexDirection: "row", alignItems: "center", gap: 12 },
-  title: { fontSize: 17, fontWeight: "700", color: "#fafafa" },
+  title: { fontSize: 17, fontWeight: "700", color: colors.text },
   countBadge: {
-    backgroundColor: "#EFF6FF",
+    backgroundColor: colors.primaryFaint,
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 10,
   },
-  countText: { fontSize: 11, fontWeight: "600", color: "#FF6B35" },
+  countText: { fontSize: 11, fontWeight: "600", color: colors.primary },
   refreshBtn: { padding: 4 },
 
   // Error
@@ -217,9 +218,9 @@ const s = StyleSheet.create({
     gap: 6,
     paddingHorizontal: 16,
     paddingVertical: 8,
-    backgroundColor: "#FEF2F2",
+    backgroundColor: colors.errorFaint,
   },
-  errorText: { fontSize: 12, color: "#EF4444" },
+  errorText: { fontSize: 12, color: colors.error },
 
   // List
   listContent: { paddingBottom: 24 },
@@ -231,28 +232,28 @@ const s = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#222222",
+    borderBottomColor: colors.border,
   },
   rowBlocked: { opacity: 0.5 },
   rowLeft: { flex: 1, flexDirection: "row", alignItems: "flex-start", gap: 10 },
   rowMain: { flex: 1 },
   emoji: { fontSize: 20, width: 28, textAlign: "center", marginTop: 2 },
   nameRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  name: { fontSize: 14, fontWeight: "600", color: "#fafafa" },
-  nameBlocked: { color: "#666666" },
-  desc: { fontSize: 12, color: "#888888", marginTop: 2, lineHeight: 16 },
+  name: { fontSize: 14, fontWeight: "600", color: colors.text },
+  nameBlocked: { color: colors.textTertiary },
+  desc: { fontSize: 12, color: colors.textMid, marginTop: 2, lineHeight: 16 },
   sourceBadge: {
-    backgroundColor: "#ECFDF5",
+    backgroundColor: colors.successFaint,
     paddingHorizontal: 5,
     paddingVertical: 1,
     borderRadius: 4,
   },
-  sourceText: { fontSize: 9, fontWeight: "600", color: "#059669" },
+  sourceText: { fontSize: 9, fontWeight: "600", color: colors.successDark },
   blockedRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 4 },
-  blockedText: { fontSize: 10, color: "#EF4444" },
+  blockedText: { fontSize: 10, color: colors.error },
   rowRight: { marginLeft: 12 },
 
   // Empty
   emptyBox: { paddingVertical: 32, alignItems: "center" },
-  emptyText: { fontSize: 13, color: "#666666" },
+  emptyText: { fontSize: 13, color: colors.textTertiary },
 });

@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import { Bot, Check, X } from "lucide-react-native";
 import { useAgents, type Agent } from "@intelli-claw/shared";
+import { colors } from "../theme/colors";
 
 // ─── Color helper ───
 
@@ -89,7 +90,7 @@ export function AgentSelector({ visible, onClose, selectedId, onSelect }: AgentS
           <View style={s.header}>
             <Text style={s.title}>에이전트 선택</Text>
             <TouchableOpacity onPress={onClose} hitSlop={8}>
-              <X size={20} color="#9CA3AF" />
+              <X size={20} color={colors.textPlaceholder} />
             </TouchableOpacity>
           </View>
 
@@ -99,14 +100,14 @@ export function AgentSelector({ visible, onClose, selectedId, onSelect }: AgentS
             onPress={() => handleSelect(undefined)}
             activeOpacity={0.7}
           >
-            <View style={[s.iconCircle, { backgroundColor: "#EFF6FF" }]}>
-              <Bot size={16} color="#3B82F6" />
+            <View style={[s.iconCircle, { backgroundColor: colors.infoFaint }]}>
+              <Bot size={16} color={colors.info} />
             </View>
             <View style={s.rowMain}>
               <Text style={[s.rowName, { fontWeight: "600" }]}>Auto (기본)</Text>
               <Text style={s.rowDesc}>서버 기본 에이전트 사용</Text>
             </View>
-            {!selectedId && <Check size={16} color="#3B82F6" />}
+            {!selectedId && <Check size={16} color={colors.info} />}
           </TouchableOpacity>
 
           <View style={s.divider} />
@@ -132,11 +133,11 @@ export function AgentSelector({ visible, onClose, selectedId, onSelect }: AgentS
 }
 
 const s = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.32)", justifyContent: "flex-end" },
+  backdrop: { flex: 1, backgroundColor: colors.overlayDim, justifyContent: "flex-end" },
   backdropTouch: { flex: 1 },
   sheet: {
     maxHeight: "70%",
-    backgroundColor: "#0a0a0a",
+    backgroundColor: colors.bg,
     borderTopLeftRadius: 18,
     borderTopRightRadius: 18,
     paddingTop: 6,
@@ -145,7 +146,7 @@ const s = StyleSheet.create({
     width: 36,
     height: 4,
     borderRadius: 2,
-    backgroundColor: "#333333",
+    backgroundColor: colors.bgHandle,
     alignSelf: "center",
     marginBottom: 8,
   },
@@ -156,9 +157,9 @@ const s = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: "#222222",
+    borderBottomColor: colors.border,
   },
-  title: { fontSize: 17, fontWeight: "700", color: "#fafafa" },
+  title: { fontSize: 17, fontWeight: "700", color: colors.text },
 
   // Row
   row: {
@@ -168,7 +169,7 @@ const s = StyleSheet.create({
     paddingVertical: 14,
     gap: 12,
   },
-  autoActive: { backgroundColor: "#F0F9FF" },
+  autoActive: { backgroundColor: colors.infoFaint },
   iconCircle: {
     width: 36,
     height: 36,
@@ -177,12 +178,12 @@ const s = StyleSheet.create({
     justifyContent: "center",
   },
   rowMain: { flex: 1 },
-  rowName: { fontSize: 15, fontWeight: "500", color: "#fafafa" },
-  rowModel: { fontSize: 12, color: "#888888", marginTop: 1 },
-  rowDesc: { fontSize: 12, color: "#666666", marginTop: 1 },
+  rowName: { fontSize: 15, fontWeight: "500", color: colors.text },
+  rowModel: { fontSize: 12, color: colors.textMid, marginTop: 1 },
+  rowDesc: { fontSize: 12, color: colors.textTertiary, marginTop: 1 },
 
-  divider: { height: 1, backgroundColor: "#222222", marginHorizontal: 16 },
+  divider: { height: 1, backgroundColor: colors.border, marginHorizontal: 16 },
   listContent: { paddingBottom: 24 },
   emptyBox: { paddingVertical: 32, alignItems: "center" },
-  emptyText: { fontSize: 13, color: "#666666" },
+  emptyText: { fontSize: 13, color: colors.textTertiary },
 });

@@ -47,6 +47,8 @@ export function AppBar({
         onPress={onSessionPress}
         activeOpacity={0.6}
         disabled={!isConnected}
+        accessibilityLabel="세션 선택"
+        accessibilityRole="button"
       >
         <View className="w-2 h-2 rounded-full mr-2.5" style={{ backgroundColor: dotColor }} />
         <Text className="text-[17px] font-semibold text-foreground tracking-tight" numberOfLines={1}>{agentLabel}</Text>
@@ -69,6 +71,9 @@ export function AppBar({
           onPress={() => setMenuOpen(true)}
           className="w-9 h-9 rounded-full items-center justify-center"
           activeOpacity={0.6}
+          accessibilityLabel="메뉴"
+          accessibilityRole="button"
+          hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
         >
           <MoreHorizontal size={20} color="hsl(0 0% 63%)" />
         </TouchableOpacity>
@@ -89,6 +94,8 @@ export function AppBar({
                   className="flex-row items-center gap-3 px-3.5 py-3 rounded-lg"
                   onPress={() => { setMenuOpen(false); onAgentSelect(); }}
                   activeOpacity={0.6}
+                  accessibilityLabel="에이전트 선택"
+                  accessibilityRole="button"
                 >
                   <View className="w-7 h-7 rounded-full bg-secondary items-center justify-center">
                     <Bot size={16} color="hsl(18 100% 56%)" strokeWidth={2} />
@@ -100,6 +107,8 @@ export function AppBar({
                   className="flex-row items-center gap-3 px-3.5 py-3 rounded-lg"
                   onPress={() => { setMenuOpen(false); onSkillPicker(); }}
                   activeOpacity={0.6}
+                  accessibilityLabel="스킬"
+                  accessibilityRole="button"
                 >
                   <View className="w-7 h-7 rounded-full bg-secondary items-center justify-center">
                     <Puzzle size={16} color="hsl(18 100% 56%)" strokeWidth={2} />
@@ -113,6 +122,8 @@ export function AppBar({
               className="flex-row items-center gap-3 px-3.5 py-3 rounded-lg"
               onPress={() => { setMenuOpen(false); onSettingsPress(); }}
               activeOpacity={0.6}
+              accessibilityLabel="설정"
+              accessibilityRole="button"
             >
               <View className="w-7 h-7 rounded-full bg-secondary items-center justify-center">
                 <Settings size={16} color="hsl(0 0% 63%)" strokeWidth={2} />

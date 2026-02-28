@@ -40,6 +40,7 @@ import {
   sessionDisplayName,
   type Session,
 } from "@intelli-claw/shared";
+import { colors } from "../theme/colors";
 
 // ─── Constants ───
 
@@ -214,26 +215,26 @@ export function SessionSwitcher({
             <Text style={s.countBadge}>
               {totalCount}개{search ? ` (${sessions.length}개 중)` : ""}
             </Text>
-            <TouchableOpacity onPress={onClose} hitSlop={8}>
+            <TouchableOpacity onPress={onClose} hitSlop={8} accessibilityLabel="닫기" accessibilityRole="button">
               <Text style={s.closeBtn}>닫기</Text>
             </TouchableOpacity>
           </View>
 
           {/* Search */}
           <View style={s.searchRow}>
-            <Search size={16} color="#666666" />
+            <Search size={16} color={colors.textTertiary} />
             <TextInput
               style={s.searchInput}
               placeholder="세션 검색..."
-              placeholderTextColor="#444444"
+              placeholderTextColor={colors.textMuted}
               value={search}
               onChangeText={setSearch}
               autoCorrect={false}
               clearButtonMode="while-editing"
             />
             {search.length > 0 && (
-              <TouchableOpacity onPress={() => setSearch("")} hitSlop={8}>
-                <X size={16} color="#666666" />
+              <TouchableOpacity onPress={() => setSearch("")} hitSlop={8} accessibilityLabel="검색 지우기" accessibilityRole="button">
+                <X size={16} color={colors.textTertiary} />
               </TouchableOpacity>
             )}
           </View>
@@ -244,7 +245,7 @@ export function SessionSwitcher({
             keyExtractor={(item) => item.key}
             stickySectionHeadersEnabled={false}
             refreshControl={
-              <RefreshControl refreshing={sessionsLoading} onRefresh={onRefresh} tintColor="#FF6B35" />
+              <RefreshControl refreshing={sessionsLoading} onRefresh={onRefresh} tintColor={colors.primary} />
             }
             contentContainerStyle={s.listContent}
             ListHeaderComponent={
@@ -252,9 +253,11 @@ export function SessionSwitcher({
                 style={[s.row, !currentKey && s.defaultRow]}
                 onPress={() => handleSelect(null)}
                 activeOpacity={0.7}
+                accessibilityLabel="기본 세션"
+                accessibilityRole="button"
               >
                 <View style={s.rowIcon}>
-                  <Bot size={16} color="#FF6B35" />
+                  <Bot size={16} color={colors.primary} />
                 </View>
                 <View style={s.rowMain}>
                   <Text style={[s.rowTitle, { fontWeight: "600" }]}>기본 세션 (auto)</Text>
@@ -262,7 +265,7 @@ export function SessionSwitcher({
                     {mainSessionKey || "main"}
                   </Text>
                 </View>
-                {!currentKey && <Check size={16} color="#10B981" />}
+                {!currentKey && <Check size={16} color={colors.success} />}
               </TouchableOpacity>
             }
             ListEmptyComponent={
@@ -285,6 +288,8 @@ export function SessionSwitcher({
                     isActive && { backgroundColor: `${color}14`, borderLeftWidth: 3, borderLeftColor: color },
                   ]}
                   onPress={() => handleSelect(item.key === mainSessionKey ? null : item.key)}
+                  accessibilityLabel={item.title}
+                  accessibilityRole="button"
                   onLongPress={() => {
                     // Show action sheet on long press
                     const actions = [];
@@ -300,7 +305,7 @@ export function SessionSwitcher({
                   activeOpacity={0.7}
                 >
                   <View style={s.rowIcon}>
-                    <Icon size={14} color="#666666" />
+                    <Icon size={14} color={colors.textTertiary} />
                   </View>
                   <View style={s.rowMain}>
                     <Text
@@ -338,8 +343,10 @@ export function SessionSwitcher({
               handleSelect(null);
             }}
             activeOpacity={0.7}
+            accessibilityLabel="새 대화 시작"
+            accessibilityRole="button"
           >
-            <Plus size={18} color="#3B82F6" />
+            <Plus size={18} color={colors.info} />
             <Text style={s.newSessionText}>새 대화 시작</Text>
           </TouchableOpacity>
         </View>
@@ -349,11 +356,11 @@ export function SessionSwitcher({
 }
 
 const s = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.32)", justifyContent: "flex-end" },
+  backdrop: { flex: 1, backgroundColor: colors.overlayDim, justifyContent: "flex-end" },
   backdropTouch: { flex: 1 },
   sheet: {
     maxHeight: "85%",
-    backgroundColor: "#0a0a0a",
+    backgroundColor: colors.bg,
     borderTopLeftRadius: 18,
     borderTopRightRadius: 18,
     paddingTop: 6,
@@ -362,7 +369,7 @@ const s = StyleSheet.create({
     width: 36,
     height: 4,
     borderRadius: 2,
-    backgroundColor: "#333333",
+    backgroundColor: colors.bgHandle,
     alignSelf: "center",
     marginBottom: 8,
   },
@@ -372,12 +379,12 @@ const s = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: "#222222",
+    borderBottomColor: colors.border,
     gap: 8,
   },
-  title: { fontSize: 17, fontWeight: "700", color: "#fafafa" },
-  countBadge: { flex: 1, fontSize: 12, color: "#666666" },
-  closeBtn: { fontSize: 14, fontWeight: "600", color: "#FF6B35" },
+  title: { fontSize: 17, fontWeight: "700", color: colors.text },
+  countBadge: { flex: 1, fontSize: 12, color: colors.textTertiary },
+  closeBtn: { fontSize: 14, fontWeight: "600", color: colors.primary },
 
   // Search
   searchRow: {
@@ -386,13 +393,13 @@ const s = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#222222",
+    borderBottomColor: colors.border,
     gap: 8,
   },
   searchInput: {
     flex: 1,
     fontSize: 14,
-    color: "#fafafa",
+    color: colors.text,
     padding: 0,
   },
 
@@ -419,24 +426,24 @@ const s = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#222222",
+    borderBottomColor: colors.border,
     gap: 10,
   },
-  defaultRow: { backgroundColor: "#1a1a1a" },
+  defaultRow: { backgroundColor: colors.bgTertiary },
   rowIcon: { width: 28, alignItems: "center" },
   rowMain: { flex: 1, marginRight: 8 },
   rowTitleRow: { flexDirection: "row", alignItems: "center", gap: 6, flexShrink: 1 },
   agentBadge: { paddingHorizontal: 6, paddingVertical: 1, borderRadius: 6 },
   agentBadgeText: { fontSize: 10, fontWeight: "700" },
-  rowTitle: { fontSize: 14, color: "#fafafa", fontWeight: "500" },
+  rowTitle: { fontSize: 14, color: colors.text, fontWeight: "500" },
   rowSubRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2 },
-  rowSub: { fontSize: 12, color: "#666666", flex: 1 },
+  rowSub: { fontSize: 12, color: colors.textTertiary, flex: 1 },
   rowRight: { alignItems: "flex-end", gap: 4 },
-  rowTime: { fontSize: 11, color: "#444444" },
+  rowTime: { fontSize: 11, color: colors.textMuted },
 
   // Empty
   emptyBox: { paddingVertical: 32, alignItems: "center" },
-  emptyText: { fontSize: 13, color: "#666666" },
+  emptyText: { fontSize: 13, color: colors.textTertiary },
 
   // New session
   newSessionBtn: {
@@ -446,8 +453,8 @@ const s = StyleSheet.create({
     gap: 8,
     paddingVertical: 14,
     borderTopWidth: 1,
-    borderTopColor: "#222222",
-    backgroundColor: "#0a0a0a",
+    borderTopColor: colors.border,
+    backgroundColor: colors.bg,
   },
-  newSessionText: { fontSize: 14, fontWeight: "600", color: "#FF6B35" },
+  newSessionText: { fontSize: 14, fontWeight: "600", color: colors.primary },
 });

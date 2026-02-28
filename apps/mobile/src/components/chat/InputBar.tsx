@@ -1,7 +1,8 @@
 import React, { useRef, useEffect } from "react";
 import { View, TextInput, TouchableOpacity, Animated } from "react-native";
-import { ArrowUp, Square, Paperclip } from "lucide-react-native";
+import { ArrowUp, Square } from "lucide-react-native";
 import { cn } from "@/lib/utils";
+import { AttachButton } from "../FileAttachments";
 
 interface InputBarProps {
   text: string;
@@ -48,9 +49,6 @@ export function InputBar({
     onSend();
   };
 
-  // Import AttachButton lazily to avoid circular deps
-  const { AttachButton } = require("../FileAttachments");
-
   return (
     <View
       className="px-3 pt-2 bg-background"
@@ -72,6 +70,7 @@ export function InputBar({
           editable={connected}
           returnKeyType="default"
           multiline
+          accessibilityLabel="메시지 입력"
         />
 
         {/* Send / Abort */}
@@ -82,6 +81,9 @@ export function InputBar({
                 onPress={onAbort}
                 className="w-8 h-8 rounded-full bg-foreground items-center justify-center"
                 activeOpacity={0.7}
+                accessibilityLabel="스트리밍 중단"
+                accessibilityRole="button"
+                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
               >
                 <Square size={11} color="hsl(0 0% 4%)" fill="hsl(0 0% 4%)" />
               </TouchableOpacity>
@@ -94,6 +96,9 @@ export function InputBar({
                 )}
                 disabled={!canSend}
                 activeOpacity={0.7}
+                accessibilityLabel="전송"
+                accessibilityRole="button"
+                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
               >
                 <ArrowUp size={17} color={canSend ? "hsl(0 0% 4%)" : "hsl(0 0% 45%)"} strokeWidth={2.5} />
               </TouchableOpacity>
