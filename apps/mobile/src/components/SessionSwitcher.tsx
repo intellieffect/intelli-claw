@@ -221,11 +221,11 @@ export function SessionSwitcher({
 
           {/* Search */}
           <View style={s.searchRow}>
-            <Search size={16} color="#9CA3AF" />
+            <Search size={16} color="#666666" />
             <TextInput
               style={s.searchInput}
               placeholder="세션 검색..."
-              placeholderTextColor="#9CA3AF"
+              placeholderTextColor="#444444"
               value={search}
               onChangeText={setSearch}
               autoCorrect={false}
@@ -233,7 +233,7 @@ export function SessionSwitcher({
             />
             {search.length > 0 && (
               <TouchableOpacity onPress={() => setSearch("")} hitSlop={8}>
-                <X size={16} color="#9CA3AF" />
+                <X size={16} color="#666666" />
               </TouchableOpacity>
             )}
           </View>
@@ -244,7 +244,7 @@ export function SessionSwitcher({
             keyExtractor={(item) => item.key}
             stickySectionHeadersEnabled={false}
             refreshControl={
-              <RefreshControl refreshing={sessionsLoading} onRefresh={onRefresh} tintColor="#3B82F6" />
+              <RefreshControl refreshing={sessionsLoading} onRefresh={onRefresh} tintColor="#FF6B35" />
             }
             contentContainerStyle={s.listContent}
             ListHeaderComponent={
@@ -254,7 +254,7 @@ export function SessionSwitcher({
                 activeOpacity={0.7}
               >
                 <View style={s.rowIcon}>
-                  <Bot size={16} color="#3B82F6" />
+                  <Bot size={16} color="#FF6B35" />
                 </View>
                 <View style={s.rowMain}>
                   <Text style={[s.rowTitle, { fontWeight: "600" }]}>기본 세션 (auto)</Text>
@@ -300,7 +300,7 @@ export function SessionSwitcher({
                   activeOpacity={0.7}
                 >
                   <View style={s.rowIcon}>
-                    <Icon size={14} color="#9CA3AF" />
+                    <Icon size={14} color="#666666" />
                   </View>
                   <View style={s.rowMain}>
                     <Text
@@ -353,7 +353,7 @@ const s = StyleSheet.create({
   backdropTouch: { flex: 1 },
   sheet: {
     maxHeight: "85%",
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#0a0a0a",
     borderTopLeftRadius: 18,
     borderTopRightRadius: 18,
     paddingTop: 6,
@@ -362,7 +362,7 @@ const s = StyleSheet.create({
     width: 36,
     height: 4,
     borderRadius: 2,
-    backgroundColor: "#D1D5DB",
+    backgroundColor: "#333333",
     alignSelf: "center",
     marginBottom: 8,
   },
@@ -372,12 +372,12 @@ const s = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: "#F3F4F6",
+    borderBottomColor: "#222222",
     gap: 8,
   },
-  title: { fontSize: 17, fontWeight: "700", color: "#111827" },
-  countBadge: { flex: 1, fontSize: 12, color: "#9CA3AF" },
-  closeBtn: { fontSize: 14, fontWeight: "600", color: "#2563EB" },
+  title: { fontSize: 17, fontWeight: "700", color: "#fafafa" },
+  countBadge: { flex: 1, fontSize: 12, color: "#666666" },
+  closeBtn: { fontSize: 14, fontWeight: "600", color: "#FF6B35" },
 
   // Search
   searchRow: {
@@ -386,13 +386,13 @@ const s = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#E5E7EB",
+    borderBottomColor: "#222222",
     gap: 8,
   },
   searchInput: {
     flex: 1,
     fontSize: 14,
-    color: "#111827",
+    color: "#fafafa",
     padding: 0,
   },
 
@@ -419,24 +419,24 @@ const s = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#F3F4F6",
+    borderBottomColor: "#222222",
     gap: 10,
   },
-  defaultRow: { backgroundColor: "#F0F9FF" },
+  defaultRow: { backgroundColor: "#1a1a1a" },
   rowIcon: { width: 28, alignItems: "center" },
   rowMain: { flex: 1, marginRight: 8 },
   rowTitleRow: { flexDirection: "row", alignItems: "center", gap: 6, flexShrink: 1 },
   agentBadge: { paddingHorizontal: 6, paddingVertical: 1, borderRadius: 6 },
   agentBadgeText: { fontSize: 10, fontWeight: "700" },
-  rowTitle: { fontSize: 14, color: "#111827", fontWeight: "500" },
+  rowTitle: { fontSize: 14, color: "#fafafa", fontWeight: "500" },
   rowSubRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2 },
-  rowSub: { fontSize: 12, color: "#9CA3AF", flex: 1 },
+  rowSub: { fontSize: 12, color: "#666666", flex: 1 },
   rowRight: { alignItems: "flex-end", gap: 4 },
   rowTime: { fontSize: 11, color: "#D1D5DB" },
 
   // Empty
   emptyBox: { paddingVertical: 32, alignItems: "center" },
-  emptyText: { fontSize: 13, color: "#9CA3AF" },
+  emptyText: { fontSize: 13, color: "#666666" },
 
   // New session
   newSessionBtn: {
@@ -446,8 +446,8 @@ const s = StyleSheet.create({
     gap: 8,
     paddingVertical: 14,
     borderTopWidth: 1,
-    borderTopColor: "#E5E7EB",
-    backgroundColor: "#FFFFFF",
+    borderTopColor: "#222222",
+    backgroundColor: "#0a0a0a",
   },
-  newSessionText: { fontSize: 14, fontWeight: "600", color: "#3B82F6" },
+  newSessionText: { fontSize: 14, fontWeight: "600", color: "#FF6B35" },
 });
