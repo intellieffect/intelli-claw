@@ -42,7 +42,7 @@ export function ChatView() {
   if (!mounted) return <div className="h-dvh bg-background" />;
 
   return (
-    <div className="flex h-dvh flex-col bg-background overflow-x-hidden max-w-[100vw]">
+    <div className="flex h-dvh flex-col bg-background overflow-x-hidden max-w-[100vw] pb-2 md:pb-3">
       <header className="safe-top relative z-20 flex items-center justify-between border-b border-border bg-background/80 px-3 py-1.5 md:px-4 md:py-2.5 backdrop-blur-sm electron-drag electron-header-pad">
         <div className="flex items-center gap-2 md:gap-3">
           {isMobile && (
