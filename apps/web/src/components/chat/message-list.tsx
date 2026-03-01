@@ -338,11 +338,10 @@ export function MessageList({
         return;
       }
 
-      // j → next message (clear selection)
+      // j → next message
       if (e.key === "j" && !e.shiftKey) {
         e.preventDefault();
         if (navigableIndices.length === 0) return;
-        setSelectedIndices(new Set());
         setFocusedIdx((prev) => {
           if (prev === null) return navigableIndices[navigableIndices.length - 1];
           const curPos = navigableIndices.indexOf(prev);
@@ -352,11 +351,10 @@ export function MessageList({
         return;
       }
 
-      // k → previous message (clear selection)
+      // k → previous message
       if (e.key === "k" && !e.shiftKey) {
         e.preventDefault();
         if (navigableIndices.length === 0) return;
-        setSelectedIndices(new Set());
         setFocusedIdx((prev) => {
           if (prev === null) return navigableIndices[navigableIndices.length - 1];
           const curPos = navigableIndices.indexOf(prev);
