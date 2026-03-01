@@ -138,6 +138,7 @@ export function MessageList({
 
   // Vim normal-mode: focused message index (null = no focus)
   const [focusedIdx, setFocusedIdx] = useState<number | null>(null);
+  const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
   const bubbleRefs = useRef<Map<number, HTMLDivElement>>(new Map());
 
   // Reset visible count when messages are replaced (e.g. session switch)
@@ -246,7 +247,7 @@ export function MessageList({
 
   // Clear focus when input gets focused (entering insert mode)
   useEffect(() => {
-    const handler = () => setFocusedIdx(null);
+    const handler = () => { setFocusedIdx(null); setSelectedIndices(new Set()); };
     document.addEventListener("focus-chat-input", handler);
     return () => document.removeEventListener("focus-chat-input", handler);
   }, []);
@@ -296,10 +297,52 @@ export function MessageList({
         return;
       }
 
-      // j → next message
+      // Shift+J → select + move down
+      if (e.key === "J" && e.shiftKey) {
+        e.preventDefault();
+        if (navigableIndices.length === 0) return;
+        setFocusedIdx((prev) => {
+          const cur = prev ?? navigableIndices[navigableIndices.length - 1];
+          setSelectedIndices((s) => { const n = new Set(s); n.add(cur); return n; });
+          const curPos = navigableIndices.indexOf(cur);
+          const nextIdx = navigableIndices[Math.min(curPos + 1, navigableIndices.length - 1)];
+          setSelectedIndices((s) => { const n = new Set(s); n.add(nextIdx); return n; });
+          return nextIdx;
+        });
+        return;
+      }
+
+      // Shift+K → select + move up
+      if (e.key === "K" && e.shiftKey) {
+        e.preventDefault();
+        if (navigableIndices.length === 0) return;
+        setFocusedIdx((prev) => {
+          const cur = prev ?? navigableIndices[navigableIndices.length - 1];
+          setSelectedIndices((s) => { const n = new Set(s); n.add(cur); return n; });
+          const curPos = navigableIndices.indexOf(cur);
+          const nextIdx = navigableIndices[Math.max(curPos - 1, 0)];
+          setSelectedIndices((s) => { const n = new Set(s); n.add(nextIdx); return n; });
+          return nextIdx;
+        });
+        return;
+      }
+
+      // Space → toggle select on focused message
+      if (e.key === " " && focusedIdx !== null) {
+        e.preventDefault();
+        setSelectedIndices((s) => {
+          const n = new Set(s);
+          if (n.has(focusedIdx)) n.delete(focusedIdx); else n.add(focusedIdx);
+          return n;
+        });
+        return;
+      }
+
+      // j → next message (clear selection)
       if (e.key === "j" && !e.shiftKey) {
         e.preventDefault();
         if (navigableIndices.length === 0) return;
+        setSelectedIndices(new Set());
         setFocusedIdx((prev) => {
           if (prev === null) return navigableIndices[navigableIndices.length - 1];
           const curPos = navigableIndices.indexOf(prev);
@@ -309,10 +352,11 @@ export function MessageList({
         return;
       }
 
-      // k → previous message
+      // k → previous message (clear selection)
       if (e.key === "k" && !e.shiftKey) {
         e.preventDefault();
         if (navigableIndices.length === 0) return;
+        setSelectedIndices(new Set());
         setFocusedIdx((prev) => {
           if (prev === null) return navigableIndices[navigableIndices.length - 1];
           const curPos = navigableIndices.indexOf(prev);
@@ -322,14 +366,28 @@ export function MessageList({
         return;
       }
 
-      // y → copy focused message content
-      if (e.key === "y" && !e.shiftKey && focusedIdx !== null) {
+      // y → copy selected or focused message content
+      if (e.key === "y" && !e.shiftKey) {
         e.preventDefault();
-        const msg = visibleMessages[focusedIdx];
-        if (msg?.content) {
-          copyToClipboard(stripTaskMemo(msg.content));
-        }
+        const indices = selectedIndices.size > 0 ? [...selectedIndices].sort((a, b) => a - b) : (focusedIdx !== null ? [focusedIdx] : []);
+        if (indices.length === 0) return;
+        const text = indices.map((i) => {
+          const msg = visibleMessages[i];
+          if (!msg?.content) return "";
+          const prefix = msg.role === "user" ? "You" : "Agent";
+          return prefix + ": " + stripTaskMemo(msg.content);
+        }).filter(Boolean).join("\n\n");
+        if (text) copyToClipboard(text);
         return;
+      }
+
+      // Escape in normal mode → clear selection
+      if (e.key === "Escape") {
+        if (selectedIndices.size > 0) {
+          e.preventDefault();
+          setSelectedIndices(new Set());
+          return;
+        }
       }
 
       // i → enter insert mode (focus input)
@@ -409,6 +467,7 @@ export function MessageList({
                 agentId={agentId}
                 agentStatus={msg.streaming ? agentStatus : undefined}
                 focused={focusedIdx === idx}
+                selected={selectedIndices.has(idx)}
               />
             );
           })}
@@ -531,8 +590,8 @@ function CopyButton({ text }: { text: string }) {
 }
 
 
-const MessageBubble = React.forwardRef<HTMLDivElement, { message: DisplayMessage; showAvatar?: boolean; onCancel?: (id: string) => void; agentId?: string; agentStatus?: AgentStatus; focused?: boolean }>(
-  function MessageBubble({ message, showAvatar = true, onCancel, agentId, agentStatus, focused }, ref) {
+const MessageBubble = React.forwardRef<HTMLDivElement, { message: DisplayMessage; showAvatar?: boolean; onCancel?: (id: string) => void; agentId?: string; agentStatus?: AgentStatus; focused?: boolean; selected?: boolean }>(
+  function MessageBubble({ message, showAvatar = true, onCancel, agentId, agentStatus, focused, selected }, ref) {
   const isUser = message.role === "user";
   const isSystem = message.role === "system";
   const isQueued = message.queued;
@@ -550,7 +609,7 @@ const MessageBubble = React.forwardRef<HTMLDivElement, { message: DisplayMessage
   }
 
   return (
-    <div ref={ref} className={`group flex gap-3 ${isUser ? "justify-end" : ""} ${focused ? "ring-1 ring-primary/50 rounded-2xl" : ""}`}>
+    <div ref={ref} className={`group flex gap-3 ${isUser ? "justify-end" : ""} `}>
       {/* Copy button for user messages (left of bubble) */}
       {isUser && message.content && (
         <div className="flex items-start pt-2">
@@ -578,8 +637,8 @@ const MessageBubble = React.forwardRef<HTMLDivElement, { message: DisplayMessage
       <div
         className={`min-w-0 max-w-[90%] md:max-w-[85%] ${
           isUser
-            ? `rounded-2xl rounded-br-md px-3.5 py-2 md:px-4 md:py-2.5 text-foreground ${isQueued ? "bg-primary/15 border border-primary/20" : "bg-primary/15 border border-primary/10"}`
-            : "rounded-2xl rounded-bl-md px-3.5 py-2 md:px-4 md:py-2.5 bg-zinc-800/60 border border-zinc-700/50 flex-1"
+            ? `rounded-2xl rounded-br-md px-3.5 py-2 md:px-4 md:py-2.5 text-foreground ${isQueued ? "bg-primary/15 border border-primary/20" : "bg-primary/15 border border-primary/10"}${selected ? " outline outline-2 outline-amber-500 bg-amber-500/10" : focused ? " outline outline-2 outline-amber-500/50" : ""}`
+            : `rounded-2xl rounded-bl-md px-3.5 py-2 md:px-4 md:py-2.5 bg-zinc-800/60 border border-zinc-700/50 flex-1${selected ? " outline outline-2 outline-amber-500 bg-amber-500/10" : focused ? " outline outline-2 outline-amber-500/50" : ""}`
         }`}
       >
         {isUser ? (

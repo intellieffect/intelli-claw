@@ -2,8 +2,7 @@ import React, { useState } from "react";
 import {
   View,
   Text,
-  TouchableOpacity,
-  StyleSheet,
+  Pressable,
   Modal,
 } from "react-native";
 import {
@@ -41,97 +40,91 @@ export function AppBar({
   const [menuOpen, setMenuOpen] = useState(false);
 
   return (
-    <View className="flex-row items-center justify-between h-[50px] px-4 bg-background border-b border-border">
-      <TouchableOpacity
+    <View className="flex-row items-center justify-between h-16 px-5 bg-background border-b border-border">
+      <Pressable
         className="flex-row items-center flex-1"
         onPress={onSessionPress}
-        activeOpacity={0.6}
         disabled={!isConnected}
         accessibilityLabel="세션 선택"
         accessibilityRole="button"
       >
-        <View className="w-2 h-2 rounded-full mr-2.5" style={{ backgroundColor: dotColor }} />
-        <Text className="text-[17px] font-semibold text-foreground tracking-tight" numberOfLines={1}>{agentLabel}</Text>
+        <View className="w-3 h-3 rounded-full mr-3" style={{ backgroundColor: dotColor }} />
+        <Text className="text-[22px] font-bold text-foreground tracking-tight" numberOfLines={1}>{agentLabel}</Text>
         {sessionLabel && sessionLabel !== "main" && (
-          <Text className="text-[13px] text-muted-foreground ml-1.5 tracking-wide">/ {sessionLabel}</Text>
+          <Text className="text-[17px] text-muted-foreground ml-2">/ {sessionLabel}</Text>
         )}
-        {isConnected && <ChevronDown size={14} color="hsl(0 0% 45%)" style={{ marginLeft: 2 }} />}
-      </TouchableOpacity>
+        {isConnected && <ChevronDown size={18} color="hsl(0 0% 45%)" style={{ marginLeft: 6 }} />}
+      </Pressable>
 
-      <View className="flex-row items-center gap-2">
+      <View className="flex-row items-center gap-3">
         {!isConnected && (
-          <View className="flex-row items-center gap-1 py-1 px-2 rounded-md bg-destructive/10">
-            <WifiOff size={10} color="hsl(0 84% 60%)" strokeWidth={2.5} />
-            <Text className="text-[11px] font-medium text-destructive">
+          <View className="flex-row items-center gap-1.5 py-1.5 px-3 rounded-lg bg-destructive/10">
+            <WifiOff size={14} color="hsl(0 84% 60%)" strokeWidth={2.5} />
+            <Text className="text-sm font-medium text-destructive">
               {connectionState === "connecting" ? "연결 중" : connectionState === "authenticating" ? "인증 중" : "끊김"}
             </Text>
           </View>
         )}
-        <TouchableOpacity
+        <Pressable
           onPress={() => setMenuOpen(true)}
-          className="w-9 h-9 rounded-full items-center justify-center"
-          activeOpacity={0.6}
+          className="w-12 h-12 rounded-full items-center justify-center active:bg-secondary"
           accessibilityLabel="메뉴"
           accessibilityRole="button"
           hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
         >
-          <MoreHorizontal size={20} color="hsl(0 0% 63%)" />
-        </TouchableOpacity>
+          <MoreHorizontal size={26} color="hsl(0 0% 63%)" />
+        </Pressable>
       </View>
 
       {/* Menu popup */}
       <Modal visible={menuOpen} transparent animationType="fade" onRequestClose={() => setMenuOpen(false)}>
-        <TouchableOpacity
-          className="flex-1 justify-start items-end pt-24 pr-4"
-          style={{ backgroundColor: "rgba(255,255,255,0.04)" }}
-          activeOpacity={1}
+        <Pressable
+          className="flex-1 justify-start items-end pt-28 pr-5"
+          style={{ backgroundColor: "rgba(0,0,0,0.4)" }}
           onPress={() => setMenuOpen(false)}
         >
-          <View className="bg-card rounded-xl p-1 min-w-[190px] border border-border shadow-lg">
+          <View className="bg-card rounded-2xl p-2 min-w-[240px] border border-border shadow-lg">
             {isConnected && (
               <>
-                <TouchableOpacity
-                  className="flex-row items-center gap-3 px-3.5 py-3 rounded-lg"
+                <Pressable
+                  className="flex-row items-center gap-4 px-4 py-4 rounded-xl active:bg-secondary"
                   onPress={() => { setMenuOpen(false); onAgentSelect(); }}
-                  activeOpacity={0.6}
                   accessibilityLabel="에이전트 선택"
                   accessibilityRole="button"
                 >
-                  <View className="w-7 h-7 rounded-full bg-secondary items-center justify-center">
-                    <Bot size={16} color="hsl(18 100% 56%)" strokeWidth={2} />
+                  <View className="w-10 h-10 rounded-full bg-secondary items-center justify-center">
+                    <Bot size={20} color="hsl(18 100% 56%)" strokeWidth={2} />
                   </View>
-                  <Text className="text-[15px] font-medium text-foreground tracking-wide">에이전트 선택</Text>
-                </TouchableOpacity>
-                <View className="h-[0.5px] bg-border mx-3.5" />
-                <TouchableOpacity
-                  className="flex-row items-center gap-3 px-3.5 py-3 rounded-lg"
+                  <Text className="text-[17px] font-medium text-foreground">에이전트 선택</Text>
+                </Pressable>
+                <View className="h-px bg-border mx-4" />
+                <Pressable
+                  className="flex-row items-center gap-4 px-4 py-4 rounded-xl active:bg-secondary"
                   onPress={() => { setMenuOpen(false); onSkillPicker(); }}
-                  activeOpacity={0.6}
                   accessibilityLabel="스킬"
                   accessibilityRole="button"
                 >
-                  <View className="w-7 h-7 rounded-full bg-secondary items-center justify-center">
-                    <Puzzle size={16} color="hsl(18 100% 56%)" strokeWidth={2} />
+                  <View className="w-10 h-10 rounded-full bg-secondary items-center justify-center">
+                    <Puzzle size={20} color="hsl(18 100% 56%)" strokeWidth={2} />
                   </View>
-                  <Text className="text-[15px] font-medium text-foreground tracking-wide">스킬</Text>
-                </TouchableOpacity>
-                <View className="h-[0.5px] bg-border mx-3.5" />
+                  <Text className="text-[17px] font-medium text-foreground">스킬</Text>
+                </Pressable>
+                <View className="h-px bg-border mx-4" />
               </>
             )}
-            <TouchableOpacity
-              className="flex-row items-center gap-3 px-3.5 py-3 rounded-lg"
+            <Pressable
+              className="flex-row items-center gap-4 px-4 py-4 rounded-xl active:bg-secondary"
               onPress={() => { setMenuOpen(false); onSettingsPress(); }}
-              activeOpacity={0.6}
               accessibilityLabel="설정"
               accessibilityRole="button"
             >
-              <View className="w-7 h-7 rounded-full bg-secondary items-center justify-center">
-                <Settings size={16} color="hsl(0 0% 63%)" strokeWidth={2} />
+              <View className="w-10 h-10 rounded-full bg-secondary items-center justify-center">
+                <Settings size={20} color="hsl(0 0% 63%)" strokeWidth={2} />
               </View>
-              <Text className="text-[15px] font-medium text-foreground tracking-wide">설정</Text>
-            </TouchableOpacity>
+              <Text className="text-[17px] font-medium text-foreground">설정</Text>
+            </Pressable>
           </View>
-        </TouchableOpacity>
+        </Pressable>
       </Modal>
     </View>
   );
