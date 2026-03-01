@@ -379,6 +379,24 @@ export function MessageList({
         return;
       }
 
+      // d → half page scroll down
+      if (e.key === "d" && !e.shiftKey) {
+        e.preventDefault();
+        if (containerRef.current) {
+          containerRef.current.scrollBy({ top: containerRef.current.clientHeight / 2, behavior: "instant" });
+        }
+        return;
+      }
+
+      // u → half page scroll up
+      if (e.key === "u" && !e.shiftKey) {
+        e.preventDefault();
+        if (containerRef.current) {
+          containerRef.current.scrollBy({ top: -containerRef.current.clientHeight / 2, behavior: "instant" });
+        }
+        return;
+      }
+
       // Escape in normal mode → clear selection
       if (e.key === "Escape") {
         if (selectedIndices.size > 0) {
