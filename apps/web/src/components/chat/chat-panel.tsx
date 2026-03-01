@@ -621,6 +621,7 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
           streaming={streaming}
           onCancelQueued={cancelQueued}
           agentId={currentAgentId}
+          agentStatus={agentStatus}
           onLoadPreviousContext={sendContextBridge}
           onOpenTopicHistory={() => setTopicHistoryOpen(true)}
         />

@@ -4,8 +4,20 @@ import tailwindcss from "@tailwindcss/vite";
 import path from "path";
 import fs from "fs";
 
+const desktopPkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, "../../apps/desktop/package.json"), "utf-8"));
+
+const certKeyPath = path.resolve(__dirname, "../../certificates/localhost-key.pem");
+const certPath = path.resolve(__dirname, "../../certificates/localhost.pem");
+const hasCerts = fs.existsSync(certKeyPath) && fs.existsSync(certPath);
+const httpsConfig = hasCerts
+  ? { key: fs.readFileSync(certKeyPath), cert: fs.readFileSync(certPath) }
+  : undefined;
+
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  define: {
+    "import.meta.env.VITE_APP_VERSION": JSON.stringify(desktopPkg.version),
+  },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
@@ -16,12 +28,8 @@ export default defineConfig({
     port: 4000,
     host: true,
     allowedHosts: process.env.ALLOWED_HOSTS?.split(",").map(h => h.trim()) || [],
-    https: {
-      key: fs.readFileSync(path.resolve(__dirname, "../../certificates/localhost-key.pem")),
-      cert: fs.readFileSync(path.resolve(__dirname, "../../certificates/localhost.pem")),
-    },
+    https: httpsConfig,
     hmr: {
-      // HMR WebSocket은 localhost로 접속하도록 강제 (인증서가 localhost 전용)
       host: "localhost",
     },
     proxy: {
@@ -34,10 +42,7 @@ export default defineConfig({
   preview: {
     port: 4100,
     host: true,
-    https: {
-      key: fs.readFileSync(path.resolve(__dirname, "../../certificates/localhost-key.pem")),
-      cert: fs.readFileSync(path.resolve(__dirname, "../../certificates/localhost.pem")),
-    },
+    https: httpsConfig,
     proxy: {
       "/api": {
         target: "http://localhost:4001",

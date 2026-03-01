@@ -254,7 +254,11 @@ export type AgentStatus =
   | { phase: "tool"; toolName: string }
   | { phase: "waiting" };
 
-const HIDDEN_REPLY_RE = /^(NO_REPLY|HEARTBEAT_OK|NO_)\s*$|Pre-compaction memory flush|^Read HEARTBEAT\.md|reply with NO_REPLY|Store durable memories now|\[System\] 이전 세션이 컨텍스트 한도로 갱신|\[이전 세션 맥락\]/;
+/**
+ * Patterns for messages that should be hidden from the chat UI.
+ * Used in both streaming completion, history load, and display-layer filtering.
+ */
+export const HIDDEN_REPLY_RE = /^(NO_REPLY|HEARTBEAT_OK|NO_)\s*$|Pre-compaction memory flush|^Read HEARTBEAT\.md|reply with NO_REPLY|Store durable memories now|\[System\] 이전 세션이 컨텍스트 한도로 갱신|\[이전 세션 맥락\]/;
 
 export function useChat(sessionKey?: string) {
   const { client, state } = useGateway();
@@ -702,7 +706,10 @@ export function useChat(sessionKey?: string) {
       // nest the key inside data depending on event type (#48)
       const evSessionKey = (raw.sessionKey ?? data?.sessionKey) as string | undefined;
       if (evSessionKey && evSessionKey !== sessionKeyRef.current) return;
-      if (!evSessionKey && sessionKeyRef.current) return;
+      // If the event has no sessionKey, allow it through when we have an
+      // active runId (the event likely belongs to the current run) or when
+      // it's a lifecycle event that will set the runId. (#72)
+      if (!evSessionKey && sessionKeyRef.current && stream !== "lifecycle" && !runIdRef.current) return;
 
 
       // Ignore events after abort until next lifecycle start

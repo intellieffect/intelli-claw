@@ -198,6 +198,12 @@ export function ChatInput({
         }
       }
 
+      if (e.key === "Escape") {
+        e.preventDefault();
+        (e.target as HTMLTextAreaElement).blur();
+        return;
+      }
+
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
         handleSend();
@@ -276,7 +282,7 @@ export function ChatInput({
       />
 
       <div
-        className="mx-auto w-full max-w-[1200px]"
+        className="mx-auto w-full"
       >
         <div
           className="flex-1"
@@ -450,7 +456,7 @@ export function ChatInput({
       </div>
       {!isMobile && (
         <p className="mt-1 text-center text-[10px] sm:text-[11px] text-muted-foreground/50">
-          Shift+Enter로 줄바꿈 · 에이전트는 실수할 수 있습니다
+          v{import.meta.env.VITE_APP_VERSION || "0.0.0"} · {import.meta.env.MODE}
         </p>
       )}
     </div>

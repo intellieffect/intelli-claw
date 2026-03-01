@@ -1,14 +1,14 @@
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import {
   User, Bot, Clock, X, Copy, Check, ArrowDown, Download,
   FileText, Music, Video, File, Image as ImageIcon,
   FileSpreadsheet, FileCode, FileArchive, FileAudio, FileVideo,
-  RefreshCw, History,
+  RefreshCw, History, Loader2,
 } from "lucide-react";
 import { MarkdownRenderer, MarkdownFilePreview } from "./markdown-renderer";
 import { ToolCallCard } from "./tool-call-card";
-import type { DisplayMessage, DisplayAttachment } from "@/lib/gateway/hooks";
+import { HIDDEN_REPLY_RE, type DisplayMessage, type DisplayAttachment, type AgentStatus } from "@/lib/gateway/hooks";
 import { AgentAvatar } from "@/components/ui/agent-avatar";
 
 import { blobDownload, forceDownloadUrl } from "@/lib/utils/download";
@@ -116,6 +116,7 @@ export function MessageList({
   streaming,
   onCancelQueued,
   agentId,
+  agentStatus,
   onLoadPreviousContext,
   onOpenTopicHistory,
 }: {
@@ -124,12 +125,51 @@ export function MessageList({
   streaming: boolean;
   onCancelQueued?: (id: string) => void;
   agentId?: string;
+  agentStatus?: AgentStatus;
   onLoadPreviousContext?: () => void;
   onOpenTopicHistory?: () => void;
 }) {
+  const PAGE_SIZE = 50;
   const bottomRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [userScrolledUp, setUserScrolledUp] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const [loadingMore, setLoadingMore] = useState(false);
+
+  // Reset visible count when messages are replaced (e.g. session switch)
+  const msgIdsKey = messages.length > 0 ? messages[0].id : "";
+  useEffect(() => { setVisibleCount(PAGE_SIZE); }, [msgIdsKey]);
+
+  // Filter messages for display, then paginate
+  const displayMessages = useMemo(() => {
+    return messages.filter((msg) => {
+      if (msg.content && HIDDEN_REPLY_RE.test(msg.content.trim())) return false;
+      return msg.role === "session-boundary" || msg.content || msg.toolCalls.length > 0 || msg.streaming || (msg.attachments && msg.attachments.length > 0);
+    });
+  }, [messages]);
+
+  const hasMore = displayMessages.length > visibleCount;
+  const visibleMessages = hasMore
+    ? displayMessages.slice(displayMessages.length - visibleCount)
+    : displayMessages;
+
+  // Load more when scrolling to top
+  const loadMore = useCallback(() => {
+    if (!hasMore || loadingMore) return;
+    setLoadingMore(true);
+    const el = containerRef.current;
+    const prevScrollHeight = el?.scrollHeight ?? 0;
+    // Use rAF to batch the state update and scroll restoration
+    setVisibleCount((prev) => prev + PAGE_SIZE);
+    requestAnimationFrame(() => {
+      if (el) {
+        // Restore scroll position so content doesn't jump
+        const newScrollHeight = el.scrollHeight;
+        el.scrollTop = newScrollHeight - prevScrollHeight;
+      }
+      setLoadingMore(false);
+    });
+  }, [hasMore, loadingMore]);
 
   // Detect if user has scrolled up from bottom
   const handleScroll = useCallback(() => {
@@ -138,7 +178,12 @@ export function MessageList({
     // Consider "at bottom" if within 80px of the bottom
     const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
     setUserScrolledUp(!atBottom);
-  }, []);
+
+    // Load more messages when scrolled to top
+    if (el.scrollTop < 100 && hasMore && !loadingMore) {
+      loadMore();
+    }
+  }, [hasMore, loadingMore, loadMore]);
 
   // Re-evaluate scroll position when container is resized
   // (e.g. textarea height change, mobile keyboard appear/disappear)
@@ -174,6 +219,41 @@ export function MessageList({
     setUserScrolledUp(false);
   }, []);
 
+  const scrollToTop = useCallback(() => {
+    const el = containerRef.current;
+    if (el) el.scrollTo({ top: 0, behavior: "smooth" });
+  }, []);
+
+  // Vim-style scroll shortcuts: Shift+G → bottom, gg → top
+  const lastGPressRef = useRef(0);
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || (e.target as HTMLElement).isContentEditable) return;
+
+      // Shift+G → scroll to bottom
+      if (e.key === "G" && e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        scrollToBottom();
+        return;
+      }
+
+      // gg → scroll to top (double 'g' within 500ms)
+      if (e.key === "g" && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        const now = Date.now();
+        if (now - lastGPressRef.current < 500) {
+          e.preventDefault();
+          scrollToTop();
+          lastGPressRef.current = 0;
+        } else {
+          lastGPressRef.current = now;
+        }
+      }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [scrollToBottom, scrollToTop]);
+
   if (loading) {
     return (
       <div className="flex flex-1 items-center justify-center text-muted-foreground">
@@ -194,10 +274,26 @@ export function MessageList({
 
   return (
     <div className="relative flex-1 min-h-0">
-    <div ref={containerRef} onScroll={handleScroll} className="h-full overflow-y-auto overflow-x-hidden px-[3%] py-3 md:px-[5%] lg:px-[7%] md:py-4" style={{ WebkitOverflowScrolling: "touch" }}>
+    <div ref={containerRef} onScroll={handleScroll} className="h-full overflow-y-auto overflow-x-hidden px-[3%] pt-3 pb-8 md:px-[5%] lg:px-[7%] md:pt-4 md:pb-12" style={{ WebkitOverflowScrolling: "touch" }}>
       <div className="mx-auto max-w-[1200px] space-y-3 md:space-y-4">
-        {messages
-          .filter((msg) => msg.role === "session-boundary" || msg.content || msg.toolCalls.length > 0 || msg.streaming || (msg.attachments && msg.attachments.length > 0))
+        {/* Load more indicator */}
+        {hasMore && (
+          <div className="flex justify-center py-3">
+            <button
+              onClick={loadMore}
+              disabled={loadingMore}
+              className="flex items-center gap-2 rounded-lg border border-zinc-700/50 bg-zinc-800/60 px-4 py-2 text-xs text-zinc-400 transition hover:bg-zinc-700/60 hover:text-zinc-300 disabled:opacity-50"
+            >
+              {loadingMore ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <History size={14} />
+              )}
+              이전 메시지 불러오기 ({displayMessages.length - visibleCount}개 남음)
+            </button>
+          </div>
+        )}
+        {visibleMessages
           .map((msg, idx, arr) => {
             if (msg.role === "session-boundary") {
               return (
@@ -211,7 +307,7 @@ export function MessageList({
             const prevRole = idx > 0 ? arr[idx - 1].role : null;
             const showAvatar = msg.role !== "assistant" || prevRole !== "assistant";
             return (
-              <MessageBubble key={msg.id} message={msg} showAvatar={showAvatar} onCancel={msg.queued ? onCancelQueued : undefined} agentId={agentId} />
+              <MessageBubble key={msg.id} message={msg} showAvatar={showAvatar} onCancel={msg.queued ? onCancelQueued : undefined} agentId={agentId} agentStatus={msg.streaming ? agentStatus : undefined} />
             );
           })}
         {streaming && !messages.some(m => m.streaming) && <ThinkingIndicator agentId={agentId} />}
@@ -333,7 +429,7 @@ function CopyButton({ text }: { text: string }) {
 }
 
 
-function MessageBubble({ message, showAvatar = true, onCancel, agentId }: { message: DisplayMessage; showAvatar?: boolean; onCancel?: (id: string) => void; agentId?: string }) {
+function MessageBubble({ message, showAvatar = true, onCancel, agentId, agentStatus }: { message: DisplayMessage; showAvatar?: boolean; onCancel?: (id: string) => void; agentId?: string; agentStatus?: AgentStatus }) {
   const isUser = message.role === "user";
   const isSystem = message.role === "system";
   const isQueued = message.queued;
@@ -360,7 +456,17 @@ function MessageBubble({ message, showAvatar = true, onCancel, agentId }: { mess
       )}
       {!isUser && (
         showAvatar ? (
-          <AgentAvatar agentId={agentId} size={32} />
+          <div className="relative shrink-0">
+            <AgentAvatar agentId={agentId} size={32} />
+            {agentStatus && agentStatus.phase !== "idle" && (
+              <span className={`absolute -bottom-0.5 -right-0.5 block h-2.5 w-2.5 rounded-full border-2 border-zinc-900 ${
+                agentStatus.phase === "writing" ? "bg-green-400" :
+                agentStatus.phase === "thinking" ? "bg-yellow-400" :
+                agentStatus.phase === "tool" ? "bg-blue-400" :
+                "bg-zinc-500"
+              }`} />
+            )}
+          </div>
         ) : (
           <div className="w-8 shrink-0" />
         )
