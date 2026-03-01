@@ -2,6 +2,9 @@ import { defineConfig, externalizeDepsPlugin } from "electron-vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "path";
+import fs from "fs";
+
+const pkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, "package.json"), "utf-8"));
 
 export default defineConfig({
   main: {
@@ -27,9 +30,12 @@ export default defineConfig({
       },
     },
     server: {
-      port: 5174,  // dev uses 5174, production build doesn't use dev server
+      port: 5174,
     },
     plugins: [react(), tailwindcss()],
+    define: {
+      "import.meta.env.VITE_APP_VERSION": JSON.stringify(pkg.version),
+    },
     resolve: {
       alias: {
         "@": path.resolve(__dirname, "../web/src"),
