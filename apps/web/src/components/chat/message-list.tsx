@@ -1,5 +1,5 @@
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import {
   User, Bot, Clock, X, Copy, Check, ArrowDown, Download,
   FileText, Music, Video, File, Image as ImageIcon,
@@ -173,6 +173,41 @@ export function MessageList({
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
     setUserScrolledUp(false);
   }, []);
+
+  const scrollToTop = useCallback(() => {
+    const el = containerRef.current;
+    if (el) el.scrollTo({ top: 0, behavior: "smooth" });
+  }, []);
+
+  // Vim-style scroll shortcuts: Shift+G → bottom, gg → top
+  const lastGPressRef = useRef(0);
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || (e.target as HTMLElement).isContentEditable) return;
+
+      // Shift+G → scroll to bottom
+      if (e.key === "G" && e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        scrollToBottom();
+        return;
+      }
+
+      // gg → scroll to top (double 'g' within 500ms)
+      if (e.key === "g" && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        const now = Date.now();
+        if (now - lastGPressRef.current < 500) {
+          e.preventDefault();
+          scrollToTop();
+          lastGPressRef.current = 0;
+        } else {
+          lastGPressRef.current = now;
+        }
+      }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [scrollToBottom, scrollToTop]);
 
   if (loading) {
     return (
