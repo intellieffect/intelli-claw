@@ -706,7 +706,10 @@ export function useChat(sessionKey?: string) {
       // nest the key inside data depending on event type (#48)
       const evSessionKey = (raw.sessionKey ?? data?.sessionKey) as string | undefined;
       if (evSessionKey && evSessionKey !== sessionKeyRef.current) return;
-      if (!evSessionKey && sessionKeyRef.current) return;
+      // If the event has no sessionKey, allow it through when we have an
+      // active runId (the event likely belongs to the current run) or when
+      // it's a lifecycle event that will set the runId. (#72)
+      if (!evSessionKey && sessionKeyRef.current && stream !== "lifecycle" && !runIdRef.current) return;
 
 
       // Ignore events after abort until next lifecycle start
