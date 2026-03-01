@@ -198,6 +198,12 @@ export function ChatInput({
         }
       }
 
+      if (e.key === "Escape") {
+        e.preventDefault();
+        (e.target as HTMLTextAreaElement).blur();
+        return;
+      }
+
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
         handleSend();
