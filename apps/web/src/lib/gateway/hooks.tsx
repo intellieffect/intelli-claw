@@ -254,7 +254,11 @@ export type AgentStatus =
   | { phase: "tool"; toolName: string }
   | { phase: "waiting" };
 
-const HIDDEN_REPLY_RE = /^(NO_REPLY|HEARTBEAT_OK|NO_)\s*$|Pre-compaction memory flush|^Read HEARTBEAT\.md|reply with NO_REPLY|Store durable memories now|\[System\] 이전 세션이 컨텍스트 한도로 갱신|\[이전 세션 맥락\]/;
+/**
+ * Patterns for messages that should be hidden from the chat UI.
+ * Used in both streaming completion, history load, and display-layer filtering.
+ */
+export const HIDDEN_REPLY_RE = /^(NO_REPLY|HEARTBEAT_OK|NO_)\s*$|Pre-compaction memory flush|^Read HEARTBEAT\.md|reply with NO_REPLY|Store durable memories now|\[System\] 이전 세션이 컨텍스트 한도로 갱신|\[이전 세션 맥락\]/;
 
 export function useChat(sessionKey?: string) {
   const { client, state } = useGateway();
