@@ -4,8 +4,13 @@ import tailwindcss from "@tailwindcss/vite";
 import path from "path";
 import fs from "fs";
 
+const desktopPkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, "../../apps/desktop/package.json"), "utf-8"));
+
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  define: {
+    "import.meta.env.VITE_APP_VERSION": JSON.stringify(desktopPkg.version),
+  },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
@@ -21,7 +26,6 @@ export default defineConfig({
       cert: fs.readFileSync(path.resolve(__dirname, "../../certificates/localhost.pem")),
     },
     hmr: {
-      // HMR WebSocket은 localhost로 접속하도록 강제 (인증서가 localhost 전용)
       host: "localhost",
     },
     proxy: {
