@@ -1,27 +1,29 @@
 /**
  * SkillPicker — Bottom sheet for viewing and toggling skills attached to a session.
- * Ported from web skill-picker.tsx for React Native.
  */
 import React, { useMemo, useState } from "react";
 import {
   View,
   Text,
-  TouchableOpacity,
-  Modal,
+  Pressable,
   FlatList,
   Switch,
-  StyleSheet,
   ActivityIndicator,
 } from "react-native";
 import {
   Puzzle,
   X,
-  ExternalLink,
   AlertCircle,
   RefreshCw,
 } from "lucide-react-native";
 import { useSkills, type Skill } from "@intelli-claw/shared";
-import { colors } from "../theme/colors";
+import {
+  Actionsheet,
+  ActionsheetBackdrop,
+  ActionsheetContent,
+  ActionsheetDragIndicator,
+  ActionsheetDragIndicatorWrapper,
+} from "@/components/ui/actionsheet";
 
 // ─── Props ───
 
@@ -37,7 +39,6 @@ export function SkillPicker({ visible, onClose }: SkillPickerProps) {
   const sortedSkills = useMemo(
     () =>
       [...skills].sort((a, b) => {
-        // Eligible first, then alphabetical
         if (a.eligible !== b.eligible) return a.eligible ? -1 : 1;
         return a.name.localeCompare(b.name);
       }),
@@ -68,48 +69,51 @@ export function SkillPicker({ visible, onClose }: SkillPickerProps) {
     const isBlocked = item.blockedByAllowlist || !item.eligible;
 
     return (
-      <View style={[s.row, isBlocked && s.rowBlocked]}>
-        <View style={s.rowLeft}>
-          <Text style={s.emoji}>{item.emoji || "🔧"}</Text>
-          <View style={s.rowMain}>
-            <View style={s.nameRow}>
-              <Text style={[s.name, isBlocked && s.nameBlocked]} numberOfLines={1}>
+      <View className={`flex-row items-center px-4 py-3 border-b border-border/50 ${isBlocked ? "opacity-50" : ""}`}>
+        <View className="flex-1 flex-row items-start gap-2.5">
+          <Text className="text-xl w-7 text-center mt-0.5">{item.emoji || "🔧"}</Text>
+          <View className="flex-1">
+            <View className="flex-row items-center gap-1.5">
+              <Text
+                className={`text-sm font-semibold ${isBlocked ? "text-muted-foreground" : "text-foreground"}`}
+                numberOfLines={1}
+              >
                 {item.name}
               </Text>
               {item.bundled && (
-                <View style={s.sourceBadge}>
-                  <Text style={s.sourceText}>내장</Text>
+                <View className="bg-success/10 px-1.5 py-px rounded">
+                  <Text className="text-[9px] font-semibold text-success">내장</Text>
                 </View>
               )}
               {item.source === "managed" && (
-                <View style={[s.sourceBadge, { backgroundColor: colors.accentPurpleFaint }]}>
-                  <Text style={[s.sourceText, { color: colors.accentPurple }]}>관리</Text>
+                <View className="bg-purple-400/10 px-1.5 py-px rounded">
+                  <Text className="text-[9px] font-semibold text-purple-400">관리</Text>
                 </View>
               )}
             </View>
-            <Text style={s.desc} numberOfLines={2}>
+            <Text className="text-xs text-muted-foreground mt-0.5 leading-4" numberOfLines={2}>
               {item.description}
             </Text>
             {isBlocked && (
-              <View style={s.blockedRow}>
-                <AlertCircle size={10} color={colors.error} />
-                <Text style={s.blockedText}>
+              <View className="flex-row items-center gap-1 mt-1">
+                <AlertCircle size={10} color="#EF4444" />
+                <Text className="text-[10px] text-destructive">
                   {item.blockedByAllowlist ? "허용 목록에 없음" : "요구사항 미충족"}
                 </Text>
               </View>
             )}
           </View>
         </View>
-        <View style={s.rowRight}>
+        <View className="ml-3">
           {isBusy ? (
-            <ActivityIndicator size="small" color={colors.info} />
+            <ActivityIndicator size="small" color="hsl(217, 91%, 60%)" />
           ) : (
             <Switch
               value={isEnabled}
               onValueChange={() => handleToggle(item)}
               disabled={isBlocked}
-              trackColor={{ false: colors.bgHandle, true: colors.primarySemi }}
-              thumbColor={isEnabled ? colors.primary : colors.textTertiary}
+              trackColor={{ false: "#333333", true: "rgba(255, 107, 53, 0.50)" }}
+              thumbColor={isEnabled ? "hsl(18, 100%, 56%)" : "#666666"}
             />
           )}
         </View>
@@ -118,142 +122,54 @@ export function SkillPicker({ visible, onClose }: SkillPickerProps) {
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={s.backdrop}>
-        <TouchableOpacity style={s.backdropTouch} activeOpacity={1} onPress={onClose} />
-        <View style={s.sheet}>
-          <View style={s.handle} />
+    <Actionsheet isOpen={visible} onClose={onClose}>
+      <ActionsheetBackdrop />
+      <ActionsheetContent className="max-h-[80%]">
+        <ActionsheetDragIndicatorWrapper>
+          <ActionsheetDragIndicator />
+        </ActionsheetDragIndicatorWrapper>
 
-          {/* Header */}
-          <View style={s.header}>
-            <View style={s.headerLeft}>
-              <Puzzle size={18} color={colors.info} />
-              <Text style={s.title}>Skills</Text>
-              <View style={s.countBadge}>
-                <Text style={s.countText}>{enabledCount}/{skills.length}</Text>
-              </View>
-            </View>
-            <View style={s.headerRight}>
-              <TouchableOpacity onPress={refresh} hitSlop={8} style={s.refreshBtn}>
-                <RefreshCw size={16} color={colors.textPlaceholder} />
-              </TouchableOpacity>
-              <TouchableOpacity onPress={onClose} hitSlop={8}>
-                <X size={20} color={colors.textPlaceholder} />
-              </TouchableOpacity>
+        {/* Header */}
+        <View className="flex-row items-center justify-between px-4 pb-3 border-b border-border">
+          <View className="flex-row items-center gap-2">
+            <Puzzle size={18} color="hsl(217, 91%, 60%)" />
+            <Text className="text-[17px] font-bold text-foreground">Skills</Text>
+            <View className="bg-primary/10 px-2 py-0.5 rounded-xl">
+              <Text className="text-[11px] font-semibold text-primary">{enabledCount}/{skills.length}</Text>
             </View>
           </View>
-
-          {error && (
-            <View style={s.errorBar}>
-              <AlertCircle size={12} color={colors.error} />
-              <Text style={s.errorText}>{error}</Text>
-            </View>
-          )}
-
-          {/* Skill list */}
-          <FlatList
-            data={sortedSkills}
-            keyExtractor={(item) => item.skillKey}
-            renderItem={renderSkill}
-            contentContainerStyle={s.listContent}
-            ListEmptyComponent={
-              <View style={s.emptyBox}>
-                <Text style={s.emptyText}>
-                  {loading ? "스킬 로딩 중..." : "등록된 스킬 없음"}
-                </Text>
-              </View>
-            }
-          />
+          <View className="flex-row items-center gap-3">
+            <Pressable onPress={refresh} hitSlop={8} className="p-1">
+              <RefreshCw size={16} color="#9CA3AF" />
+            </Pressable>
+            <Pressable onPress={onClose} hitSlop={8}>
+              <X size={20} color="#9CA3AF" />
+            </Pressable>
+          </View>
         </View>
-      </View>
-    </Modal>
+
+        {error && (
+          <View className="flex-row items-center gap-1.5 px-4 py-2 bg-destructive/10">
+            <AlertCircle size={12} color="#EF4444" />
+            <Text className="text-xs text-destructive">{error}</Text>
+          </View>
+        )}
+
+        {/* Skill list */}
+        <FlatList
+          data={sortedSkills}
+          keyExtractor={(item) => item.skillKey}
+          renderItem={renderSkill}
+          contentContainerStyle={{ paddingBottom: 24 }}
+          ListEmptyComponent={
+            <View className="py-8 items-center">
+              <Text className="text-[13px] text-muted-foreground">
+                {loading ? "스킬 로딩 중..." : "등록된 스킬 없음"}
+              </Text>
+            </View>
+          }
+        />
+      </ActionsheetContent>
+    </Actionsheet>
   );
 }
-
-const s = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: colors.overlayDim, justifyContent: "flex-end" },
-  backdropTouch: { flex: 1 },
-  sheet: {
-    maxHeight: "80%",
-    backgroundColor: colors.bg,
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
-    paddingTop: 6,
-  },
-  handle: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: colors.bgHandle,
-    alignSelf: "center",
-    marginBottom: 8,
-  },
-
-  // Header
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  headerLeft: { flexDirection: "row", alignItems: "center", gap: 8 },
-  headerRight: { flexDirection: "row", alignItems: "center", gap: 12 },
-  title: { fontSize: 17, fontWeight: "700", color: colors.text },
-  countBadge: {
-    backgroundColor: colors.primaryFaint,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 10,
-  },
-  countText: { fontSize: 11, fontWeight: "600", color: colors.primary },
-  refreshBtn: { padding: 4 },
-
-  // Error
-  errorBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    backgroundColor: colors.errorFaint,
-  },
-  errorText: { fontSize: 12, color: colors.error },
-
-  // List
-  listContent: { paddingBottom: 24 },
-
-  // Row
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
-  },
-  rowBlocked: { opacity: 0.5 },
-  rowLeft: { flex: 1, flexDirection: "row", alignItems: "flex-start", gap: 10 },
-  rowMain: { flex: 1 },
-  emoji: { fontSize: 20, width: 28, textAlign: "center", marginTop: 2 },
-  nameRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  name: { fontSize: 14, fontWeight: "600", color: colors.text },
-  nameBlocked: { color: colors.textTertiary },
-  desc: { fontSize: 12, color: colors.textMid, marginTop: 2, lineHeight: 16 },
-  sourceBadge: {
-    backgroundColor: colors.successFaint,
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    borderRadius: 4,
-  },
-  sourceText: { fontSize: 9, fontWeight: "600", color: colors.successDark },
-  blockedRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 4 },
-  blockedText: { fontSize: 10, color: colors.error },
-  rowRight: { marginLeft: 12 },
-
-  // Empty
-  emptyBox: { paddingVertical: 32, alignItems: "center" },
-  emptyText: { fontSize: 13, color: colors.textTertiary },
-});
