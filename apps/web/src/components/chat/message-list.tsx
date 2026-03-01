@@ -4,7 +4,7 @@ import {
   User, Bot, Clock, X, Copy, Check, ArrowDown, Download,
   FileText, Music, Video, File, Image as ImageIcon,
   FileSpreadsheet, FileCode, FileArchive, FileAudio, FileVideo,
-  RefreshCw, History,
+  RefreshCw, History, Loader2,
 } from "lucide-react";
 import { MarkdownRenderer, MarkdownFilePreview } from "./markdown-renderer";
 import { ToolCallCard } from "./tool-call-card";
@@ -127,9 +127,47 @@ export function MessageList({
   onLoadPreviousContext?: () => void;
   onOpenTopicHistory?: () => void;
 }) {
+  const PAGE_SIZE = 50;
   const bottomRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [userScrolledUp, setUserScrolledUp] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const [loadingMore, setLoadingMore] = useState(false);
+
+  // Reset visible count when messages are replaced (e.g. session switch)
+  const msgIdsKey = messages.length > 0 ? messages[0].id : "";
+  useEffect(() => { setVisibleCount(PAGE_SIZE); }, [msgIdsKey]);
+
+  // Filter messages for display, then paginate
+  const displayMessages = useMemo(() => {
+    return messages.filter((msg) => {
+      if (msg.content && HIDDEN_REPLY_RE.test(msg.content.trim())) return false;
+      return msg.role === "session-boundary" || msg.content || msg.toolCalls.length > 0 || msg.streaming || (msg.attachments && msg.attachments.length > 0);
+    });
+  }, [messages]);
+
+  const hasMore = displayMessages.length > visibleCount;
+  const visibleMessages = hasMore
+    ? displayMessages.slice(displayMessages.length - visibleCount)
+    : displayMessages;
+
+  // Load more when scrolling to top
+  const loadMore = useCallback(() => {
+    if (!hasMore || loadingMore) return;
+    setLoadingMore(true);
+    const el = containerRef.current;
+    const prevScrollHeight = el?.scrollHeight ?? 0;
+    // Use rAF to batch the state update and scroll restoration
+    setVisibleCount((prev) => prev + PAGE_SIZE);
+    requestAnimationFrame(() => {
+      if (el) {
+        // Restore scroll position so content doesn't jump
+        const newScrollHeight = el.scrollHeight;
+        el.scrollTop = newScrollHeight - prevScrollHeight;
+      }
+      setLoadingMore(false);
+    });
+  }, [hasMore, loadingMore]);
 
   // Detect if user has scrolled up from bottom
   const handleScroll = useCallback(() => {
@@ -138,7 +176,12 @@ export function MessageList({
     // Consider "at bottom" if within 80px of the bottom
     const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
     setUserScrolledUp(!atBottom);
-  }, []);
+
+    // Load more messages when scrolled to top
+    if (el.scrollTop < 100 && hasMore && !loadingMore) {
+      loadMore();
+    }
+  }, [hasMore, loadingMore, loadMore]);
 
   // Re-evaluate scroll position when container is resized
   // (e.g. textarea height change, mobile keyboard appear/disappear)
@@ -231,12 +274,24 @@ export function MessageList({
     <div className="relative flex-1 min-h-0">
     <div ref={containerRef} onScroll={handleScroll} className="h-full overflow-y-auto overflow-x-hidden px-[3%] pt-3 pb-8 md:px-[5%] lg:px-[7%] md:pt-4 md:pb-12" style={{ WebkitOverflowScrolling: "touch" }}>
       <div className="mx-auto max-w-[1200px] space-y-3 md:space-y-4">
-        {messages
-          .filter((msg) => {
-            // Hide NO_REPLY, HEARTBEAT_OK, and other system-injected messages
-            if (msg.content && HIDDEN_REPLY_RE.test(msg.content.trim())) return false;
-            return msg.role === "session-boundary" || msg.content || msg.toolCalls.length > 0 || msg.streaming || (msg.attachments && msg.attachments.length > 0);
-          })
+        {/* Load more indicator */}
+        {hasMore && (
+          <div className="flex justify-center py-3">
+            <button
+              onClick={loadMore}
+              disabled={loadingMore}
+              className="flex items-center gap-2 rounded-lg border border-zinc-700/50 bg-zinc-800/60 px-4 py-2 text-xs text-zinc-400 transition hover:bg-zinc-700/60 hover:text-zinc-300 disabled:opacity-50"
+            >
+              {loadingMore ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <History size={14} />
+              )}
+              이전 메시지 불러오기 ({displayMessages.length - visibleCount}개 남음)
+            </button>
+          </div>
+        )}
+        {visibleMessages
           .map((msg, idx, arr) => {
             if (msg.role === "session-boundary") {
               return (
