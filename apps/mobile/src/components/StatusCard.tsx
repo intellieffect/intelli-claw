@@ -42,9 +42,9 @@ function contextColor(percent: number): string {
 
 function Row({ emoji, children }: { emoji: string; children: React.ReactNode }) {
   return (
-    <View className="flex-row items-start gap-1.5 mb-0.5">
-      <Text className="text-[13px] leading-5">{emoji}</Text>
-      <Text className="font-mono text-xs leading-5 text-muted-foreground flex-1">
+    <View className="flex-row items-start gap-2 mb-1">
+      <Text className="text-base leading-6">{emoji}</Text>
+      <Text className="font-mono text-sm leading-6 text-muted-foreground flex-1">
         {children}
       </Text>
     </View>
@@ -55,8 +55,8 @@ export function StatusCard({ data }: { data: StatusData }) {
   const commitShort = data.commit ? data.commit.slice(0, 7) : "";
 
   return (
-    <View className="my-1.5 rounded-xl border border-border bg-card p-3.5">
-      <Text className="text-sm font-bold text-card-foreground/80 mb-2">
+    <View className="my-2 rounded-2xl border border-border bg-card p-4">
+      <Text className="text-base font-bold text-card-foreground/80 mb-2.5">
         {data.agentName || data.agentId}
       </Text>
 

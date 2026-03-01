@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from "react";
-import { TouchableOpacity, Animated } from "react-native";
+import { Pressable, Animated } from "react-native";
 import { ChevronDown } from "lucide-react-native";
 
 interface ScrollToBottomProps {
@@ -17,14 +17,13 @@ export function ScrollToBottomButton({ visible, onPress }: ScrollToBottomProps) 
   if (!visible) return null;
 
   return (
-    <Animated.View style={{ position: "absolute", bottom: 14, right: 16, opacity: fadeAnim, transform: [{ scale: fadeAnim }] }}>
-      <TouchableOpacity
-        className="w-[38px] h-[38px] rounded-full bg-card border border-border items-center justify-center shadow-md"
+    <Animated.View style={{ position: "absolute", bottom: 16, right: 16, opacity: fadeAnim, transform: [{ scale: fadeAnim }] }}>
+      <Pressable
+        className="w-11 h-11 rounded-full bg-card border border-border items-center justify-center shadow-md active:bg-secondary"
         onPress={onPress}
-        activeOpacity={0.7}
       >
-        <ChevronDown size={17} color="hsl(0 0% 63%)" strokeWidth={2.5} />
-      </TouchableOpacity>
+        <ChevronDown size={20} color="hsl(0 0% 63%)" strokeWidth={2.5} />
+      </Pressable>
     </Animated.View>
   );
 }

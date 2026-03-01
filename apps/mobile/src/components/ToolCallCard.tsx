@@ -61,40 +61,40 @@ export function ToolCallCard({ toolCall }: { toolCall: ToolCall }) {
         : "bg-destructive";
 
   return (
-    <View className="my-1 rounded-[10px] border border-border bg-card overflow-hidden">
+    <View className="my-1.5 rounded-xl border border-border bg-card overflow-hidden">
       <Pressable
-        className="flex-row items-center gap-1.5 px-2.5 py-2"
+        className="flex-row items-center gap-2 px-3.5 py-3"
         onPress={() => setExpanded(!expanded)}
       >
-        <Text className="text-xs text-muted-foreground w-3.5">
+        <Text className="text-sm text-muted-foreground w-4">
           {expanded ? "▾" : "▸"}
         </Text>
 
         {toolCall.status === "running" ? (
-          <ActivityIndicator size={12} color="hsl(217, 91%, 60%)" />
+          <ActivityIndicator size={14} color="hsl(217, 91%, 60%)" />
         ) : (
-          <View className={`w-2 h-2 rounded-full ${statusColor}`} />
+          <View className={`w-2.5 h-2.5 rounded-full ${statusColor}`} />
         )}
 
-        <Text className="font-mono text-xs text-card-foreground/80 flex-1">
+        <Text className="font-mono text-sm text-card-foreground/80 flex-1">
           {toolCall.name}
         </Text>
 
         {toolCall.status === "running" && (
-          <Text className="text-[11px] text-muted-foreground">실행 중...</Text>
+          <Text className="text-sm text-muted-foreground">실행 중...</Text>
         )}
       </Pressable>
 
       {expanded && (
-        <View className="border-t border-border px-2.5 py-2">
+        <View className="border-t border-border px-3.5 py-3">
           {toolCall.args && (
-            <View className="mb-2">
-              <Text className="text-[11px] text-muted-foreground mb-1">Arguments</Text>
+            <View className="mb-3">
+              <Text className="text-xs text-muted-foreground mb-1.5 font-medium">Arguments</Text>
               <ScrollView
-                className="max-h-[140px] bg-secondary rounded-md p-2"
+                className="max-h-[160px] bg-secondary rounded-lg p-3"
                 nestedScrollEnabled
               >
-                <Text className="font-mono text-[11px] text-muted-foreground leading-4">
+                <Text className="font-mono text-xs text-muted-foreground leading-5">
                   {formatJson(toolCall.args)}
                 </Text>
               </ScrollView>
@@ -102,12 +102,12 @@ export function ToolCallCard({ toolCall }: { toolCall: ToolCall }) {
           )}
           {toolCall.result && (
             <View className="mb-2">
-              <Text className="text-[11px] text-muted-foreground mb-1">Result</Text>
+              <Text className="text-xs text-muted-foreground mb-1.5 font-medium">Result</Text>
               <ScrollView
-                className="max-h-[140px] bg-secondary rounded-md p-2"
+                className="max-h-[160px] bg-secondary rounded-lg p-3"
                 nestedScrollEnabled
               >
-                <Text className="font-mono text-[11px] text-muted-foreground leading-4">
+                <Text className="font-mono text-xs text-muted-foreground leading-5">
                   {formatJson(toolCall.result)}
                 </Text>
               </ScrollView>

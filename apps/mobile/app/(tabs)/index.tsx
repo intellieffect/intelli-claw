@@ -2,7 +2,7 @@ import React, { useState, useRef, useCallback, useEffect, useMemo } from "react"
 import {
   View,
   Text,
-  TouchableOpacity,
+  Pressable,
   FlatList,
   KeyboardAvoidingView,
   Platform,
@@ -34,7 +34,6 @@ import {
   AppBar,
 } from "../../src/components/chat";
 
-import { colors, radii, typography } from "../../src/theme/colors";
 
 // ─── Chat Screen ───
 
@@ -157,11 +156,11 @@ export default function ChatScreen() {
 
   const keyExtractor = useCallback((item: DisplayMessage) => item.id, []);
 
-  const dotColor = state === "connected" ? colors.success : state === "connecting" ? colors.warning : state === "authenticating" ? colors.info : colors.error;
+  const dotColor = state === "connected" ? "#10B981" : state === "connecting" ? "#F59E0B" : state === "authenticating" ? "#3B82F6" : "#EF4444";
   const isConnected = state === "connected";
 
   return (
-    <View style={[s.root, { paddingTop: insets.top }]}>
+    <View className="flex-1 bg-background" style={{ paddingTop: insets.top }}>
       {/* ─── AppBar (minimalist with menu) ─── */}
       <AppBar
         agentLabel={agentLabel}
@@ -183,9 +182,9 @@ export default function ChatScreen() {
 
         {/* Message area */}
         {loading ? (
-          <View style={s.center}>
-            <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={s.loadingText}>히스토리 로딩 중...</Text>
+          <View className="flex-1 items-center justify-center px-8">
+            <ActivityIndicator size="large" color="hsl(18 100% 56%)" />
+            <Text className="text-base font-medium text-muted-foreground mt-3">히스토리 로딩 중...</Text>
           </View>
         ) : filteredMessages.length === 0 ? (
           <EmptyState
@@ -213,18 +212,17 @@ export default function ChatScreen() {
 
         {/* Agent indicator above input */}
         {effectiveSessionKey && parsed?.agentId && (
-          <TouchableOpacity
-            style={s.agentIndicator}
-            activeOpacity={0.6}
+          <Pressable
+            className="flex-row items-center gap-2 px-5 py-3 bg-secondary border-t border-border active:opacity-70"
             onPress={() => { refreshSessions(); setSessionPickerOpen(true); }}
           >
-            <Bot size={12} color={colors.primary} />
-            <Text style={s.agentIndicatorText}>{parsed.agentId}</Text>
+            <Bot size={16} color="hsl(18 100% 56%)" />
+            <Text className="text-base font-semibold text-primary">{parsed.agentId}</Text>
             {parsed.type !== "main" && (
-              <Text style={s.agentIndicatorSub}>/ {parsed.detail || parsed.type}</Text>
+              <Text className="text-sm text-muted-foreground">/ {parsed.detail || parsed.type}</Text>
             )}
-            <ChevronDown size={12} color={colors.textTertiary} />
-          </TouchableOpacity>
+            <ChevronDown size={14} color="hsl(0 0% 45%)" />
+          </Pressable>
         )}
 
         {/* Attachment preview */}
@@ -297,12 +295,12 @@ export default function ChatScreen() {
 
       {/* Settings modal */}
       <Modal visible={settingsOpen} animationType="slide" onRequestClose={() => setSettingsOpen(false)}>
-        <View style={[s.settingsModal, { paddingTop: insets.top }]}>
-          <View style={s.settingsHeader}>
-            <Text style={s.settingsTitle}>Settings</Text>
-            <TouchableOpacity onPress={() => setSettingsOpen(false)}>
-              <Text style={s.settingsClose}>닫기</Text>
-            </TouchableOpacity>
+        <View className="flex-1 bg-background" style={{ paddingTop: insets.top }}>
+          <View className="flex-row items-center justify-between h-14 px-5 border-b border-border">
+            <Text className="text-lg font-bold text-foreground">Settings</Text>
+            <Pressable onPress={() => setSettingsOpen(false)} hitSlop={8}>
+              <Text className="text-base font-semibold text-primary">닫기</Text>
+            </Pressable>
           </View>
           <SettingsScreen />
         </View>
@@ -314,74 +312,9 @@ export default function ChatScreen() {
 // ─── Styles ───
 
 const s = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: colors.bg,
-  },
   flex1: { flex: 1 },
-
-  // Loading
-  center: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 32,
-  },
-  loadingText: {
-    ...typography.caption,
-    color: colors.textTertiary,
-    marginTop: 10,
-  },
-
-  // Message list
   listContent: {
     paddingVertical: 10,
     paddingHorizontal: 2,
-  },
-
-  // Agent indicator
-  agentIndicator: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    paddingHorizontal: 16,
-    paddingVertical: 5,
-    backgroundColor: colors.bgSecondary,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.borderSubtle,
-  },
-  agentIndicatorText: {
-    ...typography.caption,
-    fontWeight: "600",
-    color: colors.primary,
-  },
-  agentIndicatorSub: {
-    ...typography.tiny,
-    color: colors.textTertiary,
-  },
-
-  // Settings modal
-  settingsModal: {
-    flex: 1,
-    backgroundColor: colors.bg,
-  },
-  settingsHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    height: 50,
-    paddingHorizontal: 16,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.borderSubtle,
-  },
-  settingsTitle: {
-    ...typography.headline,
-    color: colors.text,
-  },
-  settingsClose: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: colors.primary,
-    letterSpacing: 0.1,
   },
 });
