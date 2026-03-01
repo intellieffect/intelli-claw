@@ -242,7 +242,7 @@ export function MessageList({
   useEffect(() => {
     if (focusedIdx === null) return;
     const el = bubbleRefs.current.get(focusedIdx);
-    if (el) el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    if (el) el.scrollIntoView({ behavior: "instant", block: "nearest" });
   }, [focusedIdx]);
 
   // Clear focus when input gets focused (entering insert mode)
