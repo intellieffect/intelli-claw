@@ -2,13 +2,11 @@ import React, { useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
-  TouchableOpacity,
+  Pressable,
   ScrollView,
   ActivityIndicator,
-  StyleSheet,
 } from "react-native";
 import { useGateway, type EventFrame } from "@intelli-claw/shared";
-import { colors } from "../theme/colors";
 
 interface SubagentStatus {
   content: string;
@@ -118,35 +116,34 @@ export function SubagentCard({
         : null;
 
   return (
-    <View style={styles.container}>
+    <View className="my-1.5 rounded-[10px] border border-border bg-card overflow-hidden">
       {/* Header */}
-      <TouchableOpacity
-        style={styles.header}
+      <Pressable
+        className="flex-row items-center gap-1.5 px-2.5 py-2"
         onPress={() => setExpanded(!expanded)}
-        activeOpacity={0.7}
       >
         {status.phase === "running" ? (
-          <ActivityIndicator size={12} color={colors.info} />
+          <ActivityIndicator size={12} color="hsl(217, 91%, 60%)" />
         ) : (
-          <Text style={styles.phaseIcon}>{phaseIcon}</Text>
+          <Text className="text-xs">{phaseIcon}</Text>
         )}
 
-        <Text style={styles.label} numberOfLines={1}>
+        <Text className="flex-1 text-xs font-semibold text-card-foreground/80" numberOfLines={1}>
           {displayLabel}
         </Text>
 
         {status.toolName && (
-          <Text style={styles.toolIndicator}>⚙ {status.toolName}</Text>
+          <Text className="text-[10px] text-muted-foreground">⚙ {status.toolName}</Text>
         )}
 
-        <Text style={styles.elapsed}>{elapsedStr}</Text>
-        <Text style={styles.chevron}>{expanded ? "▴" : "▾"}</Text>
-      </TouchableOpacity>
+        <Text className="text-[10px] text-muted-foreground">{elapsedStr}</Text>
+        <Text className="text-xs text-muted-foreground">{expanded ? "▴" : "▾"}</Text>
+      </Pressable>
 
       {/* Preview (collapsed) */}
       {!expanded && lastLines ? (
-        <View style={styles.preview}>
-          <Text style={styles.previewText} numberOfLines={1}>
+        <View className="border-t border-border/30 px-2.5 py-1.5">
+          <Text className="font-mono text-[11px] text-muted-foreground" numberOfLines={1}>
             {lastLines.split("\n").pop()}
           </Text>
         </View>
@@ -154,14 +151,14 @@ export function SubagentCard({
 
       {/* Expanded content */}
       {expanded && (
-        <View style={styles.body}>
+        <View className="border-t border-border/30 px-2.5 py-2">
           {task && (
-            <Text style={styles.taskText}>
+            <Text className="text-[11px] text-muted-foreground mb-1.5">
               Task: {task.length > 200 ? task.slice(0, 200) + "…" : task}
             </Text>
           )}
-          <ScrollView style={styles.contentScroll} nestedScrollEnabled>
-            <Text style={styles.contentText}>
+          <ScrollView className="max-h-[160px]" nestedScrollEnabled>
+            <Text className="font-mono text-[11px] leading-4 text-muted-foreground">
               {status.content ||
                 (status.phase === "pending" ? "대기 중..." : "처리 중...")}
             </Text>
@@ -171,73 +168,3 @@ export function SubagentCard({
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    marginVertical: 6,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: colors.borderLight,
-    backgroundColor: colors.bgSecondary,
-    overflow: "hidden",
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-  },
-  phaseIcon: {
-    fontSize: 12,
-  },
-  label: {
-    flex: 1,
-    fontSize: 12,
-    fontWeight: "600",
-    color: colors.textLight,
-  },
-  toolIndicator: {
-    fontSize: 10,
-    color: colors.textTertiary,
-  },
-  elapsed: {
-    fontSize: 10,
-    color: colors.textTertiary,
-  },
-  chevron: {
-    fontSize: 12,
-    color: colors.textTertiary,
-  },
-  preview: {
-    borderTopWidth: 1,
-    borderTopColor: colors.borderSubtle,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-  },
-  previewText: {
-    fontFamily: "monospace",
-    fontSize: 11,
-    color: colors.textTertiary,
-  },
-  body: {
-    borderTopWidth: 1,
-    borderTopColor: colors.borderSubtle,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-  },
-  taskText: {
-    fontSize: 11,
-    color: colors.textTertiary,
-    marginBottom: 6,
-  },
-  contentScroll: {
-    maxHeight: 160,
-  },
-  contentText: {
-    fontFamily: "monospace",
-    fontSize: 11,
-    lineHeight: 16,
-    color: colors.textTertiary,
-  },
-});

@@ -1,22 +1,28 @@
 import { useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, ScrollView, Alert, StyleSheet, Platform } from "react-native";
+import { View, Text, TextInput, Pressable, ScrollView, Alert, Platform } from "react-native";
 import { useGateway } from "@intelli-claw/shared";
 import Constants from "expo-constants";
-import { colors } from "../theme/colors";
 
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
-    <View style={s.infoRow}>
-      <Text style={s.infoLabel}>{label}</Text>
-      <Text style={s.infoValue} numberOfLines={1}>{value}</Text>
+    <View className="flex-row justify-between py-2.5">
+      <Text className="text-[13px] text-muted-foreground">{label}</Text>
+      <Text
+        className="text-[13px] text-foreground font-mono max-w-[60%] text-right"
+        numberOfLines={1}
+      >
+        {value}
+      </Text>
     </View>
   );
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <View style={s.section}>
-      <Text style={s.sectionTitle}>{title}</Text>
+    <View className="bg-card rounded-xl p-4 mb-4">
+      <Text className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest mb-3">
+        {title}
+      </Text>
       {children}
     </View>
   );
@@ -36,21 +42,45 @@ export default function SettingsScreen() {
   };
 
   return (
-    <ScrollView style={s.container} keyboardShouldPersistTaps="handled">
+    <ScrollView className="flex-1 bg-background p-4" keyboardShouldPersistTaps="handled">
       <Section title="Gateway 연결">
         {editing ? (
           <>
-            <Text style={s.fieldLabel}>URL</Text>
-            <TextInput style={s.textInput} value={url} onChangeText={setUrl} placeholder="ws://127.0.0.1:18789" autoCapitalize="none" autoCorrect={false} keyboardType="url" />
-            <Text style={s.fieldLabel}>Token</Text>
-            <TextInput style={s.textInput} value={token} onChangeText={setToken} placeholder="인증 토큰" autoCapitalize="none" autoCorrect={false} secureTextEntry />
-            <View style={s.btnRow}>
-              <TouchableOpacity onPress={handleSave} style={[s.btn, s.btnPrimary]} activeOpacity={0.7}>
-                <Text style={s.btnPrimaryText}>저장</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => { setUrl(gatewayUrl || ""); setToken(""); setEditing(false); }} style={[s.btn, s.btnSecondary]} activeOpacity={0.7}>
-                <Text style={s.btnSecondaryText}>취소</Text>
-              </TouchableOpacity>
+            <Text className="text-[11px] text-muted-foreground mb-1">URL</Text>
+            <TextInput
+              className="h-10 px-3 bg-background border border-border rounded-lg text-[13px] text-foreground mb-3"
+              value={url}
+              onChangeText={setUrl}
+              placeholder="ws://127.0.0.1:18789"
+              placeholderTextColor="#444444"
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="url"
+            />
+            <Text className="text-[11px] text-muted-foreground mb-1">Token</Text>
+            <TextInput
+              className="h-10 px-3 bg-background border border-border rounded-lg text-[13px] text-foreground mb-3"
+              value={token}
+              onChangeText={setToken}
+              placeholder="인증 토큰"
+              placeholderTextColor="#444444"
+              autoCapitalize="none"
+              autoCorrect={false}
+              secureTextEntry
+            />
+            <View className="flex-row gap-2">
+              <Pressable
+                className="flex-1 py-2.5 rounded-lg bg-info items-center active:opacity-80"
+                onPress={handleSave}
+              >
+                <Text className="text-[13px] font-medium text-white">저장</Text>
+              </Pressable>
+              <Pressable
+                className="flex-1 py-2.5 rounded-lg bg-border items-center active:opacity-80"
+                onPress={() => { setUrl(gatewayUrl || ""); setToken(""); setEditing(false); }}
+              >
+                <Text className="text-[13px] font-medium text-card-foreground/80">취소</Text>
+              </Pressable>
             </View>
           </>
         ) : (
@@ -59,9 +89,12 @@ export default function SettingsScreen() {
             <InfoRow label="URL" value={gatewayUrl || "-"} />
             <InfoRow label="Server" value={serverVersion || "-"} />
             <InfoRow label="Commit" value={serverCommit?.slice(0, 8) || "-"} />
-            <TouchableOpacity onPress={() => { setUrl(gatewayUrl || ""); setEditing(true); }} style={[s.btn, s.btnSecondary, { marginTop: 8 }]} activeOpacity={0.7}>
-              <Text style={s.btnSecondaryText}>연결 설정 변경</Text>
-            </TouchableOpacity>
+            <Pressable
+              className="mt-2 py-2.5 rounded-lg bg-border items-center active:opacity-80"
+              onPress={() => { setUrl(gatewayUrl || ""); setEditing(true); }}
+            >
+              <Text className="text-[13px] font-medium text-card-foreground/80">연결 설정 변경</Text>
+            </Pressable>
           </>
         )}
       </Section>
@@ -74,20 +107,3 @@ export default function SettingsScreen() {
     </ScrollView>
   );
 }
-
-const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg, padding: 16 },
-  section: { backgroundColor: colors.bgSecondary, borderRadius: 12, padding: 16, marginBottom: 16 },
-  sectionTitle: { fontSize: 11, fontWeight: "600", color: colors.textTertiary, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 },
-  infoRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 10 },
-  infoLabel: { fontSize: 13, color: colors.textMid },
-  infoValue: { fontSize: 13, color: colors.text, fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace", maxWidth: "60%", textAlign: "right" },
-  fieldLabel: { fontSize: 11, color: colors.textMid, marginBottom: 4 },
-  textInput: { height: 40, paddingHorizontal: 12, backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border, borderRadius: 8, fontSize: 13, marginBottom: 12 },
-  btnRow: { flexDirection: "row", gap: 8 },
-  btn: { flex: 1, paddingVertical: 10, borderRadius: 8, alignItems: "center" },
-  btnPrimary: { backgroundColor: colors.info },
-  btnPrimaryText: { color: colors.textWhite, fontWeight: "500", fontSize: 13 },
-  btnSecondary: { backgroundColor: colors.border },
-  btnSecondaryText: { color: colors.textLight, fontWeight: "500", fontSize: 13 },
-});

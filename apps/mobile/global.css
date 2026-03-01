@@ -32,6 +32,13 @@
     --input: 0 0% 13%;
     --ring: 18 100% 56%;
 
+    --success: 160 84% 39%;
+    --success-foreground: 0 0% 98%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 4%;
+    --info: 217 91% 60%;
+    --info-foreground: 0 0% 98%;
+
     --radius: 0.75rem;
   }
 }
