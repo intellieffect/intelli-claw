@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import { MarkdownRenderer, MarkdownFilePreview } from "./markdown-renderer";
 import { ToolCallCard } from "./tool-call-card";
-import type { DisplayMessage, DisplayAttachment } from "@/lib/gateway/hooks";
+import { HIDDEN_REPLY_RE, type DisplayMessage, type DisplayAttachment } from "@/lib/gateway/hooks";
 import { AgentAvatar } from "@/components/ui/agent-avatar";
 
 import { blobDownload, forceDownloadUrl } from "@/lib/utils/download";
@@ -232,7 +232,11 @@ export function MessageList({
     <div ref={containerRef} onScroll={handleScroll} className="h-full overflow-y-auto overflow-x-hidden px-[3%] pt-3 pb-8 md:px-[5%] lg:px-[7%] md:pt-4 md:pb-12" style={{ WebkitOverflowScrolling: "touch" }}>
       <div className="mx-auto max-w-[1200px] space-y-3 md:space-y-4">
         {messages
-          .filter((msg) => msg.role === "session-boundary" || msg.content || msg.toolCalls.length > 0 || msg.streaming || (msg.attachments && msg.attachments.length > 0))
+          .filter((msg) => {
+            // Hide NO_REPLY, HEARTBEAT_OK, and other system-injected messages
+            if (msg.content && HIDDEN_REPLY_RE.test(msg.content.trim())) return false;
+            return msg.role === "session-boundary" || msg.content || msg.toolCalls.length > 0 || msg.streaming || (msg.attachments && msg.attachments.length > 0);
+          })
           .map((msg, idx, arr) => {
             if (msg.role === "session-boundary") {
               return (
