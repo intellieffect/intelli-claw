@@ -706,10 +706,10 @@ export function useChat(sessionKey?: string) {
       // nest the key inside data depending on event type (#48)
       const evSessionKey = (raw.sessionKey ?? data?.sessionKey) as string | undefined;
       if (evSessionKey && evSessionKey !== sessionKeyRef.current) return;
-      // If the event has no sessionKey, allow it through when we have an
-      // active runId (the event likely belongs to the current run) or when
-      // it's a lifecycle event that will set the runId. (#72)
-      if (!evSessionKey && sessionKeyRef.current && stream !== "lifecycle" && !runIdRef.current) return;
+      // When evSessionKey is absent, assume the event belongs to the current
+      // session — the gateway may omit sessionKey from streamed agent events.
+      // Previously we dropped these unless runIdRef was set, which caused
+      // assistant messages to silently disappear when runId was missing. (#72)
 
 
       // Ignore events after abort until next lifecycle start
