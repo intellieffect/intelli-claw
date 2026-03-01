@@ -1,18 +1,17 @@
 /**
- * AgentSelector — Modal for selecting which agent to chat with.
- * Ported from web agent-selector.tsx for React Native.
+ * AgentSelector — Bottom sheet for selecting which agent to chat with.
  */
 import React, { useMemo } from "react";
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  Modal,
-  FlatList,
-  StyleSheet,
-} from "react-native";
+import { View, Text, Pressable, FlatList } from "react-native";
 import { Bot, Check, X } from "lucide-react-native";
 import { useAgents, type Agent } from "@intelli-claw/shared";
+import {
+  Actionsheet,
+  ActionsheetBackdrop,
+  ActionsheetContent,
+  ActionsheetDragIndicator,
+  ActionsheetDragIndicatorWrapper,
+} from "@/components/ui/actionsheet";
 
 // ─── Color helper ───
 
@@ -55,134 +54,81 @@ export function AgentSelector({ visible, onClose, selectedId, onSelect }: AgentS
     const isSelected = item.id === selectedId;
     const color = getAgentColor(item.id);
     return (
-      <TouchableOpacity
-        style={[s.row, isSelected && { backgroundColor: `${color}10` }]}
+      <Pressable
+        className="flex-row items-center px-4 py-3.5 gap-3"
+        style={isSelected ? { backgroundColor: `${color}10` } : undefined}
         onPress={() => handleSelect(item.id)}
-        activeOpacity={0.7}
       >
-        <View style={[s.iconCircle, { backgroundColor: `${color}20` }]}>
+        <View
+          className="w-9 h-9 rounded-full items-center justify-center"
+          style={{ backgroundColor: `${color}20` }}
+        >
           <Bot size={16} color={color} />
         </View>
-        <View style={s.rowMain}>
-          <Text style={s.rowName} numberOfLines={1}>
+        <View className="flex-1">
+          <Text className="text-[15px] font-medium text-foreground" numberOfLines={1}>
             {item.name || item.id}
           </Text>
-          {item.model && <Text style={s.rowModel}>{item.model}</Text>}
+          {item.model && <Text className="text-xs text-muted-foreground mt-px">{item.model}</Text>}
           {item.description && (
-            <Text style={s.rowDesc} numberOfLines={1}>
+            <Text className="text-xs text-muted-foreground mt-px" numberOfLines={1}>
               {item.description}
             </Text>
           )}
         </View>
         {isSelected && <Check size={16} color={color} />}
-      </TouchableOpacity>
+      </Pressable>
     );
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={s.backdrop}>
-        <TouchableOpacity style={s.backdropTouch} activeOpacity={1} onPress={onClose} />
-        <View style={s.sheet}>
-          <View style={s.handle} />
+    <Actionsheet isOpen={visible} onClose={onClose}>
+      <ActionsheetBackdrop />
+      <ActionsheetContent className="max-h-[70%]">
+        <ActionsheetDragIndicatorWrapper>
+          <ActionsheetDragIndicator />
+        </ActionsheetDragIndicatorWrapper>
 
-          <View style={s.header}>
-            <Text style={s.title}>에이전트 선택</Text>
-            <TouchableOpacity onPress={onClose} hitSlop={8}>
-              <X size={20} color="#9CA3AF" />
-            </TouchableOpacity>
-          </View>
-
-          {/* Auto option */}
-          <TouchableOpacity
-            style={[s.row, !selectedId && s.autoActive]}
-            onPress={() => handleSelect(undefined)}
-            activeOpacity={0.7}
-          >
-            <View style={[s.iconCircle, { backgroundColor: "#EFF6FF" }]}>
-              <Bot size={16} color="#3B82F6" />
-            </View>
-            <View style={s.rowMain}>
-              <Text style={[s.rowName, { fontWeight: "600" }]}>Auto (기본)</Text>
-              <Text style={s.rowDesc}>서버 기본 에이전트 사용</Text>
-            </View>
-            {!selectedId && <Check size={16} color="#3B82F6" />}
-          </TouchableOpacity>
-
-          <View style={s.divider} />
-
-          {/* Agent list */}
-          <FlatList
-            data={sortedAgents}
-            keyExtractor={(item) => item.id}
-            renderItem={renderAgent}
-            contentContainerStyle={s.listContent}
-            ListEmptyComponent={
-              <View style={s.emptyBox}>
-                <Text style={s.emptyText}>
-                  {loading ? "로딩 중..." : "등록된 에이전트 없음"}
-                </Text>
-              </View>
-            }
-          />
+        {/* Header */}
+        <View className="flex-row items-center justify-between px-4 pb-3 border-b border-border">
+          <Text className="text-[17px] font-bold text-foreground">에이전트 선택</Text>
+          <Pressable onPress={onClose} hitSlop={8}>
+            <X size={20} color="#9CA3AF" />
+          </Pressable>
         </View>
-      </View>
-    </Modal>
+
+        {/* Auto option */}
+        <Pressable
+          className={`flex-row items-center px-4 py-3.5 gap-3 ${!selectedId ? "bg-info/5" : ""}`}
+          onPress={() => handleSelect(undefined)}
+        >
+          <View className="w-9 h-9 rounded-full items-center justify-center bg-info/10">
+            <Bot size={16} color="hsl(217, 91%, 60%)" />
+          </View>
+          <View className="flex-1">
+            <Text className="text-[15px] font-semibold text-foreground">Auto (기본)</Text>
+            <Text className="text-xs text-muted-foreground">서버 기본 에이전트 사용</Text>
+          </View>
+          {!selectedId && <Check size={16} color="hsl(217, 91%, 60%)" />}
+        </Pressable>
+
+        <View className="h-px bg-border mx-4" />
+
+        {/* Agent list */}
+        <FlatList
+          data={sortedAgents}
+          keyExtractor={(item) => item.id}
+          renderItem={renderAgent}
+          contentContainerStyle={{ paddingBottom: 24 }}
+          ListEmptyComponent={
+            <View className="py-8 items-center">
+              <Text className="text-[13px] text-muted-foreground">
+                {loading ? "로딩 중..." : "등록된 에이전트 없음"}
+              </Text>
+            </View>
+          }
+        />
+      </ActionsheetContent>
+    </Actionsheet>
   );
 }
-
-const s = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.32)", justifyContent: "flex-end" },
-  backdropTouch: { flex: 1 },
-  sheet: {
-    maxHeight: "70%",
-    backgroundColor: "#FFFFFF",
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
-    paddingTop: 6,
-  },
-  handle: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: "#D1D5DB",
-    alignSelf: "center",
-    marginBottom: 8,
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#F3F4F6",
-  },
-  title: { fontSize: 17, fontWeight: "700", color: "#111827" },
-
-  // Row
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    gap: 12,
-  },
-  autoActive: { backgroundColor: "#F0F9FF" },
-  iconCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  rowMain: { flex: 1 },
-  rowName: { fontSize: 15, fontWeight: "500", color: "#111827" },
-  rowModel: { fontSize: 12, color: "#6B7280", marginTop: 1 },
-  rowDesc: { fontSize: 12, color: "#9CA3AF", marginTop: 1 },
-
-  divider: { height: 1, backgroundColor: "#E5E7EB", marginHorizontal: 16 },
-  listContent: { paddingBottom: 24 },
-  emptyBox: { paddingVertical: 32, alignItems: "center" },
-  emptyText: { fontSize: 13, color: "#9CA3AF" },
-});

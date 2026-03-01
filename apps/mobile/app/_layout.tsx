@@ -1,8 +1,11 @@
+import "../global.css";
 import "react-native-get-random-values"; // polyfill crypto.getRandomValues for uuid
+import "react-native-gesture-handler";
 import { useState, useCallback, useEffect } from "react";
 import { Slot } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import Constants from "expo-constants";
 import {
   GatewayProvider,
@@ -73,17 +76,19 @@ export default function RootLayout() {
   }, []);
 
   return (
-    <SafeAreaProvider>
-      <SessionContext.Provider value={{ activeSessionKey, setActiveSessionKey, openSessionPicker }}>
-        <GatewayProvider
-          url={config.url}
-          token={config.token}
-          onConfigChange={saveConfig}
-        >
-          <StatusBar style="auto" />
-          <Slot />
-        </GatewayProvider>
-      </SessionContext.Provider>
-    </SafeAreaProvider>
+    <GestureHandlerRootView className="flex-1">
+      <SafeAreaProvider>
+        <SessionContext.Provider value={{ activeSessionKey, setActiveSessionKey, openSessionPicker }}>
+          <GatewayProvider
+            url={config.url}
+            token={config.token}
+            onConfigChange={saveConfig}
+          >
+            <StatusBar style="auto" />
+            <Slot />
+          </GatewayProvider>
+        </SessionContext.Provider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }

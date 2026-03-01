@@ -264,7 +264,7 @@ export function ChatInput({
 
   return (
     <div
-      className="relative px-2 py-1.5 sm:px-3 sm:py-2 safe-bottom electron-bottom-pad"
+      className="relative px-[3%] py-1.5 sm:py-2 md:px-[5%] lg:px-[7%] safe-bottom electron-bottom-pad"
       style={isMobile && keyboardHeight > 0 ? { paddingBottom: `max(4px, env(safe-area-inset-bottom, 0px))` } : undefined}
     >
       {/* Skill picker */}
@@ -276,7 +276,7 @@ export function ChatInput({
       />
 
       <div
-        className="w-full"
+        className="mx-auto w-full max-w-[1200px]"
       >
         <div
           className="flex-1"
@@ -448,7 +448,11 @@ export function ChatInput({
 
         </div>
       </div>
-
+      {!isMobile && (
+        <p className="mt-1 text-center text-[10px] sm:text-[11px] text-muted-foreground/50">
+          Shift+Enter로 줄바꿈 · 에이전트는 실수할 수 있습니다
+        </p>
+      )}
     </div>
   );
 }

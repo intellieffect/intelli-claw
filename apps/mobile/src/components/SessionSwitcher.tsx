@@ -1,11 +1,10 @@
 /**
- * SessionSwitcher — Bottom sheet modal for switching between chat sessions.
- * Ported from web session-switcher.tsx for React Native.
+ * SessionSwitcher — Bottom sheet for switching between chat sessions.
  *
  * Features:
  * - Session list grouped by agent, sorted by updatedAt
  * - Search/filter sessions
- * - Swipe-to-delete via long-press + confirm
+ * - Long-press for delete/reset actions via Alert
  * - Create new session
  * - "Default session" quick-select at top
  */
@@ -14,20 +13,16 @@ import {
   View,
   Text,
   TextInput,
-  TouchableOpacity,
-  Modal,
+  Pressable,
   SectionList,
   RefreshControl,
   Alert,
-  StyleSheet,
 } from "react-native";
 import {
   Search,
   Plus,
   X,
   Check,
-  Trash2,
-  RotateCcw,
   MessageSquare,
   Bot,
   Hash,
@@ -40,6 +35,13 @@ import {
   sessionDisplayName,
   type Session,
 } from "@intelli-claw/shared";
+import {
+  Actionsheet,
+  ActionsheetBackdrop,
+  ActionsheetContent,
+  ActionsheetDragIndicator,
+  ActionsheetDragIndicatorWrapper,
+} from "@/components/ui/actionsheet";
 
 // ─── Constants ───
 
@@ -121,9 +123,8 @@ export function SessionSwitcher({
 }: SessionSwitcherProps) {
   const [search, setSearch] = useState("");
 
-  // Build sections from sessions
-  const sections = useMemo((): SectionData[] => {
-    const grouped = new Map<string, SessionItem[]>();
+  const sortedItems = useMemo((): SessionItem[] => {
+    const items: SessionItem[] = [];
     for (const sess of sessions) {
       const p = parseSessionKey(sess.key);
       const aid = p?.agentId || "unknown";
@@ -137,7 +138,6 @@ export function SessionSwitcher({
         updatedAt: sess.updatedAt,
       };
 
-      // Filter by search
       if (search.trim()) {
         const q = search.toLowerCase();
         const match =
@@ -147,30 +147,20 @@ export function SessionSwitcher({
         if (!match) continue;
       }
 
-      const list = grouped.get(aid) || [];
-      list.push(item);
-      grouped.set(aid, list);
+      items.push(item);
     }
 
-    return Array.from(grouped.entries())
-      .map(([aid, data]) => ({
-        title: aid,
-        agentId: aid,
-        data: data.sort((a, b) => {
-          if (a.sessionId === "main" && b.sessionId !== "main") return -1;
-          if (b.sessionId === "main" && a.sessionId !== "main") return 1;
-          return String(b.updatedAt || "").localeCompare(String(a.updatedAt || ""));
-        }),
-      }))
-      .sort((a, b) =>
-        String(b.data[0]?.updatedAt || "").localeCompare(String(a.data[0]?.updatedAt || "")),
-      );
+    return items.sort((a, b) =>
+      String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")),
+    );
   }, [sessions, search]);
 
-  const totalCount = useMemo(
-    () => sections.reduce((sum, s) => sum + s.data.length, 0),
-    [sections],
-  );
+  const sections = useMemo((): SectionData[] => {
+    if (sortedItems.length === 0) return [];
+    return [{ title: "all", agentId: "all", data: sortedItems }];
+  }, [sortedItems]);
+
+  const totalCount = sortedItems.length;
 
   const handleSelect = useCallback(
     (key: string | null) => {
@@ -210,257 +200,145 @@ export function SessionSwitcher({
   );
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={s.backdrop}>
-        <TouchableOpacity style={s.backdropTouch} activeOpacity={1} onPress={onClose} />
-        <View style={s.sheet}>
-          {/* Handle */}
-          <View style={s.handle} />
+    <Actionsheet isOpen={visible} onClose={onClose}>
+      <ActionsheetBackdrop />
+      <ActionsheetContent className="max-h-[85%]">
+        <ActionsheetDragIndicatorWrapper>
+          <ActionsheetDragIndicator />
+        </ActionsheetDragIndicatorWrapper>
 
-          {/* Header */}
-          <View style={s.header}>
-            <Text style={s.title}>세션 선택</Text>
-            <Text style={s.countBadge}>
-              {totalCount}개{search ? ` (${sessions.length}개 중)` : ""}
-            </Text>
-            <TouchableOpacity onPress={onClose} hitSlop={8}>
-              <Text style={s.closeBtn}>닫기</Text>
-            </TouchableOpacity>
-          </View>
+        {/* Header */}
+        <View className="flex-row items-center px-4 pb-3 border-b border-border gap-2">
+          <Text className="text-[17px] font-bold text-foreground">세션 선택</Text>
+          <Text className="flex-1 text-xs text-muted-foreground">
+            {totalCount}개{search ? ` (${sessions.length}개 중)` : ""}
+          </Text>
+          <Pressable onPress={onClose} hitSlop={8} accessibilityLabel="닫기" accessibilityRole="button">
+            <Text className="text-sm font-semibold text-primary">닫기</Text>
+          </Pressable>
+        </View>
 
-          {/* Search */}
-          <View style={s.searchRow}>
-            <Search size={16} color="#9CA3AF" />
-            <TextInput
-              style={s.searchInput}
-              placeholder="세션 검색..."
-              placeholderTextColor="#9CA3AF"
-              value={search}
-              onChangeText={setSearch}
-              autoCorrect={false}
-              clearButtonMode="while-editing"
-            />
-            {search.length > 0 && (
-              <TouchableOpacity onPress={() => setSearch("")} hitSlop={8}>
-                <X size={16} color="#9CA3AF" />
-              </TouchableOpacity>
-            )}
-          </View>
+        {/* Search */}
+        <View className="flex-row items-center px-4 py-2.5 border-b border-border/50 gap-2">
+          <Search size={16} color="#666666" />
+          <TextInput
+            className="flex-1 text-sm text-foreground p-0"
+            placeholder="세션 검색..."
+            placeholderTextColor="#444444"
+            value={search}
+            onChangeText={setSearch}
+            autoCorrect={false}
+            clearButtonMode="while-editing"
+          />
+          {search.length > 0 && (
+            <Pressable onPress={() => setSearch("")} hitSlop={8} accessibilityLabel="검색 지우기" accessibilityRole="button">
+              <X size={16} color="#666666" />
+            </Pressable>
+          )}
+        </View>
 
-          {/* Session list */}
-          <SectionList
-            sections={sections}
-            keyExtractor={(item) => item.key}
-            stickySectionHeadersEnabled={false}
-            refreshControl={
-              <RefreshControl refreshing={sessionsLoading} onRefresh={onRefresh} tintColor="#3B82F6" />
-            }
-            contentContainerStyle={s.listContent}
-            ListHeaderComponent={
-              <TouchableOpacity
-                style={[s.row, !currentKey && s.defaultRow]}
-                onPress={() => handleSelect(null)}
-                activeOpacity={0.7}
+        {/* Session list */}
+        <SectionList
+          sections={sections}
+          keyExtractor={(item) => item.key}
+          stickySectionHeadersEnabled={false}
+          refreshControl={
+            <RefreshControl refreshing={sessionsLoading} onRefresh={onRefresh} tintColor="hsl(18, 100%, 56%)" />
+          }
+          contentContainerStyle={{ paddingBottom: 8 }}
+          ListHeaderComponent={
+            <Pressable
+              className={`flex-row items-center px-4 py-3 border-b border-border/50 gap-2.5 ${!currentKey ? "bg-secondary" : ""}`}
+              onPress={() => handleSelect(null)}
+              accessibilityLabel="기본 세션"
+              accessibilityRole="button"
+            >
+              <View className="w-7 items-center">
+                <Bot size={16} color="hsl(18, 100%, 56%)" />
+              </View>
+              <View className="flex-1 mr-2">
+                <Text className="text-sm font-semibold text-foreground">기본 세션 (auto)</Text>
+                <Text className="text-xs text-muted-foreground" numberOfLines={1}>
+                  {mainSessionKey || "main"}
+                </Text>
+              </View>
+              {!currentKey && <Check size={16} color="#10B981" />}
+            </Pressable>
+          }
+          ListEmptyComponent={
+            search ? (
+              <View className="py-8 items-center">
+                <Text className="text-[13px] text-muted-foreground">검색 결과 없음</Text>
+              </View>
+            ) : null
+          }
+          renderSectionHeader={() => null}
+          renderItem={({ item }) => {
+            const isActive = item.key === currentKey;
+            const color = getAgentColor(item.agentId);
+            const parsed = parseSessionKey(item.key);
+            const Icon = TYPE_ICONS[parsed?.type || ""] || MessageSquare;
+            return (
+              <Pressable
+                className="flex-row items-center px-4 py-3 border-b border-border/50 gap-2.5"
+                style={isActive ? { backgroundColor: `${color}14`, borderLeftWidth: 3, borderLeftColor: color } : undefined}
+                onPress={() => handleSelect(item.key === mainSessionKey ? null : item.key)}
+                accessibilityLabel={item.title}
+                accessibilityRole="button"
+                onLongPress={() => {
+                  const actions: Array<{ text: string; style?: "cancel" | "destructive"; onPress?: () => void }> = [];
+                  if (onReset) actions.push({ text: "리셋", onPress: () => handleReset(item.key) });
+                  if (onDelete) actions.push({ text: "삭제", style: "destructive", onPress: () => handleDelete(item.key) });
+                  if (actions.length > 0) {
+                    Alert.alert(item.title, item.key, [
+                      { text: "취소", style: "cancel" },
+                      ...actions,
+                    ]);
+                  }
+                }}
               >
-                <View style={s.rowIcon}>
-                  <Bot size={16} color="#3B82F6" />
+                <View className="w-7 items-center">
+                  <Icon size={14} color="#666666" />
                 </View>
-                <View style={s.rowMain}>
-                  <Text style={[s.rowTitle, { fontWeight: "600" }]}>기본 세션 (auto)</Text>
-                  <Text style={s.rowSub} numberOfLines={1}>
-                    {mainSessionKey || "main"}
+                <View className="flex-1 mr-2">
+                  <Text
+                    className="text-sm text-foreground font-medium"
+                    style={isActive ? { color, fontWeight: "700" } : undefined}
+                    numberOfLines={1}
+                  >
+                    {item.sessionId === "main" ? "main" : item.title}
                   </Text>
-                </View>
-                {!currentKey && <Check size={16} color="#10B981" />}
-              </TouchableOpacity>
-            }
-            ListEmptyComponent={
-              search ? (
-                <View style={s.emptyBox}>
-                  <Text style={s.emptyText}>검색 결과 없음</Text>
-                </View>
-              ) : null
-            }
-            renderSectionHeader={({ section }) => {
-              const color = getAgentColor(section.agentId);
-              return (
-                <View style={s.sectionHeader}>
-                  <Text style={[s.sectionTitle, { color }]}>{section.title}</Text>
-                  <View style={[s.sectionBadge, { backgroundColor: color + "20" }]}>
-                    <Text style={[s.sectionCount, { color }]}>{section.data.length}</Text>
-                  </View>
-                </View>
-              );
-            }}
-            renderItem={({ item }) => {
-              const isActive = item.key === currentKey;
-              const color = getAgentColor(item.agentId);
-              const parsed = parseSessionKey(item.key);
-              const Icon = TYPE_ICONS[parsed?.type || ""] || MessageSquare;
-              return (
-                <TouchableOpacity
-                  style={[
-                    s.row,
-                    isActive && { backgroundColor: `${color}14`, borderLeftWidth: 3, borderLeftColor: color },
-                  ]}
-                  onPress={() => handleSelect(item.key === mainSessionKey ? null : item.key)}
-                  onLongPress={() => {
-                    // Show action sheet on long press
-                    const actions = [];
-                    if (onReset) actions.push({ text: "리셋", onPress: () => handleReset(item.key) });
-                    if (onDelete) actions.push({ text: "삭제", style: "destructive" as const, onPress: () => handleDelete(item.key) });
-                    if (actions.length > 0) {
-                      Alert.alert(item.title, item.key, [
-                        { text: "취소", style: "cancel" },
-                        ...actions,
-                      ]);
-                    }
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <View style={s.rowIcon}>
-                    <Icon size={14} color="#9CA3AF" />
-                  </View>
-                  <View style={s.rowMain}>
-                    <View style={s.rowTitleRow}>
-                      <Text
-                        style={[s.rowTitle, isActive && { color, fontWeight: "700" }]}
-                        numberOfLines={1}
-                      >
-                        {item.sessionId === "main"
-                          ? `${item.agentId} / main`
-                          : item.title}
-                      </Text>
+                  <View className="flex-row items-center gap-1.5 mt-0.5">
+                    <View className="px-1.5 py-px rounded-md" style={{ backgroundColor: color + "20" }}>
+                      <Text className="text-[10px] font-bold" style={{ color }}>{item.agentId}</Text>
                     </View>
                     {item.lastMessage ? (
-                      <Text style={s.rowSub} numberOfLines={1}>
+                      <Text className="text-xs text-muted-foreground flex-1" numberOfLines={1}>
                         {item.lastMessage}
                       </Text>
                     ) : null}
                   </View>
-                  <View style={s.rowRight}>
-                    <Text style={s.rowTime}>{timeAgo(item.updatedAt)}</Text>
-                    {isActive && <Check size={14} color={color} />}
-                  </View>
-                </TouchableOpacity>
-              );
-            }}
-          />
+                </View>
+                <View className="items-end gap-1">
+                  <Text className="text-[11px] text-muted-foreground/60">{timeAgo(item.updatedAt)}</Text>
+                  {isActive && <Check size={14} color={color} />}
+                </View>
+              </Pressable>
+            );
+          }}
+        />
 
-          {/* New session button */}
-          <TouchableOpacity
-            style={s.newSessionBtn}
-            onPress={() => {
-              handleSelect(null);
-            }}
-            activeOpacity={0.7}
-          >
-            <Plus size={18} color="#3B82F6" />
-            <Text style={s.newSessionText}>새 대화 시작</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    </Modal>
+        {/* New session button */}
+        <Pressable
+          className="flex-row items-center justify-center gap-2 py-3.5 border-t border-border bg-background"
+          onPress={() => handleSelect(null)}
+          accessibilityLabel="새 대화 시작"
+          accessibilityRole="button"
+        >
+          <Plus size={18} color="hsl(217, 91%, 60%)" />
+          <Text className="text-sm font-semibold text-primary">새 대화 시작</Text>
+        </Pressable>
+      </ActionsheetContent>
+    </Actionsheet>
   );
 }
-
-const s = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.32)", justifyContent: "flex-end" },
-  backdropTouch: { flex: 1 },
-  sheet: {
-    maxHeight: "85%",
-    backgroundColor: "#FFFFFF",
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
-    paddingTop: 6,
-  },
-  handle: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: "#D1D5DB",
-    alignSelf: "center",
-    marginBottom: 8,
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#F3F4F6",
-    gap: 8,
-  },
-  title: { fontSize: 17, fontWeight: "700", color: "#111827" },
-  countBadge: { flex: 1, fontSize: 12, color: "#9CA3AF" },
-  closeBtn: { fontSize: 14, fontWeight: "600", color: "#2563EB" },
-
-  // Search
-  searchRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#E5E7EB",
-    gap: 8,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 14,
-    color: "#111827",
-    padding: 0,
-  },
-
-  // List
-  listContent: { paddingBottom: 8 },
-
-  // Section header
-  sectionHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 6,
-    gap: 8,
-  },
-  sectionTitle: { fontSize: 12, textTransform: "uppercase", fontWeight: "700", letterSpacing: 0.3 },
-  sectionBadge: { paddingHorizontal: 6, paddingVertical: 1, borderRadius: 8 },
-  sectionCount: { fontSize: 10, fontWeight: "600" },
-
-  // Row
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#F3F4F6",
-    gap: 10,
-  },
-  defaultRow: { backgroundColor: "#F0F9FF" },
-  rowIcon: { width: 28, alignItems: "center" },
-  rowMain: { flex: 1, marginRight: 8 },
-  rowTitleRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  rowTitle: { fontSize: 14, color: "#111827", fontWeight: "500" },
-  rowSub: { fontSize: 12, color: "#9CA3AF", marginTop: 2 },
-  rowRight: { alignItems: "flex-end", gap: 4 },
-  rowTime: { fontSize: 11, color: "#D1D5DB" },
-
-  // Empty
-  emptyBox: { paddingVertical: 32, alignItems: "center" },
-  emptyText: { fontSize: 13, color: "#9CA3AF" },
-
-  // New session
-  newSessionBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    paddingVertical: 14,
-    borderTopWidth: 1,
-    borderTopColor: "#E5E7EB",
-    backgroundColor: "#FFFFFF",
-  },
-  newSessionText: { fontSize: 14, fontWeight: "600", color: "#3B82F6" },
-});

@@ -2,15 +2,13 @@ import React, { useState, useMemo } from "react";
 import {
   View,
   Text,
-  TouchableOpacity,
+  Pressable,
   ScrollView,
   ActivityIndicator,
-  StyleSheet,
 } from "react-native";
 import type { ToolCall } from "@intelli-claw/shared";
 import { SubagentCard } from "./SubagentCard";
 
-/** Tools that spawn subagents */
 const SPAWN_TOOLS = new Set(["sessions_spawn", "subagents"]);
 
 function formatJson(s: string): string {
@@ -37,12 +35,8 @@ export function ToolCallCard({ toolCall }: { toolCall: ToolCall }) {
           result.sessionKey ||
           result.key ||
           undefined) as string | undefined,
-        label: (args.label || result.label || undefined) as
-          | string
-          | undefined,
-        task: (args.task || args.message || undefined) as
-          | string
-          | undefined,
+        label: (args.label || result.label || undefined) as string | undefined,
+        task: (args.task || args.message || undefined) as string | undefined,
       };
     } catch {
       return { sessionKey: undefined, label: undefined, task: undefined };
@@ -61,56 +55,59 @@ export function ToolCallCard({ toolCall }: { toolCall: ToolCall }) {
 
   const statusColor =
     toolCall.status === "running"
-      ? "#3B82F6"
+      ? "bg-info"
       : toolCall.status === "done"
-        ? "#10B981"
-        : "#EF4444";
+        ? "bg-success"
+        : "bg-destructive";
 
   return (
-    <View style={styles.container}>
-      <TouchableOpacity
-        style={styles.header}
+    <View className="my-1 rounded-[10px] border border-border bg-card overflow-hidden">
+      <Pressable
+        className="flex-row items-center gap-1.5 px-2.5 py-2"
         onPress={() => setExpanded(!expanded)}
-        activeOpacity={0.7}
       >
-        <Text style={styles.chevron}>{expanded ? "▾" : "▸"}</Text>
+        <Text className="text-xs text-muted-foreground w-3.5">
+          {expanded ? "▾" : "▸"}
+        </Text>
 
         {toolCall.status === "running" ? (
-          <ActivityIndicator size={12} color="#3B82F6" />
+          <ActivityIndicator size={12} color="hsl(217, 91%, 60%)" />
         ) : (
-          <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
+          <View className={`w-2 h-2 rounded-full ${statusColor}`} />
         )}
 
-        <Text style={styles.toolName}>{toolCall.name}</Text>
+        <Text className="font-mono text-xs text-card-foreground/80 flex-1">
+          {toolCall.name}
+        </Text>
 
         {toolCall.status === "running" && (
-          <Text style={styles.runningLabel}>실행 중...</Text>
+          <Text className="text-[11px] text-muted-foreground">실행 중...</Text>
         )}
-      </TouchableOpacity>
+      </Pressable>
 
       {expanded && (
-        <View style={styles.body}>
+        <View className="border-t border-border px-2.5 py-2">
           {toolCall.args && (
-            <View style={styles.section}>
-              <Text style={styles.sectionLabel}>Arguments</Text>
+            <View className="mb-2">
+              <Text className="text-[11px] text-muted-foreground mb-1">Arguments</Text>
               <ScrollView
-                style={styles.codeScroll}
+                className="max-h-[140px] bg-secondary rounded-md p-2"
                 nestedScrollEnabled
               >
-                <Text style={styles.codeText}>
+                <Text className="font-mono text-[11px] text-muted-foreground leading-4">
                   {formatJson(toolCall.args)}
                 </Text>
               </ScrollView>
             </View>
           )}
           {toolCall.result && (
-            <View style={styles.section}>
-              <Text style={styles.sectionLabel}>Result</Text>
+            <View className="mb-2">
+              <Text className="text-[11px] text-muted-foreground mb-1">Result</Text>
               <ScrollView
-                style={styles.codeScroll}
+                className="max-h-[140px] bg-secondary rounded-md p-2"
                 nestedScrollEnabled
               >
-                <Text style={styles.codeText}>
+                <Text className="font-mono text-[11px] text-muted-foreground leading-4">
                   {formatJson(toolCall.result)}
                 </Text>
               </ScrollView>
@@ -121,67 +118,3 @@ export function ToolCallCard({ toolCall }: { toolCall: ToolCall }) {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    marginVertical: 4,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    backgroundColor: "#F9FAFB",
-    overflow: "hidden",
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-  },
-  chevron: {
-    fontSize: 12,
-    color: "#6B7280",
-    width: 14,
-  },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  toolName: {
-    fontFamily: "monospace",
-    fontSize: 12,
-    color: "#374151",
-    flex: 1,
-  },
-  runningLabel: {
-    fontSize: 11,
-    color: "#9CA3AF",
-  },
-  body: {
-    borderTopWidth: 1,
-    borderTopColor: "#E5E7EB",
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-  },
-  section: {
-    marginBottom: 8,
-  },
-  sectionLabel: {
-    fontSize: 11,
-    color: "#9CA3AF",
-    marginBottom: 4,
-  },
-  codeScroll: {
-    maxHeight: 140,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 6,
-    padding: 8,
-  },
-  codeText: {
-    fontFamily: "monospace",
-    fontSize: 11,
-    color: "#6B7280",
-    lineHeight: 16,
-  },
-});

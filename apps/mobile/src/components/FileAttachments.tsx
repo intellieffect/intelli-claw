@@ -46,6 +46,9 @@ export function AttachmentPreview({
             style={styles.removeBtn}
             onPress={() => onRemove(att.id)}
             activeOpacity={0.7}
+            accessibilityLabel="첨부 삭제"
+            accessibilityRole="button"
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           >
             <Text style={styles.removeText}>✕</Text>
           </TouchableOpacity>
@@ -131,6 +134,9 @@ export function AttachButton({
       style={styles.attachBtn}
       activeOpacity={0.7}
       disabled={disabled}
+      accessibilityLabel="파일 첨부"
+      accessibilityRole="button"
+      hitSlop={{ top: 5, bottom: 5, left: 5, right: 5 }}
     >
       <Text style={[styles.attachIcon, disabled && styles.attachIconDisabled]}>
         📎
@@ -185,9 +191,9 @@ export function useFileAttachments() {
 
 const styles = StyleSheet.create({
   previewBar: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#0a0a0a",
     borderTopWidth: 1,
-    borderTopColor: "#F3F4F6",
+    borderTopColor: "#222222",
   },
   previewContent: {
     paddingHorizontal: 12,
@@ -203,7 +209,7 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
     borderRadius: 8,
-    backgroundColor: "#F3F4F6",
+    backgroundColor: "#1a1a1a",
   },
   removeBtn: {
     position: "absolute",
@@ -223,14 +229,15 @@ const styles = StyleSheet.create({
   },
   thumbName: {
     fontSize: 9,
-    color: "#9CA3AF",
+    color: "#666666",
     marginTop: 2,
     maxWidth: 60,
     textAlign: "center",
   },
   attachBtn: {
-    paddingHorizontal: 4,
-    paddingVertical: 8,
+    width: 34,
+    height: 34,
+    alignItems: "center",
     justifyContent: "center",
   },
   attachIcon: {

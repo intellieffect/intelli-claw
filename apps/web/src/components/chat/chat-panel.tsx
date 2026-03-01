@@ -677,6 +677,35 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
           portalContainer={panelRef.current}
         />
       )}
+
+      {/* Session Switcher (Cmd+K) */}
+      {sessionSwitcherOpen && (
+        <SessionSwitcher
+          sessions={sessions}
+          currentKey={effectiveSessionKey}
+          onSelect={(key) => { setSessionKey(key); setSessionSwitcherOpen(false); }}
+          onNew={handleNewSession}
+          onRename={handleRename}
+          onDelete={handleDelete}
+          onReset={handleReset}
+          onHide={handleHide}
+          open={sessionSwitcherOpen}
+          onOpenChange={setSessionSwitcherOpen}
+          portalContainer={panelRef.current}
+        />
+      )}
+
+      {/* Agent Browser (Cmd+O) */}
+      {agentBrowserOpen && (
+        <AgentBrowser
+          sessions={sessions}
+          currentKey={effectiveSessionKey}
+          onSelect={(key) => { setSessionKey(key); setAgentBrowserOpen(false); }}
+          open={agentBrowserOpen}
+          onOpenChange={setAgentBrowserOpen}
+          portalContainer={panelRef.current}
+        />
+      )}
     </div>
   );
 }

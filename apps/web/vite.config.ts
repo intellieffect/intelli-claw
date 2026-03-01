@@ -15,6 +15,7 @@ export default defineConfig({
   server: {
     port: 4000,
     host: true,
+    allowedHosts: process.env.ALLOWED_HOSTS?.split(",").map(h => h.trim()) || [],
     https: {
       key: fs.readFileSync(path.resolve(__dirname, "../../certificates/localhost-key.pem")),
       cert: fs.readFileSync(path.resolve(__dirname, "../../certificates/localhost.pem")),
