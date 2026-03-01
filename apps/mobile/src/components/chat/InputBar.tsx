@@ -1,5 +1,5 @@
 import React, { useRef, useEffect } from "react";
-import { View, TextInput, TouchableOpacity, Animated } from "react-native";
+import { View, TextInput, Pressable, Animated } from "react-native";
 import { ArrowUp, Square } from "lucide-react-native";
 import { cn } from "@/lib/utils";
 import { AttachButton } from "../FileAttachments";
@@ -51,20 +51,20 @@ export function InputBar({
 
   return (
     <View
-      className="px-3 pt-2 bg-background"
-      style={{ paddingBottom: keyboardVisible ? 6 : Math.max(10, bottomInset) }}
+      className="px-3 pt-2.5 bg-background"
+      style={{ paddingBottom: keyboardVisible ? 8 : Math.max(12, bottomInset) }}
     >
-      <View className="flex-row items-end bg-card rounded-3xl border border-border px-2 py-1.5 min-h-[44px]">
+      <View className="flex-row items-end bg-card rounded-[28px] border border-border px-3 py-2.5 min-h-[56px]">
         {/* Attach */}
-        <View className="w-9 h-9 items-center justify-center self-end">
+        <View className="w-11 h-11 items-center justify-center self-end">
           <AttachButton onAttach={onAttach} disabled={!connected} />
         </View>
 
         {/* Input */}
         <TextInput
-          className="flex-1 min-h-[34px] max-h-[120px] px-2 py-1.5 text-[15px] leading-[21px] text-foreground"
+          className="flex-1 min-h-[44px] max-h-[120px] px-2 py-2.5 text-[17px] leading-7 text-foreground"
           placeholder={connected ? "메시지 입력..." : "연결 안 됨"}
-          placeholderTextColor="hsl(0 0% 45%)"
+          placeholderTextColor="hsl(0 0% 40%)"
           value={text}
           onChangeText={onChangeText}
           editable={connected}
@@ -74,34 +74,32 @@ export function InputBar({
         />
 
         {/* Send / Abort */}
-        <View className="w-9 h-9 items-center justify-center self-end">
+        <View className="w-11 h-11 items-center justify-center self-end">
           <Animated.View style={{ opacity: sendOpacity, transform: [{ scale: sendScale }] }}>
             {streaming ? (
-              <TouchableOpacity
+              <Pressable
                 onPress={onAbort}
-                className="w-8 h-8 rounded-full bg-foreground items-center justify-center"
-                activeOpacity={0.7}
+                className="w-10 h-10 rounded-full bg-foreground items-center justify-center"
                 accessibilityLabel="스트리밍 중단"
                 accessibilityRole="button"
                 hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
               >
-                <Square size={11} color="hsl(0 0% 4%)" fill="hsl(0 0% 4%)" />
-              </TouchableOpacity>
+                <Square size={14} color="hsl(0 0% 4%)" fill="hsl(0 0% 4%)" />
+              </Pressable>
             ) : (
-              <TouchableOpacity
+              <Pressable
                 onPress={handleSendPress}
                 className={cn(
-                  "w-8 h-8 rounded-full items-center justify-center",
+                  "w-10 h-10 rounded-full items-center justify-center",
                   canSend ? "bg-primary" : "bg-muted",
                 )}
                 disabled={!canSend}
-                activeOpacity={0.7}
                 accessibilityLabel="전송"
                 accessibilityRole="button"
                 hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
               >
-                <ArrowUp size={17} color={canSend ? "hsl(0 0% 4%)" : "hsl(0 0% 45%)"} strokeWidth={2.5} />
-              </TouchableOpacity>
+                <ArrowUp size={22} color={canSend ? "hsl(0 0% 4%)" : "hsl(0 0% 45%)"} strokeWidth={2.5} />
+              </Pressable>
             )}
           </Animated.View>
         </View>

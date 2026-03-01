@@ -13,8 +13,6 @@ import {
   ActionsheetDragIndicatorWrapper,
 } from "@/components/ui/actionsheet";
 
-// ─── Color helper ───
-
 const PALETTE = [
   "#6366F1", "#EC4899", "#F59E0B", "#10B981", "#8B5CF6",
   "#14B8A6", "#F97316", "#EF4444", "#06B6D4", "#3B82F6",
@@ -27,8 +25,6 @@ function getAgentColor(agentId: string): string {
   }
   return PALETTE[Math.abs(hash) % PALETTE.length];
 }
-
-// ─── Props ───
 
 export interface AgentSelectorProps {
   visible: boolean;
@@ -55,28 +51,28 @@ export function AgentSelector({ visible, onClose, selectedId, onSelect }: AgentS
     const color = getAgentColor(item.id);
     return (
       <Pressable
-        className="flex-row items-center px-4 py-3.5 gap-3"
+        className="flex-row items-center px-5 py-4 gap-3.5"
         style={isSelected ? { backgroundColor: `${color}10` } : undefined}
         onPress={() => handleSelect(item.id)}
       >
         <View
-          className="w-9 h-9 rounded-full items-center justify-center"
+          className="w-11 h-11 rounded-full items-center justify-center"
           style={{ backgroundColor: `${color}20` }}
         >
-          <Bot size={16} color={color} />
+          <Bot size={20} color={color} />
         </View>
         <View className="flex-1">
-          <Text className="text-[15px] font-medium text-foreground" numberOfLines={1}>
+          <Text className="text-base font-medium text-foreground" numberOfLines={1}>
             {item.name || item.id}
           </Text>
-          {item.model && <Text className="text-xs text-muted-foreground mt-px">{item.model}</Text>}
+          {item.model && <Text className="text-sm text-muted-foreground mt-0.5">{item.model}</Text>}
           {item.description && (
-            <Text className="text-xs text-muted-foreground mt-px" numberOfLines={1}>
+            <Text className="text-sm text-muted-foreground mt-0.5" numberOfLines={1}>
               {item.description}
             </Text>
           )}
         </View>
-        {isSelected && <Check size={16} color={color} />}
+        {isSelected && <Check size={18} color={color} />}
       </Pressable>
     );
   };
@@ -89,40 +85,37 @@ export function AgentSelector({ visible, onClose, selectedId, onSelect }: AgentS
           <ActionsheetDragIndicator />
         </ActionsheetDragIndicatorWrapper>
 
-        {/* Header */}
-        <View className="flex-row items-center justify-between px-4 pb-3 border-b border-border">
-          <Text className="text-[17px] font-bold text-foreground">에이전트 선택</Text>
+        <View className="flex-row items-center justify-between px-5 pb-3.5 border-b border-border">
+          <Text className="text-lg font-bold text-foreground">에이전트 선택</Text>
           <Pressable onPress={onClose} hitSlop={8}>
-            <X size={20} color="#9CA3AF" />
+            <X size={22} color="#9CA3AF" />
           </Pressable>
         </View>
 
-        {/* Auto option */}
         <Pressable
-          className={`flex-row items-center px-4 py-3.5 gap-3 ${!selectedId ? "bg-info/5" : ""}`}
+          className={`flex-row items-center px-5 py-4 gap-3.5 ${!selectedId ? "bg-info/5" : ""}`}
           onPress={() => handleSelect(undefined)}
         >
-          <View className="w-9 h-9 rounded-full items-center justify-center bg-info/10">
-            <Bot size={16} color="hsl(217, 91%, 60%)" />
+          <View className="w-11 h-11 rounded-full items-center justify-center bg-info/10">
+            <Bot size={20} color="hsl(217, 91%, 60%)" />
           </View>
           <View className="flex-1">
-            <Text className="text-[15px] font-semibold text-foreground">Auto (기본)</Text>
-            <Text className="text-xs text-muted-foreground">서버 기본 에이전트 사용</Text>
+            <Text className="text-base font-semibold text-foreground">Auto (기본)</Text>
+            <Text className="text-sm text-muted-foreground mt-0.5">서버 기본 에이전트 사용</Text>
           </View>
-          {!selectedId && <Check size={16} color="hsl(217, 91%, 60%)" />}
+          {!selectedId && <Check size={18} color="hsl(217, 91%, 60%)" />}
         </Pressable>
 
-        <View className="h-px bg-border mx-4" />
+        <View className="h-px bg-border mx-5" />
 
-        {/* Agent list */}
         <FlatList
           data={sortedAgents}
           keyExtractor={(item) => item.id}
           renderItem={renderAgent}
           contentContainerStyle={{ paddingBottom: 24 }}
           ListEmptyComponent={
-            <View className="py-8 items-center">
-              <Text className="text-[13px] text-muted-foreground">
+            <View className="py-10 items-center">
+              <Text className="text-base text-muted-foreground">
                 {loading ? "로딩 중..." : "등록된 에이전트 없음"}
               </Text>
             </View>
