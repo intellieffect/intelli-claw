@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import { MarkdownRenderer, MarkdownFilePreview } from "./markdown-renderer";
 import { ToolCallCard } from "./tool-call-card";
-import { HIDDEN_REPLY_RE, type DisplayMessage, type DisplayAttachment } from "@/lib/gateway/hooks";
+import { HIDDEN_REPLY_RE, type DisplayMessage, type DisplayAttachment, type AgentStatus } from "@/lib/gateway/hooks";
 import { AgentAvatar } from "@/components/ui/agent-avatar";
 
 import { blobDownload, forceDownloadUrl } from "@/lib/utils/download";
@@ -116,6 +116,7 @@ export function MessageList({
   streaming,
   onCancelQueued,
   agentId,
+  agentStatus,
   onLoadPreviousContext,
   onOpenTopicHistory,
 }: {
@@ -124,6 +125,7 @@ export function MessageList({
   streaming: boolean;
   onCancelQueued?: (id: string) => void;
   agentId?: string;
+  agentStatus?: AgentStatus;
   onLoadPreviousContext?: () => void;
   onOpenTopicHistory?: () => void;
 }) {
@@ -305,7 +307,7 @@ export function MessageList({
             const prevRole = idx > 0 ? arr[idx - 1].role : null;
             const showAvatar = msg.role !== "assistant" || prevRole !== "assistant";
             return (
-              <MessageBubble key={msg.id} message={msg} showAvatar={showAvatar} onCancel={msg.queued ? onCancelQueued : undefined} agentId={agentId} />
+              <MessageBubble key={msg.id} message={msg} showAvatar={showAvatar} onCancel={msg.queued ? onCancelQueued : undefined} agentId={agentId} agentStatus={msg.streaming ? agentStatus : undefined} />
             );
           })}
         {streaming && !messages.some(m => m.streaming) && <ThinkingIndicator agentId={agentId} />}
@@ -427,7 +429,7 @@ function CopyButton({ text }: { text: string }) {
 }
 
 
-function MessageBubble({ message, showAvatar = true, onCancel, agentId }: { message: DisplayMessage; showAvatar?: boolean; onCancel?: (id: string) => void; agentId?: string }) {
+function MessageBubble({ message, showAvatar = true, onCancel, agentId, agentStatus }: { message: DisplayMessage; showAvatar?: boolean; onCancel?: (id: string) => void; agentId?: string; agentStatus?: AgentStatus }) {
   const isUser = message.role === "user";
   const isSystem = message.role === "system";
   const isQueued = message.queued;
@@ -454,7 +456,17 @@ function MessageBubble({ message, showAvatar = true, onCancel, agentId }: { mess
       )}
       {!isUser && (
         showAvatar ? (
-          <AgentAvatar agentId={agentId} size={32} />
+          <div className="relative shrink-0">
+            <AgentAvatar agentId={agentId} size={32} />
+            {agentStatus && agentStatus.phase !== "idle" && (
+              <span className={`absolute -bottom-0.5 -right-0.5 block h-2.5 w-2.5 rounded-full border-2 border-zinc-900 ${
+                agentStatus.phase === "writing" ? "bg-green-400" :
+                agentStatus.phase === "thinking" ? "bg-yellow-400" :
+                agentStatus.phase === "tool" ? "bg-blue-400" :
+                "bg-zinc-500"
+              }`} />
+            )}
+          </div>
         ) : (
           <div className="w-8 shrink-0" />
         )
