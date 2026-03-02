@@ -1034,6 +1034,10 @@ export function useChat(sessionKey?: string) {
     setMessages((prev) => [...prev, { id: msgId, role, content, timestamp: new Date().toISOString(), toolCalls: [] }]);
   }, []);
 
+  const clearMessages = useCallback(() => {
+    setMessages([]);
+  }, []);
+
   const sendCommand = useCallback(
     async (text: string) => {
       if (!client || state !== "connected") return;
@@ -1131,7 +1135,7 @@ export function useChat(sessionKey?: string) {
 
   return {
     messages, streaming, loading, agentStatus,
-    sendMessage, sendCommand, addUserMessage, addLocalMessage,
+    sendMessage, sendCommand, addUserMessage, addLocalMessage, clearMessages,
     cancelQueued, abort, reload: loadHistory, sendContextBridge,
   };
 }

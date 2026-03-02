@@ -2,7 +2,7 @@
 import { useMemo, useRef, useEffect, useState, useCallback } from "react";
 import {
   MessageSquare, Plus, X, Pin, Zap,
-  MessageCircle, Bot, Settings, History,
+  MessageCircle, Bot, Settings, History, Trash2,
 } from "lucide-react";
 import { parseSessionKey } from "@/lib/gateway/session-utils";
 import { isSessionHidden, hideSession } from "@/lib/gateway/hidden-sessions";
@@ -31,6 +31,7 @@ interface ChatHeaderProps {
   onRenameSession?: (key: string, label: string) => void;
   onOpenSessionManager?: () => void;
   onOpenTopicHistory?: () => void;
+  onClearMessages?: () => void;
 }
 
 // --- Constants ---
@@ -160,6 +161,7 @@ export function ChatHeader({
   onRenameSession,
   onOpenSessionManager,
   onOpenTopicHistory,
+  onClearMessages,
 }: ChatHeaderProps) {
   const [confirmDeleteKey, setConfirmDeleteKey] = useState<string | null>(null);
   const [editingKey, setEditingKey] = useState<string | null>(null);
@@ -371,6 +373,15 @@ export function ChatHeader({
           >
             <History size={10} />
             <span>세션 {topicCount}</span>
+          </button>
+        )}
+        {onClearMessages && (
+          <button
+            onClick={onClearMessages}
+            className="flex items-center gap-1 rounded-md bg-zinc-800/50 border border-zinc-700/30 px-1.5 py-0.5 text-[10px] font-medium text-zinc-400 hover:bg-red-900/30 hover:border-red-500/30 hover:text-red-400 transition"
+            title="채팅 비우기"
+          >
+            <Trash2 size={10} />
           </button>
         )}
         {(() => {

@@ -19,6 +19,7 @@ export const BUILTIN_COMMANDS: BuiltinCommand[] = [
   { name: "status", description: "세션 상태 확인 (토큰, 모델 등)", emoji: "📊", immediate: true },
   { name: "reasoning", description: "추론 모드 토글", emoji: "🧠", immediate: true },
   { name: "model", description: "모델 변경 (예: /model opus)", emoji: "🤖" },
+  { name: "clear", description: "채팅 표시 비우기", emoji: "🧹", immediate: true },
   { name: "help", description: "사용 가능한 커맨드 목록", emoji: "❓", immediate: true },
 ];
 
