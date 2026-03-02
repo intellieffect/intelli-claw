@@ -563,7 +563,7 @@ function SessionBoundary({
               className="flex items-center gap-1 rounded-md border border-zinc-600/30 bg-zinc-800/40 px-2.5 py-1 text-[10px] text-zinc-400 transition hover:bg-zinc-700/40 hover:text-zinc-300"
             >
               <History size={10} />
-              이전 세션 보기
+              이전 대화 보기
             </button>
           )}
         </div>
