@@ -338,6 +338,17 @@ export function MessageList({
         return;
       }
 
+      // v → enter visual select mode (toggle select on focused message)
+      if (e.key === "v" && !e.shiftKey && focusedIdx !== null) {
+        e.preventDefault();
+        setSelectedIndices((s) => {
+          const n = new Set(s);
+          if (n.has(focusedIdx)) n.delete(focusedIdx); else n.add(focusedIdx);
+          return n;
+        });
+        return;
+      }
+
       // j → next message
       if (e.key === "j" && !e.shiftKey) {
         e.preventDefault();
