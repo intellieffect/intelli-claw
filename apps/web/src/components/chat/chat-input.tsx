@@ -281,6 +281,7 @@ export function ChatInput({
     <div
       className="relative px-[3%] py-1.5 sm:py-2 md:px-[5%] lg:px-[7%] safe-bottom electron-bottom-pad"
       style={isMobile && keyboardHeight > 0 ? { paddingBottom: `max(4px, env(safe-area-inset-bottom, 0px))` } : undefined}
+      onMouseDown={() => document.dispatchEvent(new CustomEvent("focus-chat-input"))}
     >
       {/* Skill picker */}
       <SkillPicker
@@ -398,6 +399,7 @@ export function ChatInput({
               value={text}
               onChange={(e) => setText(e.target.value)}
               onKeyDown={handleKeyDown}
+              onFocus={() => document.dispatchEvent(new CustomEvent("focus-chat-input"))}
               onPaste={handlePaste}
               onCompositionStart={() => {
                 composingRef.current = true;
