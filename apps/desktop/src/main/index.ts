@@ -184,10 +184,34 @@ function getApiBaseUrl(): string | null {
 // Register custom protocol for media/showcase serving
 function registerProtocol() {
   const apiBase = getApiBaseUrl();
+  console.log("[protocol] API base URL for remote fallback:", apiBase || "(none)");
+
+  const PROTOCOL_PREFIX = "intelli-claw://";
+  const SHOWCASE_PREFIX = "intelli-claw://showcase/";
 
   protocol.handle("intelli-claw", async (request) => {
-    const url = new URL(request.url);
-    const filePath = decodeURIComponent(url.pathname);
+    const raw = request.url;
+
+    // --- Showcase files ---
+    if (raw.startsWith(SHOWCASE_PREFIX)) {
+      const relPath = decodeURIComponent(raw.slice(SHOWCASE_PREFIX.length));
+      if (relPath.includes("..")) return new Response("Forbidden", { status: 403 });
+      // Serve showcase via API fallback (no local showcase on remote machines)
+      if (apiBase) {
+        try {
+          const res = await net.fetch(`${apiBase}/api/showcase/${encodeURIComponent(relPath)}`);
+          if (res.ok) return res;
+        } catch { /* fall through */ }
+      }
+      return new Response("Not found", { status: 404 });
+    }
+
+    // --- Media files ---
+    // URL format: intelli-claw://<percent-encoded-absolute-path>
+    // IMPORTANT: Don't use new URL() — custom protocols with // cause the
+    // parser to treat the encoded path as a hostname, losing the pathname.
+    const encoded = raw.slice(PROTOCOL_PREFIX.length);
+    const filePath = decodeURIComponent(encoded);
 
     // Security: block traversal
     if (filePath.includes("..")) {
@@ -195,22 +219,28 @@ function registerProtocol() {
     }
 
     // 1. Try local file first (fast path when running on the same machine)
-    try {
-      const localRes = await net.fetch(`file://${filePath}`);
-      if (localRes.ok) return localRes;
-    } catch {
-      // Local file not found — continue to API fallback
+    if (filePath.startsWith("/")) {
+      try {
+        const localRes = await net.fetch(`file://${filePath}`);
+        if (localRes.ok) return localRes;
+      } catch {
+        // Local file not found — continue to API fallback
+      }
     }
 
     // 2. Fallback: fetch from API server on the gateway host (#110)
     if (apiBase) {
       try {
         const apiUrl = `${apiBase}/api/media?path=${encodeURIComponent(filePath)}`;
+        console.log("[protocol] API fallback:", apiUrl);
         const apiRes = await net.fetch(apiUrl);
         if (apiRes.ok) return apiRes;
-      } catch {
-        // API server unreachable — fall through to 404
+        console.warn("[protocol] API fallback failed:", apiRes.status, filePath);
+      } catch (err) {
+        console.warn("[protocol] API fallback error:", err, filePath);
       }
+    } else {
+      console.warn("[protocol] No API base URL configured — cannot fallback for:", filePath);
     }
 
     return new Response("Not found", { status: 404 });
