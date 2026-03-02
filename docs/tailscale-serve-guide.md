@@ -641,13 +641,33 @@ CSC_IDENTITY_AUTO_DISCOVERY=false pnpm electron-builder --mac
 
 ## 부록: 모바일 (Expo) 참고사항
 
-모바일 앱(`apps/mobile`)은 Web Crypto API 대신 `@noble/curves/p256`으로 **ECDSA P-256**을 사용합니다.
-이는 React Native 환경에서 Web Crypto API의 Ed25519 지원이 제한적이기 때문입니다.
+모바일 앱(`apps/mobile`)은 Web Crypto API 대신 `@noble/curves/ed25519`로 Ed25519를 구현합니다.
+React Native 환경에서 Web Crypto API가 없으므로 pure JS 구현체를 사용합니다.
 
-| 항목 | Web/Electron (Ed25519) | Mobile (ECDSA P-256) |
-|------|----------------------|---------------------|
-| 키 생성 | `crypto.subtle.generateKey("Ed25519")` | `@noble/curves/p256` |
-| 저장소 | IndexedDB | expo-secure-store (Keychain/Keystore) |
-| Device ID | `SHA-256(raw public key)` → hex | `SHA-256(JWK JSON)` → base64, trimmed to 32 chars |
-| Public key 형식 | base64url(raw 32 bytes) | JWK JSON |
-| Signing | `crypto.subtle.sign("Ed25519", ...)` | `p256.sign(SHA-256(msg), privateKey)` |
+| 항목 | Web/Electron | Mobile (Expo) |
+|------|-------------|---------------|
+| 키 생성 | `crypto.subtle.generateKey("Ed25519")` | `@noble/curves/ed25519` + `expo-crypto` (랜덤 바이트) |
+| 저장소 | IndexedDB (DB v2) | expo-secure-store (Keychain/Keystore) |
+| Device ID | `SHA-256(raw public key)` → hex | `sha256(raw public key)` → hex (동일) |
+| Public key 형식 | base64url(raw 32 bytes) | base64url(raw 32 bytes) (동일) |
+| Signing | `crypto.subtle.sign("Ed25519", ...)` | `ed25519.sign(msg, privateKey)` |
+| 키 prefix | N/A (IndexedDB key) | `iclaw_ed_pk_`, `iclaw_ed_pub_`, `iclaw_ed_id_` |
+
+### 모바일 Gateway URL 캐싱 주의
+
+모바일 앱은 Gateway URL을 **MMKV/AsyncStorage**에 캐싱합니다 (키: `awf:gateway-config`).
+`.env.local`보다 캐시가 우선하므로, URL을 변경해도 앱에 반영되지 않을 수 있습니다.
+
+**해결:** 앱 설정 화면에서 직접 Gateway URL을 수정하세요.
+
+### 모바일 allowedOrigins
+
+React Native WebSocket은 Gateway URL 자체를 `Origin` 헤더로 보냅니다.
+따라서 `openclaw.json`의 `allowedOrigins`에 Gateway의 Tailscale Serve URL(포트 포함)을 추가해야 합니다:
+
+```jsonc
+"allowedOrigins": [
+  // ... 기존 항목 ...
+  "https://brucechoe-macstudio.tailcc76d6.ts.net:18789"  // 모바일 WebSocket origin
+]
+```
