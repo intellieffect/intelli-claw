@@ -44,6 +44,8 @@ export const DEFAULT_SHORTCUTS: ShortcutDef[] = [
   { id: "focus-panel-3", keys: "Ctrl+3", description: "패널 3 포커스", scope: "global" },
   { id: "focus-panel-4", keys: "Ctrl+4", description: "패널 4 포커스", scope: "global" },
   { id: "focus-panel-5", keys: "Ctrl+5", description: "패널 5 포커스", scope: "global" },
+  { id: "prev-session-bracket", keys: isMac ? "Cmd+[" : "Alt+[", description: "이전 세션으로 이동", scope: "panel" },
+  { id: "next-session-bracket", keys: isMac ? "Cmd+]" : "Alt+]", description: "다음 세션으로 이동", scope: "panel" },
   { id: "scroll-bottom", keys: "Shift+G", description: "채팅 맨 아래로 스크롤 (vim G)", scope: "panel" },
   { id: "scroll-top", keys: "G G", description: "채팅 맨 위로 스크롤 (vim gg)", scope: "panel" },
 ];
