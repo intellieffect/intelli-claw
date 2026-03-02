@@ -160,21 +160,6 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
         createSessionForAgent(agentId);
         return;
       }
-      // Cmd+W: close current tab (except main session)
-      // If it's the main session (not closable), let the event propagate
-      // so Electron's native menu can handle window close
-      if (matchesShortcutId(e, "close-tab")) {
-        if (effectiveSessionKey) {
-          const p = parseSessionKey(effectiveSessionKey);
-          if (p.type !== "main") {
-            e.preventDefault();
-            handleDelete(effectiveSessionKey);
-            return;
-          }
-        }
-        // Don't preventDefault — let Electron close the window
-        return;
-      }
       // Cmd+1~9: switch to specific tab (9 = last tab)
       if (e.key >= "1" && e.key <= "9" && matchesShortcutId(e, `switch-tab-${e.key}`)) {
         e.preventDefault();
