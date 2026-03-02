@@ -1,63 +1,46 @@
 /**
  * ExpoCryptoAdapter — CryptoAdapter implementation using @noble/curves + expo-secure-store.
  *
- * Uses pure-JS ECDSA P-256 (compatible with Web Crypto API signatures)
- * and stores private keys securely via expo-secure-store (Keychain/Keystore).
+ * Algorithm: Ed25519
+ * Device ID: SHA-256(raw 32-byte public key) → hex
+ * Public key transport: base64url(raw 32 bytes)
+ * Signature: Ed25519 → base64url
  */
 
-import { p256 } from "@noble/curves/p256";
+import { ed25519 } from "@noble/curves/ed25519";
 import { sha256 } from "@noble/hashes/sha256";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils";
 import * as SecureStore from "expo-secure-store";
 import * as Crypto from "expo-crypto";
 import type { CryptoAdapter, CryptoKeyPairInfo } from "@intelli-claw/shared";
 
-const PRIVATE_KEY_PREFIX = "iclaw_pk_";
-const PUBLIC_KEY_PREFIX = "iclaw_pub_";
-const ID_PREFIX = "iclaw_id_";
+const PRIVATE_KEY_PREFIX = "iclaw_ed_pk_";  // new prefix to avoid collision with old P-256 keys
+const PUBLIC_KEY_PREFIX = "iclaw_ed_pub_";
+const ID_PREFIX = "iclaw_ed_id_";
 
 // --- Helpers ---
 
-function toBase64(bytes: Uint8Array): string {
+function toBase64Url(bytes: Uint8Array): string {
   let binary = "";
   for (let i = 0; i < bytes.length; i++) {
     binary += String.fromCharCode(bytes[i]);
   }
-  return btoa(binary);
-}
-
-function toBase64Url(bytes: Uint8Array): string {
-  return toBase64(bytes)
+  return btoa(binary)
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
     .replace(/=+$/, "");
 }
 
-/** Convert uncompressed P-256 public key (65 bytes) to JWK format */
-function pointToJwk(publicKey: Uint8Array): JsonWebKey {
-  // Uncompressed point format: 0x04 || x (32 bytes) || y (32 bytes)
-  const x = publicKey.slice(1, 33);
-  const y = publicKey.slice(33, 65);
-  return {
-    kty: "EC",
-    crv: "P-256",
-    x: toBase64Url(x),
-    y: toBase64Url(y),
-  };
-}
-
-/** Create a fingerprint matching WebCryptoAdapter's format */
-function createFingerprint(jwk: JsonWebKey): string {
-  const encoded = new TextEncoder().encode(JSON.stringify(jwk));
-  const hash = sha256(encoded);
-  return toBase64(hash).replace(/[+/=]/g, "").slice(0, 32);
+function deriveDeviceId(publicKeyRaw: Uint8Array): string {
+  const hash = sha256(publicKeyRaw);
+  return bytesToHex(hash);
 }
 
 // --- In-memory cache ---
 
 interface CachedKey {
   privateKey: Uint8Array;
-  publicKeyJwk: JsonWebKey;
+  publicKeyRaw: Uint8Array;
   id: string;
 }
 
@@ -70,43 +53,44 @@ export class ExpoCryptoAdapter implements CryptoAdapter {
     // Check in-memory cache
     const cached = keyCache.get(keyId);
     if (cached) {
-      return { id: cached.id, publicKey: JSON.stringify(cached.publicKeyJwk) };
+      return { id: cached.id, publicKey: toBase64Url(cached.publicKeyRaw) };
     }
 
     // Check SecureStore
     const storedPrivateHex = await SecureStore.getItemAsync(
       `${PRIVATE_KEY_PREFIX}${keyId}`,
     );
-    const storedPublicJson = await SecureStore.getItemAsync(
+    const storedPublicHex = await SecureStore.getItemAsync(
       `${PUBLIC_KEY_PREFIX}${keyId}`,
     );
     const storedId = await SecureStore.getItemAsync(`${ID_PREFIX}${keyId}`);
 
-    if (storedPrivateHex && storedPublicJson && storedId) {
+    if (storedPrivateHex && storedPublicHex && storedId) {
       const privateKey = hexToBytes(storedPrivateHex);
-      const publicKeyJwk = JSON.parse(storedPublicJson) as JsonWebKey;
-      keyCache.set(keyId, { privateKey, publicKeyJwk, id: storedId });
-      return { id: storedId, publicKey: storedPublicJson };
+      const publicKeyRaw = hexToBytes(storedPublicHex);
+      keyCache.set(keyId, { privateKey, publicKeyRaw, id: storedId });
+      return { id: storedId, publicKey: toBase64Url(publicKeyRaw) };
     }
 
-    // Generate new ECDSA P-256 key pair
+    // Generate new Ed25519 key pair
     const randomBytes = Crypto.getRandomBytes(32);
     const privateKey = new Uint8Array(randomBytes);
-    const publicKeyBytes = p256.getPublicKey(privateKey, false); // uncompressed
-    const publicKeyJwk = pointToJwk(publicKeyBytes);
-    const id = createFingerprint(publicKeyJwk);
+    const publicKeyRaw = ed25519.getPublicKey(privateKey);
+    const id = deriveDeviceId(publicKeyRaw);
 
     // Store securely
-    const publicKeyJson = JSON.stringify(publicKeyJwk);
     await SecureStore.setItemAsync(
       `${PRIVATE_KEY_PREFIX}${keyId}`,
       bytesToHex(privateKey),
     );
-    await SecureStore.setItemAsync(`${PUBLIC_KEY_PREFIX}${keyId}`, publicKeyJson);
+    await SecureStore.setItemAsync(
+      `${PUBLIC_KEY_PREFIX}${keyId}`,
+      bytesToHex(publicKeyRaw),
+    );
     await SecureStore.setItemAsync(`${ID_PREFIX}${keyId}`, id);
 
-    keyCache.set(keyId, { privateKey, publicKeyJwk, id });
-    return { id, publicKey: publicKeyJson };
+    keyCache.set(keyId, { privateKey, publicKeyRaw, id });
+    return { id, publicKey: toBase64Url(publicKeyRaw) };
   }
 
   async sign(keyId: string, data: string): Promise<string> {
@@ -116,30 +100,28 @@ export class ExpoCryptoAdapter implements CryptoAdapter {
       const storedPrivateHex = await SecureStore.getItemAsync(
         `${PRIVATE_KEY_PREFIX}${keyId}`,
       );
-      const storedPublicJson = await SecureStore.getItemAsync(
+      const storedPublicHex = await SecureStore.getItemAsync(
         `${PUBLIC_KEY_PREFIX}${keyId}`,
       );
       const storedId = await SecureStore.getItemAsync(`${ID_PREFIX}${keyId}`);
 
-      if (!storedPrivateHex || !storedPublicJson || !storedId) {
+      if (!storedPrivateHex || !storedPublicHex || !storedId) {
         throw new Error(`No key pair found for keyId: ${keyId}`);
       }
 
       entry = {
         privateKey: hexToBytes(storedPrivateHex),
-        publicKeyJwk: JSON.parse(storedPublicJson) as JsonWebKey,
+        publicKeyRaw: hexToBytes(storedPublicHex),
         id: storedId,
       };
       keyCache.set(keyId, entry);
     }
 
-    // Hash with SHA-256 then sign with ECDSA P-256 (matches Web Crypto behavior)
+    // Ed25519 signs the raw message (no prehashing)
     const msgBytes = new TextEncoder().encode(data);
-    const msgHash = sha256(msgBytes);
-    const signature = p256.sign(msgHash, entry.privateKey);
+    const signature = ed25519.sign(msgBytes, entry.privateKey);
 
-    // Return r || s (64 bytes) as base64, matching Web Crypto's IEEE P1363 format
-    return toBase64(signature.toCompactRawBytes());
+    return toBase64Url(signature);
   }
 
   async hasKeyPair(keyId: string): Promise<boolean> {
