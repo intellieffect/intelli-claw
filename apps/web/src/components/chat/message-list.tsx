@@ -265,13 +265,28 @@ export function MessageList({
   }, [navigableIndices]);
 
   useEffect(() => {
+    // Map physical key codes to vim keys (handles Korean IME where e.key is hangul)
+    const codeToKey: Record<string, string> = {
+      KeyJ: "j", KeyK: "k", KeyH: "h", KeyL: "l",
+      KeyG: "g", KeyI: "i", KeyY: "y", KeyD: "d", KeyU: "u",
+      KeyV: "v", KeyO: "o", Space: " ",
+    };
+
+    const normalizeKey = (e: KeyboardEvent): string => {
+      // If key is already ASCII, use it directly
+      if (/^[a-zA-Z ]$/.test(e.key)) return e.key;
+      // Korean IME: fallback to physical key code
+      return codeToKey[e.code] || e.key;
+    };
+
     const handler = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement).tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || (e.target as HTMLElement).isContentEditable) return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const key = normalizeKey(e);
 
       // Shift+G → scroll to bottom + focus last message
-      if (e.key === "G" && e.shiftKey) {
+      if ((key === "G" || (key === "g" && e.shiftKey))) {
         e.preventDefault();
         scrollToBottom();
         if (navigableIndices.length > 0) {
@@ -282,7 +297,7 @@ export function MessageList({
       }
 
       // gg → scroll to top + focus first message (double 'g' within 500ms)
-      if (e.key === "g" && !e.shiftKey) {
+      if (key === "g" && !e.shiftKey) {
         const now = Date.now();
         if (now - lastGPressRef.current < 500) {
           e.preventDefault();
@@ -298,7 +313,7 @@ export function MessageList({
       }
 
       // Shift+J → select + move down
-      if (e.key === "J" && e.shiftKey) {
+      if ((key === "J" || (key === "j" && e.shiftKey))) {
         e.preventDefault();
         if (navigableIndices.length === 0) return;
         setFocusedIdx((prev) => {
@@ -313,7 +328,7 @@ export function MessageList({
       }
 
       // Shift+K → select + move up
-      if (e.key === "K" && e.shiftKey) {
+      if ((key === "K" || (key === "k" && e.shiftKey))) {
         e.preventDefault();
         if (navigableIndices.length === 0) return;
         setFocusedIdx((prev) => {
@@ -328,7 +343,7 @@ export function MessageList({
       }
 
       // Space → toggle select on focused message
-      if (e.key === " " && focusedIdx !== null) {
+      if (key === " " && focusedIdx !== null) {
         e.preventDefault();
         setSelectedIndices((s) => {
           const n = new Set(s);
@@ -339,7 +354,7 @@ export function MessageList({
       }
 
       // j → next message
-      if (e.key === "j" && !e.shiftKey) {
+      if (key === "j" && !e.shiftKey) {
         e.preventDefault();
         if (navigableIndices.length === 0) return;
         setFocusedIdx((prev) => {
@@ -352,7 +367,7 @@ export function MessageList({
       }
 
       // k → previous message
-      if (e.key === "k" && !e.shiftKey) {
+      if (key === "k" && !e.shiftKey) {
         e.preventDefault();
         if (navigableIndices.length === 0) return;
         setFocusedIdx((prev) => {
@@ -365,7 +380,7 @@ export function MessageList({
       }
 
       // y → copy selected or focused message content
-      if (e.key === "y" && !e.shiftKey) {
+      if (key === "y" && !e.shiftKey) {
         e.preventDefault();
         const indices = selectedIndices.size > 0 ? [...selectedIndices].sort((a, b) => a - b) : (focusedIdx !== null ? [focusedIdx] : []);
         if (indices.length === 0) return;
@@ -380,7 +395,7 @@ export function MessageList({
       }
 
       // d → half page scroll down
-      if (e.key === "d" && !e.shiftKey) {
+      if (key === "d" && !e.shiftKey) {
         e.preventDefault();
         if (containerRef.current) {
           containerRef.current.scrollBy({ top: containerRef.current.clientHeight / 2, behavior: "instant" });
@@ -389,7 +404,7 @@ export function MessageList({
       }
 
       // u → half page scroll up
-      if (e.key === "u" && !e.shiftKey) {
+      if (key === "u" && !e.shiftKey) {
         e.preventDefault();
         if (containerRef.current) {
           containerRef.current.scrollBy({ top: -containerRef.current.clientHeight / 2, behavior: "instant" });
@@ -398,7 +413,7 @@ export function MessageList({
       }
 
       // Escape in normal mode → clear selection
-      if (e.key === "Escape") {
+      if (key === "Escape") {
         if (selectedIndices.size > 0) {
           e.preventDefault();
           setSelectedIndices(new Set());
@@ -407,7 +422,7 @@ export function MessageList({
       }
 
       // i → enter insert mode (focus input)
-      if (e.key === "i" && !e.shiftKey) {
+      if (key === "i" && !e.shiftKey) {
         e.preventDefault();
         setFocusedIdx(null);
         document.dispatchEvent(new CustomEvent("focus-chat-input"));
