@@ -169,6 +169,16 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
         }
         return;
       }
+      // Cmd+[ / Cmd+] → previous/next session
+      if (matchesShortcutId(e, "prev-session-bracket") || matchesShortcutId(e, "next-session-bracket")) {
+        if (agentSessions.length <= 1) return;
+        e.preventDefault();
+        const currentIdx = agentSessions.findIndex((s) => s.key === effectiveSessionKey);
+        const delta = matchesShortcutId(e, "prev-session-bracket") ? -1 : 1;
+        const nextIdx = (currentIdx + delta + agentSessions.length) % agentSessions.length;
+        setSessionKey(agentSessions[nextIdx].key);
+        return;
+      }
       // '/' — focus chat input (only when not already in an input/textarea)
       if (e.key === "/" && !e.metaKey && !e.ctrlKey && !e.altKey) {
         const tag = (e.target as HTMLElement).tagName;
