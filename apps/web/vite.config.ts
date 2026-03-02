@@ -13,7 +13,7 @@ const httpsConfig = hasCerts
   ? { key: fs.readFileSync(certKeyPath), cert: fs.readFileSync(certPath) }
   : undefined;
 
-const apiPort = process.env.API_PORT || "4003";
+const apiPort = process.env.API_PORT || "4001";
 const apiTarget = `http://localhost:${apiPort}`;
 
 export default defineConfig({
@@ -28,8 +28,8 @@ export default defineConfig({
     },
   },
   server: {
-    port: 4002,
-    host: true,
+    port: 4000,
+    host: "127.0.0.1",
     allowedHosts: process.env.ALLOWED_HOSTS?.split(",").map(h => h.trim()) || [],
     https: httpsConfig,
     hmr: {
