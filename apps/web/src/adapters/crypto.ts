@@ -1,19 +1,24 @@
 /**
  * WebCryptoAdapter — CryptoAdapter implementation using Web Crypto API + IndexedDB.
  * Used in both web and Electron (which has the same Web Crypto API).
+ *
+ * Algorithm: Ed25519
+ * Device ID: SHA-256(raw 32-byte public key) → hex
+ * Public key transport: base64url(raw 32 bytes)
+ * Signature: Ed25519 → base64url
  */
 
 import type { CryptoAdapter, CryptoKeyPairInfo } from "@intelli-claw/shared";
 
 const DB_NAME = "intelli-claw-device";
-const DB_VERSION = 1;
+const DB_VERSION = 2; // bumped: ECDSA P-256 → Ed25519 (incompatible key format change)
 const STORE_NAME = "keys";
 
 interface StoredDevice {
   id: string;
   publicKey: CryptoKey;
   privateKey: CryptoKey;
-  publicKeyJwk: JsonWebKey;
+  publicKeyRaw: ArrayBuffer;
   createdAt: number;
 }
 
@@ -24,9 +29,11 @@ function openDB(): Promise<IDBDatabase> {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = () => {
       const db = req.result;
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME);
+      // Delete old store if upgrading from v1 (ECDSA keys are incompatible)
+      if (db.objectStoreNames.contains(STORE_NAME)) {
+        db.deleteObjectStore(STORE_NAME);
       }
+      db.createObjectStore(STORE_NAME);
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
@@ -60,44 +67,48 @@ function idbDelete(db: IDBDatabase, key: string): Promise<void> {
   });
 }
 
-// --- Crypto helpers ---
+// --- Encoding helpers ---
 
-const ALGO: EcdsaParams & EcKeyGenParams = {
-  name: "ECDSA",
-  namedCurve: "P-256",
-  hash: "SHA-256",
-};
+function bufToHex(buf: ArrayBuffer): string {
+  const bytes = new Uint8Array(buf);
+  let hex = "";
+  for (let i = 0; i < bytes.length; i++) {
+    hex += bytes[i].toString(16).padStart(2, "0");
+  }
+  return hex;
+}
 
-function toBase64(buf: ArrayBuffer): string {
+function toBase64Url(buf: ArrayBuffer): string {
   const bytes = new Uint8Array(buf);
   let binary = "";
   for (let i = 0; i < bytes.length; i++) {
     binary += String.fromCharCode(bytes[i]);
   }
-  return btoa(binary);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
-async function fingerprint(jwk: JsonWebKey): Promise<string> {
-  const encoded = new TextEncoder().encode(JSON.stringify(jwk));
-  const hash = await crypto.subtle.digest("SHA-256", encoded);
-  return toBase64(hash).replace(/[+/=]/g, "").slice(0, 32);
+// --- Crypto helpers ---
+
+async function deriveDeviceId(rawPublicKey: ArrayBuffer): Promise<string> {
+  const hash = await crypto.subtle.digest("SHA-256", rawPublicKey);
+  return bufToHex(hash);
 }
 
 async function createDevice(): Promise<StoredDevice> {
   const keyPair = await crypto.subtle.generateKey(
-    { name: ALGO.name, namedCurve: ALGO.namedCurve },
+    "Ed25519" as unknown as AlgorithmIdentifier,
     false,
     ["sign", "verify"],
   );
 
-  const publicKeyJwk = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
-  const id = await fingerprint(publicKeyJwk);
+  const publicKeyRaw = await crypto.subtle.exportKey("raw", keyPair.publicKey);
+  const id = await deriveDeviceId(publicKeyRaw);
 
   return {
     id,
     publicKey: keyPair.publicKey,
     privateKey: keyPair.privateKey,
-    publicKeyJwk,
+    publicKeyRaw,
     createdAt: Date.now(),
   };
 }
@@ -112,21 +123,21 @@ export class WebCryptoAdapter implements CryptoAdapter {
     // Check cache
     const cached = cache.get(keyId);
     if (cached) {
-      return { id: cached.id, publicKey: JSON.stringify(cached.publicKeyJwk) };
+      return { id: cached.id, publicKey: toBase64Url(cached.publicKeyRaw) };
     }
 
     const db = await openDB();
     try {
       const stored = await idbGet<StoredDevice>(db, keyId);
-      if (stored?.privateKey && stored?.publicKeyJwk) {
+      if (stored?.privateKey && stored?.publicKeyRaw) {
         cache.set(keyId, stored);
-        return { id: stored.id, publicKey: JSON.stringify(stored.publicKeyJwk) };
+        return { id: stored.id, publicKey: toBase64Url(stored.publicKeyRaw) };
       }
 
       const device = await createDevice();
       await idbPut(db, keyId, device);
       cache.set(keyId, device);
-      return { id: device.id, publicKey: JSON.stringify(device.publicKeyJwk) };
+      return { id: device.id, publicKey: toBase64Url(device.publicKeyRaw) };
     } finally {
       db.close();
     }
@@ -148,11 +159,11 @@ export class WebCryptoAdapter implements CryptoAdapter {
 
     const payload = new TextEncoder().encode(data);
     const sigBuf = await crypto.subtle.sign(
-      { name: ALGO.name, hash: ALGO.hash },
+      "Ed25519" as unknown as AlgorithmIdentifier,
       device.privateKey,
       payload,
     );
-    return toBase64(sigBuf);
+    return toBase64Url(sigBuf);
   }
 
   async hasKeyPair(keyId: string): Promise<boolean> {

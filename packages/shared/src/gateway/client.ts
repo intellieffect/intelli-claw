@@ -1,4 +1,5 @@
 import { makeReq, parseFrame, type Frame, type ResFrame, type EventFrame, type ErrorShape } from "./protocol";
+import { getCryptoAdapter } from "./device-identity";
 
 export type ConnectionState = "disconnected" | "connecting" | "authenticating" | "connected";
 type EventHandler = (event: EventFrame) => void;
@@ -160,7 +161,10 @@ export class GatewayClient {
 
   private async handleEvent(frame: EventFrame): Promise<void> {
     if (frame.event === "connect.challenge") {
-      const authFrame = makeReq("connect", {
+      const challenge = frame.payload as { nonce?: string } | undefined;
+      const nonce = challenge?.nonce || "";
+
+      const connectParams: Record<string, unknown> = {
         minProtocol: 3,
         maxProtocol: 3,
         client: {
@@ -172,7 +176,44 @@ export class GatewayClient {
         role: "operator",
         scopes: ["operator.read", "operator.write", "operator.admin"],
         auth: { token: this.token },
-      });
+      };
+
+      // Add device identity if crypto adapter is available
+      const cryptoAdapter = getCryptoAdapter();
+      if (cryptoAdapter && nonce) {
+        try {
+          const keyPair = await cryptoAdapter.getOrCreateKeyPair("primary");
+          const signedAt = Date.now();
+
+          // v3 signature payload (pipe-delimited)
+          const payload = [
+            "v3",
+            keyPair.id,
+            "openclaw-control-ui",
+            "ui",
+            "operator",
+            "operator.read,operator.write,operator.admin",
+            String(signedAt),
+            this.token,
+            nonce,
+            "web",
+            "",
+          ].join("|");
+
+          const signature = await cryptoAdapter.sign("primary", payload);
+          connectParams.device = {
+            id: keyPair.id,
+            publicKey: keyPair.publicKey,
+            signature,
+            signedAt,
+            nonce,
+          };
+        } catch (err) {
+          console.error("[AWF] Device identity signing failed:", err);
+        }
+      }
+
+      const authFrame = makeReq("connect", connectParams);
       this.send(authFrame);
       return;
     }
