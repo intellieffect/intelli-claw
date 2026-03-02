@@ -21,6 +21,19 @@ function readEnvFile(): Record<string, string> {
 }
 const envVars = readEnvFile();
 
+// Derive API base URL for renderer (same logic as main process getApiBaseUrl)
+function deriveApiUrl(): string {
+  if (envVars.VITE_API_URL) return envVars.VITE_API_URL;
+  const gwUrl = envVars.VITE_GATEWAY_URL;
+  if (!gwUrl) return "";
+  try {
+    const u = new URL(gwUrl);
+    return `https://${u.hostname}:4001`;
+  } catch {
+    return "";
+  }
+}
+
 export default defineConfig({
   main: {
     plugins: [externalizeDepsPlugin()],
@@ -55,6 +68,9 @@ export default defineConfig({
     plugins: [react(), tailwindcss()],
     define: {
       "import.meta.env.VITE_APP_VERSION": JSON.stringify(pkg.version),
+      // Inject API base URL so renderer fetch calls use the real API server
+      // instead of relative /api/... which becomes file:///api/... in Electron (#110)
+      "import.meta.env.VITE_API_URL": JSON.stringify(deriveApiUrl()),
     },
     resolve: {
       alias: {
