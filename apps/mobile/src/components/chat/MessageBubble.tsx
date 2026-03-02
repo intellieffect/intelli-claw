@@ -12,6 +12,7 @@ import {
 import * as Clipboard from "expo-clipboard";
 import { Check } from "lucide-react-native";
 import type { DisplayMessage } from "../../hooks/useChat";
+import { mobilePlatform } from "../../platform/mobile";
 import { Markdown } from "../Markdown";
 import { ToolCallCard } from "../ToolCallCard";
 import { PulseDots } from "./PulseDots";
@@ -28,8 +29,11 @@ export function extractMedia(content: string): { text: string; media: MediaItem[
   for (const line of content.split("\n")) {
     const m = MEDIA_LINE.exec(line.trim());
     if (m) {
-      const url = m[1].trim();
-      media.push({ type: IMAGE_EXTS.test(url) ? "image" : "link", url });
+      const raw = m[1].trim();
+      // Convert local file paths to platform media URLs (#103)
+      const isHttp = raw.startsWith("http://") || raw.startsWith("https://") || raw.startsWith("data:");
+      const url = isHttp ? raw : mobilePlatform.mediaUrl(raw);
+      media.push({ type: IMAGE_EXTS.test(raw) ? "image" : "link", url });
     } else {
       textLines.push(line);
     }
