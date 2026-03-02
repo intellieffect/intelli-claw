@@ -6,11 +6,31 @@ import fs from "fs";
 
 const pkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, "package.json"), "utf-8"));
 
+// Read VITE_GATEWAY_URL from web .env.local so main process can derive API URL (#110)
+function readEnvFile(): Record<string, string> {
+  const envPath = path.resolve(__dirname, "../web/.env.local");
+  const vars: Record<string, string> = {};
+  try {
+    const content = fs.readFileSync(envPath, "utf-8");
+    for (const line of content.split("\n")) {
+      const match = line.match(/^(\w+)=(.*)$/);
+      if (match) vars[match[1]] = match[2].trim();
+    }
+  } catch { /* no .env.local */ }
+  return vars;
+}
+const envVars = readEnvFile();
+
 export default defineConfig({
   main: {
     plugins: [externalizeDepsPlugin()],
     build: {
       outDir: "out/main",
+    },
+    define: {
+      // Inject gateway/API URLs into main process for API server fallback (#110)
+      "process.env.VITE_GATEWAY_URL": JSON.stringify(envVars.VITE_GATEWAY_URL || ""),
+      "process.env.VITE_API_URL": JSON.stringify(envVars.VITE_API_URL || ""),
     },
   },
   preload: {

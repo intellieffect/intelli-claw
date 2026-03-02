@@ -162,8 +162,29 @@ function createWindow(opts?: CreateWindowOpts): BrowserWindow {
   return win;
 }
 
+// ---- API server URL for remote media fallback (#110) ----
+// Derive from VITE_GATEWAY_URL (wss://host:port → https://host:4001)
+// The API server is exposed via Tailscale Serve (HTTPS) on port 4001.
+function getApiBaseUrl(): string | null {
+  // Allow explicit override via VITE_API_URL
+  const explicit = process.env.VITE_API_URL;
+  if (explicit) return explicit.replace(/\/$/, "");
+
+  const gwUrl = process.env.VITE_GATEWAY_URL || process.env.GATEWAY_URL;
+  if (!gwUrl) return null;
+  try {
+    const u = new URL(gwUrl);
+    // Use HTTPS (Tailscale Serve wraps the HTTP API server)
+    return `https://${u.hostname}:${process.env.API_PORT || "4001"}`;
+  } catch {
+    return null;
+  }
+}
+
 // Register custom protocol for media/showcase serving
 function registerProtocol() {
+  const apiBase = getApiBaseUrl();
+
   protocol.handle("intelli-claw", async (request) => {
     const url = new URL(request.url);
     const filePath = decodeURIComponent(url.pathname);
@@ -173,11 +194,26 @@ function registerProtocol() {
       return new Response("Forbidden", { status: 403 });
     }
 
+    // 1. Try local file first (fast path when running on the same machine)
     try {
-      return await net.fetch(`file://${filePath}`);
+      const localRes = await net.fetch(`file://${filePath}`);
+      if (localRes.ok) return localRes;
     } catch {
-      return new Response("Not found", { status: 404 });
+      // Local file not found — continue to API fallback
     }
+
+    // 2. Fallback: fetch from API server on the gateway host (#110)
+    if (apiBase) {
+      try {
+        const apiUrl = `${apiBase}/api/media?path=${encodeURIComponent(filePath)}`;
+        const apiRes = await net.fetch(apiUrl);
+        if (apiRes.ok) return apiRes;
+      } catch {
+        // API server unreachable — fall through to 404
+      }
+    }
+
+    return new Response("Not found", { status: 404 });
   });
 }
 
