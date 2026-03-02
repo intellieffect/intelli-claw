@@ -116,49 +116,46 @@ export function SubagentCard({
         : null;
 
   return (
-    <View className="my-1.5 rounded-[10px] border border-border bg-card overflow-hidden">
-      {/* Header */}
+    <View className="my-1.5 rounded-xl border border-border bg-card overflow-hidden">
       <Pressable
-        className="flex-row items-center gap-1.5 px-2.5 py-2"
+        className="flex-row items-center gap-2 px-3.5 py-3"
         onPress={() => setExpanded(!expanded)}
       >
         {status.phase === "running" ? (
-          <ActivityIndicator size={12} color="hsl(217, 91%, 60%)" />
+          <ActivityIndicator size={14} color="hsl(217, 91%, 60%)" />
         ) : (
-          <Text className="text-xs">{phaseIcon}</Text>
+          <Text className="text-sm">{phaseIcon}</Text>
         )}
 
-        <Text className="flex-1 text-xs font-semibold text-card-foreground/80" numberOfLines={1}>
+        <Text className="flex-1 text-sm font-semibold text-card-foreground/80" numberOfLines={1}>
           {displayLabel}
         </Text>
 
         {status.toolName && (
-          <Text className="text-[10px] text-muted-foreground">⚙ {status.toolName}</Text>
+          <Text className="text-xs text-muted-foreground">⚙ {status.toolName}</Text>
         )}
 
-        <Text className="text-[10px] text-muted-foreground">{elapsedStr}</Text>
-        <Text className="text-xs text-muted-foreground">{expanded ? "▴" : "▾"}</Text>
+        <Text className="text-xs text-muted-foreground">{elapsedStr}</Text>
+        <Text className="text-sm text-muted-foreground">{expanded ? "▴" : "▾"}</Text>
       </Pressable>
 
-      {/* Preview (collapsed) */}
       {!expanded && lastLines ? (
-        <View className="border-t border-border/30 px-2.5 py-1.5">
-          <Text className="font-mono text-[11px] text-muted-foreground" numberOfLines={1}>
+        <View className="border-t border-border/30 px-3.5 py-2">
+          <Text className="font-mono text-xs text-muted-foreground" numberOfLines={1}>
             {lastLines.split("\n").pop()}
           </Text>
         </View>
       ) : null}
 
-      {/* Expanded content */}
       {expanded && (
-        <View className="border-t border-border/30 px-2.5 py-2">
+        <View className="border-t border-border/30 px-3.5 py-3">
           {task && (
-            <Text className="text-[11px] text-muted-foreground mb-1.5">
+            <Text className="text-sm text-muted-foreground mb-2">
               Task: {task.length > 200 ? task.slice(0, 200) + "…" : task}
             </Text>
           )}
-          <ScrollView className="max-h-[160px]" nestedScrollEnabled>
-            <Text className="font-mono text-[11px] leading-4 text-muted-foreground">
+          <ScrollView className="max-h-[180px]" nestedScrollEnabled>
+            <Text className="font-mono text-xs leading-5 text-muted-foreground">
               {status.content ||
                 (status.phase === "pending" ? "대기 중..." : "처리 중...")}
             </Text>

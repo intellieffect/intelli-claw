@@ -23,11 +23,11 @@ export function AgentStatusBar({ status }: { status: AgentStatus }) {
     status.phase === "tool" ? status.toolName : "";
 
   return (
-    <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }} className="px-4 py-1.5">
-      <View className="flex-row items-center gap-2 px-3.5 py-2 rounded-lg bg-primary/5 border border-primary/10">
+    <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }} className="px-4 py-2">
+      <View className="flex-row items-center gap-2.5 px-4 py-2.5 rounded-xl bg-primary/5 border border-primary/10">
         {status.phase === "tool" ? (
-          <View className="w-5 h-5 rounded-full bg-primary/15 items-center justify-center">
-            <Wrench size={11} color="hsl(18 100% 56%)" strokeWidth={2.5} />
+          <View className="w-6 h-6 rounded-full bg-primary/15 items-center justify-center">
+            <Wrench size={13} color="hsl(18 100% 56%)" strokeWidth={2.5} />
           </View>
         ) : (
           <View className="flex-row gap-1">
@@ -36,7 +36,7 @@ export function AgentStatusBar({ status }: { status: AgentStatus }) {
             ))}
           </View>
         )}
-        <Text className="text-xs font-semibold text-primary">{label}</Text>
+        <Text className="text-sm font-semibold text-primary">{label}</Text>
       </View>
     </Animated.View>
   );
@@ -56,5 +56,5 @@ function PulsingDot({ delay }: { delay: number }) {
     return () => loop.stop();
   }, [anim, delay]);
 
-  return <Animated.View style={{ opacity: anim }} className="w-[5px] h-[5px] rounded-full bg-primary" />;
+  return <Animated.View style={{ opacity: anim }} className="w-1.5 h-1.5 rounded-full bg-primary" />;
 }

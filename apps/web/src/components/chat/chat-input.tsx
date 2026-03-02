@@ -208,6 +208,8 @@ export function ChatInput({
       if (e.key === "Escape") {
         e.preventDefault();
         (e.target as HTMLTextAreaElement).blur();
+        // Signal vim normal mode: focus last message
+        document.dispatchEvent(new CustomEvent("enter-normal-mode"));
         return;
       }
 
@@ -271,6 +273,13 @@ export function ChatInput({
   // Focus on mount
   useEffect(() => {
     textareaRef.current?.focus();
+  }, []);
+
+  // Listen for vim normal-mode "i" → focus input (enter insert mode)
+  useEffect(() => {
+    const handler = () => textareaRef.current?.focus();
+    document.addEventListener("focus-chat-input", handler);
+    return () => document.removeEventListener("focus-chat-input", handler);
   }, []);
 
   const showAttachments = onRemoveAttachment && attachments.length > 0;

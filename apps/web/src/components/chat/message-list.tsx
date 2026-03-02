@@ -138,6 +138,11 @@ export function MessageList({
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [loadingMore, setLoadingMore] = useState(false);
 
+  // Vim normal-mode: focused message index (null = no focus)
+  const [focusedIdx, setFocusedIdx] = useState<number | null>(null);
+  const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
+  const bubbleRefs = useRef<Map<number, HTMLDivElement>>(new Map());
+
   // Reset visible count when messages are replaced (e.g. session switch)
   const msgIdsKey = messages.length > 0 ? messages[0].id : "";
   useEffect(() => { setVisibleCount(PAGE_SIZE); }, [msgIdsKey]);
@@ -250,35 +255,194 @@ export function MessageList({
     });
   }, [onReply]);
 
-  // Vim-style scroll shortcuts: Shift+G → bottom, gg → top
+  // Vim-style navigation: j/k (focus), G (bottom), gg (top), y (copy), i (insert mode)
   const lastGPressRef = useRef(0);
+
+  // Navigable message indices (skip session-boundary)
+  const navigableIndices = useMemo(
+    () => visibleMessages.map((m, i) => ({ i, role: m.role })).filter((x) => x.role !== "session-boundary").map((x) => x.i),
+    [visibleMessages]
+  );
+
+  // Auto-scroll focused bubble into view
+  useEffect(() => {
+    if (focusedIdx === null) return;
+    const el = bubbleRefs.current.get(focusedIdx);
+    if (el) el.scrollIntoView({ behavior: "instant", block: "nearest" });
+  }, [focusedIdx]);
+
+  // Clear focus when input gets focused (entering insert mode)
+  useEffect(() => {
+    const handler = () => { setFocusedIdx(null); setSelectedIndices(new Set()); };
+    document.addEventListener("focus-chat-input", handler);
+    return () => document.removeEventListener("focus-chat-input", handler);
+  }, []);
+
+  // On Esc from input (enter normal mode), focus last message
+  useEffect(() => {
+    const handler = () => {
+      if (navigableIndices.length > 0) {
+        const last = navigableIndices[navigableIndices.length - 1];
+        setFocusedIdx(last);
+      }
+    };
+    document.addEventListener("enter-normal-mode", handler);
+    return () => document.removeEventListener("enter-normal-mode", handler);
+  }, [navigableIndices]);
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement).tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || (e.target as HTMLElement).isContentEditable) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
 
-      // Shift+G → scroll to bottom
-      if (e.key === "G" && e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      // Shift+G → scroll to bottom + focus last message
+      if (e.key === "G" && e.shiftKey) {
         e.preventDefault();
         scrollToBottom();
+        if (navigableIndices.length > 0) {
+          const last = navigableIndices[navigableIndices.length - 1];
+          setFocusedIdx(last);
+        }
         return;
       }
 
-      // gg → scroll to top (double 'g' within 500ms)
-      if (e.key === "g" && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      // gg → scroll to top + focus first message (double 'g' within 500ms)
+      if (e.key === "g" && !e.shiftKey) {
         const now = Date.now();
         if (now - lastGPressRef.current < 500) {
           e.preventDefault();
           scrollToTop();
+          if (navigableIndices.length > 0) {
+            setFocusedIdx(navigableIndices[0]);
+          }
           lastGPressRef.current = 0;
         } else {
           lastGPressRef.current = now;
         }
+        return;
+      }
+
+      // Shift+J → select + move down
+      if (e.key === "J" && e.shiftKey) {
+        e.preventDefault();
+        if (navigableIndices.length === 0) return;
+        setFocusedIdx((prev) => {
+          const cur = prev ?? navigableIndices[navigableIndices.length - 1];
+          setSelectedIndices((s) => { const n = new Set(s); n.add(cur); return n; });
+          const curPos = navigableIndices.indexOf(cur);
+          const nextIdx = navigableIndices[Math.min(curPos + 1, navigableIndices.length - 1)];
+          setSelectedIndices((s) => { const n = new Set(s); n.add(nextIdx); return n; });
+          return nextIdx;
+        });
+        return;
+      }
+
+      // Shift+K → select + move up
+      if (e.key === "K" && e.shiftKey) {
+        e.preventDefault();
+        if (navigableIndices.length === 0) return;
+        setFocusedIdx((prev) => {
+          const cur = prev ?? navigableIndices[navigableIndices.length - 1];
+          setSelectedIndices((s) => { const n = new Set(s); n.add(cur); return n; });
+          const curPos = navigableIndices.indexOf(cur);
+          const nextIdx = navigableIndices[Math.max(curPos - 1, 0)];
+          setSelectedIndices((s) => { const n = new Set(s); n.add(nextIdx); return n; });
+          return nextIdx;
+        });
+        return;
+      }
+
+      // Space → toggle select on focused message
+      if (e.key === " " && focusedIdx !== null) {
+        e.preventDefault();
+        setSelectedIndices((s) => {
+          const n = new Set(s);
+          if (n.has(focusedIdx)) n.delete(focusedIdx); else n.add(focusedIdx);
+          return n;
+        });
+        return;
+      }
+
+      // j → next message
+      if (e.key === "j" && !e.shiftKey) {
+        e.preventDefault();
+        if (navigableIndices.length === 0) return;
+        setFocusedIdx((prev) => {
+          if (prev === null) return navigableIndices[navigableIndices.length - 1];
+          const curPos = navigableIndices.indexOf(prev);
+          const nextPos = Math.min(curPos + 1, navigableIndices.length - 1);
+          return navigableIndices[nextPos];
+        });
+        return;
+      }
+
+      // k → previous message
+      if (e.key === "k" && !e.shiftKey) {
+        e.preventDefault();
+        if (navigableIndices.length === 0) return;
+        setFocusedIdx((prev) => {
+          if (prev === null) return navigableIndices[navigableIndices.length - 1];
+          const curPos = navigableIndices.indexOf(prev);
+          const nextPos = Math.max(curPos - 1, 0);
+          return navigableIndices[nextPos];
+        });
+        return;
+      }
+
+      // y → copy selected or focused message content
+      if (e.key === "y" && !e.shiftKey) {
+        e.preventDefault();
+        const indices = selectedIndices.size > 0 ? [...selectedIndices].sort((a, b) => a - b) : (focusedIdx !== null ? [focusedIdx] : []);
+        if (indices.length === 0) return;
+        const text = indices.map((i) => {
+          const msg = visibleMessages[i];
+          if (!msg?.content) return "";
+          const prefix = msg.role === "user" ? "You" : "Agent";
+          return prefix + ": " + stripTaskMemo(msg.content);
+        }).filter(Boolean).join("\n\n");
+        if (text) copyToClipboard(text);
+        return;
+      }
+
+      // d → half page scroll down
+      if (e.key === "d" && !e.shiftKey) {
+        e.preventDefault();
+        if (containerRef.current) {
+          containerRef.current.scrollBy({ top: containerRef.current.clientHeight / 2, behavior: "instant" });
+        }
+        return;
+      }
+
+      // u → half page scroll up
+      if (e.key === "u" && !e.shiftKey) {
+        e.preventDefault();
+        if (containerRef.current) {
+          containerRef.current.scrollBy({ top: -containerRef.current.clientHeight / 2, behavior: "instant" });
+        }
+        return;
+      }
+
+      // Escape in normal mode → clear selection
+      if (e.key === "Escape") {
+        if (selectedIndices.size > 0) {
+          e.preventDefault();
+          setSelectedIndices(new Set());
+          return;
+        }
+      }
+
+      // i → enter insert mode (focus input)
+      if (e.key === "i" && !e.shiftKey) {
+        e.preventDefault();
+        setFocusedIdx(null);
+        document.dispatchEvent(new CustomEvent("focus-chat-input"));
+        return;
       }
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [scrollToBottom, scrollToTop]);
+  }, [scrollToBottom, scrollToTop, navigableIndices, focusedIdx, visibleMessages]);
 
   if (loading) {
     return (
@@ -333,7 +497,22 @@ export function MessageList({
             const prevRole = idx > 0 ? arr[idx - 1].role : null;
             const showAvatar = msg.role !== "assistant" || prevRole !== "assistant";
             return (
-              <MessageBubble key={msg.id} message={msg} showAvatar={showAvatar} onCancel={msg.queued ? onCancelQueued : undefined} agentId={agentId} agentStatus={msg.streaming ? agentStatus : undefined} onReply={() => handleReply(msg)} onScrollToMessage={scrollToMessage} />
+              <MessageBubble
+                key={msg.id}
+                ref={(el) => {
+                  if (el) bubbleRefs.current.set(idx, el);
+                  else bubbleRefs.current.delete(idx);
+                }}
+                message={msg}
+                showAvatar={showAvatar}
+                onCancel={msg.queued ? onCancelQueued : undefined}
+                agentId={agentId}
+                agentStatus={msg.streaming ? agentStatus : undefined}
+                focused={focusedIdx === idx}
+                selected={selectedIndices.has(idx)}
+                onReply={() => handleReply(msg)}
+                onScrollToMessage={scrollToMessage}
+              />
             );
           })}
         {streaming && !messages.some(m => m.streaming) && <ThinkingIndicator agentId={agentId} />}
@@ -477,7 +656,8 @@ function ReplyQuote({ replyTo, onScrollToMessage }: { replyTo: ReplyTo; onScroll
   );
 }
 
-function MessageBubble({ message, showAvatar = true, onCancel, agentId, agentStatus, onReply, onScrollToMessage }: { message: DisplayMessage; showAvatar?: boolean; onCancel?: (id: string) => void; agentId?: string; agentStatus?: AgentStatus; onReply?: () => void; onScrollToMessage?: (id: string) => void }) {
+const MessageBubble = React.forwardRef<HTMLDivElement, { message: DisplayMessage; showAvatar?: boolean; onCancel?: (id: string) => void; agentId?: string; agentStatus?: AgentStatus; focused?: boolean; selected?: boolean; onReply?: () => void; onScrollToMessage?: (id: string) => void }>(
+  function MessageBubble({ message, showAvatar = true, onCancel, agentId, agentStatus, focused, selected, onReply, onScrollToMessage }, ref) {
   const isUser = message.role === "user";
   const isSystem = message.role === "system";
   const isQueued = message.queued;
@@ -486,7 +666,7 @@ function MessageBubble({ message, showAvatar = true, onCancel, agentId, agentSta
   // System messages: centered, muted style
   if (isSystem) {
     return (
-      <div className="flex justify-center py-1">
+      <div ref={ref} className="flex justify-center py-1">
         <div className="max-w-[90%] rounded-lg border border-border/50 bg-muted/30 px-4 py-2 text-center text-xs text-muted-foreground">
           <MarkdownRenderer content={message.content} />
         </div>
@@ -495,7 +675,7 @@ function MessageBubble({ message, showAvatar = true, onCancel, agentId, agentSta
   }
 
   return (
-    <div data-message-id={message.id} className={`group flex gap-3 ${isUser ? "justify-end" : ""}`}>
+    <div ref={ref} data-message-id={message.id} className={`group flex gap-3 ${isUser ? "justify-end" : ""} `}>
       {/* Action buttons for user messages (left of bubble) */}
       {isUser && (
         <div className="flex items-start gap-0.5 pt-2">
@@ -532,8 +712,8 @@ function MessageBubble({ message, showAvatar = true, onCancel, agentId, agentSta
       <div
         className={`min-w-0 max-w-[90%] md:max-w-[85%] ${
           isUser
-            ? `rounded-2xl rounded-br-md px-3.5 py-2 md:px-4 md:py-2.5 text-foreground ${isQueued ? "bg-primary/15 border border-primary/20" : "bg-primary/15 border border-primary/10"}`
-            : "rounded-2xl rounded-bl-md px-3.5 py-2 md:px-4 md:py-2.5 bg-zinc-800/60 border border-zinc-700/50 flex-1"
+            ? `rounded-2xl rounded-br-md px-3.5 py-2 md:px-4 md:py-2.5 text-foreground ${isQueued ? "bg-primary/15 border border-primary/20" : "bg-primary/15 border border-primary/10"}${selected ? " outline outline-2 outline-amber-500 bg-amber-500/10" : focused ? " outline outline-2 outline-amber-500/50" : ""}`
+            : `rounded-2xl rounded-bl-md px-3.5 py-2 md:px-4 md:py-2.5 bg-zinc-800/60 border border-zinc-700/50 flex-1${selected ? " outline outline-2 outline-amber-500 bg-amber-500/10" : focused ? " outline outline-2 outline-amber-500/50" : ""}`
         }`}
       >
         {isUser ? (
@@ -708,4 +888,4 @@ function MessageBubble({ message, showAvatar = true, onCancel, agentId, agentSta
       )}
     </div>
   );
-}
+});

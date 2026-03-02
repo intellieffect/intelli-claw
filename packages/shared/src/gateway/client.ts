@@ -53,8 +53,8 @@ export class GatewayClient {
       this.ws = new WebSocket(this.url);
       this.ws.onopen = () => this.handleOpen();
       this.ws.onmessage = (e) => this.handleMessage(e);
-      this.ws.onclose = () => this.handleClose();
-      this.ws.onerror = () => {}; // onclose will fire
+      this.ws.onclose = (e: any) => { console.error("[GW] ws closed code:", e?.code, "reason:", e?.reason, "clean:", e?.wasClean); this.handleClose(); };
+      this.ws.onerror = (e: any) => { console.error("[GW] ws error:", e?.message || e?.type || JSON.stringify(e), "url:", this.url); };
     } catch {
       this.handleClose();
     }
