@@ -5,6 +5,7 @@ import {
   Trash2, RotateCcw, X, ChevronDown, ChevronRight,
 } from "lucide-react";
 import { parseSessionKey, type GatewaySession } from "@/lib/gateway/session-utils";
+import { getHiddenSessions, unhideSession } from "@/lib/gateway/hidden-sessions";
 import type { Agent } from "@/lib/gateway/protocol";
 import { AgentAvatar } from "@/components/ui/agent-avatar";
 import { cn } from "@/lib/utils";
@@ -297,6 +298,38 @@ export function SessionManagerPanel({
           {groups.length === 0 && (
             <div className="py-12 text-center text-sm text-zinc-500">세션 없음</div>
           )}
+
+          {/* Hidden sessions */}
+          {(() => {
+            const hidden = getHiddenSessions();
+            const hiddenKeys = Array.from(hidden);
+            if (hiddenKeys.length === 0) return null;
+            return (
+              <div className="border-t border-zinc-700/50 mt-2 pt-2">
+                <div className="px-4 py-2 text-[11px] font-medium text-zinc-500 uppercase tracking-wide">
+                  숨긴 세션 ({hiddenKeys.length}개)
+                </div>
+                {hiddenKeys.map((key) => {
+                  const p = parseSessionKey(key);
+                  return (
+                    <div key={key} className="flex items-center gap-2 px-4 pl-6 py-1.5 hover:bg-zinc-800/30 transition group">
+                      <span className="text-[11px] text-zinc-500 truncate flex-1">{key}</span>
+                      <button
+                        onClick={() => {
+                          unhideSession(key);
+                          onSelectSession(key);
+                          onClose();
+                        }}
+                        className="rounded px-2 py-0.5 text-[10px] text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200 transition opacity-0 group-hover:opacity-100"
+                      >
+                        다시 열기
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
         </div>
       </div>
     </div>
