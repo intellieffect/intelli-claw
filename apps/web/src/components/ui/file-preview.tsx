@@ -29,6 +29,16 @@ FilePreview.displayName = "FilePreview"
 
 const ImageFilePreview = React.forwardRef<HTMLDivElement, FilePreviewProps>(
   ({ file, onRemove }, ref) => {
+    const [objectUrl, setObjectUrl] = React.useState<string>("")
+
+    useEffect(() => {
+      const url = URL.createObjectURL(file)
+      setObjectUrl(url)
+      return () => { URL.revokeObjectURL(url) }
+    }, [file])
+
+    if (!objectUrl) return null
+
     return (
       <motion.div
         ref={ref}
@@ -43,13 +53,8 @@ const ImageFilePreview = React.forwardRef<HTMLDivElement, FilePreviewProps>(
           <img
             alt={`Attachment ${file.name}`}
             className="grid h-10 w-10 shrink-0 place-items-center rounded-sm border bg-muted object-cover"
-            src={URL.createObjectURL(file)}
+            src={objectUrl}
           />
-          <span className="w-full truncate text-muted-foreground">
-            {file.name}
-          </span>
-        </div>
-
         {onRemove ? (
           <button
             className="absolute -right-2 -top-2 flex h-4 w-4 items-center justify-center rounded-full border bg-background"

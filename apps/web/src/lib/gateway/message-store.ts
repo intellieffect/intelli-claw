@@ -162,12 +162,13 @@ export async function backfillFromApi(
 
     const data = await res.json();
     const messages: StoredMessage[] = (data.messages || []).map(
-      (m: { id: string; role: string; content: string; timestamp: string }) => ({
+      (m: { id: string; role: string; content: string; timestamp: string; attachments?: Array<{ type: string; url?: string }> }) => ({
         sessionKey,
         id: `log-${sessionId.slice(0, 8)}-${m.id}`,
         role: m.role as StoredMessage["role"],
         content: m.content,
         timestamp: m.timestamp,
+        attachments: m.attachments,
       }),
     );
 

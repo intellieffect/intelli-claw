@@ -706,10 +706,17 @@ export function useChat(sessionKey?: string) {
       // nest the key inside data depending on event type (#48)
       const evSessionKey = (raw.sessionKey ?? data?.sessionKey) as string | undefined;
       if (evSessionKey && evSessionKey !== sessionKeyRef.current) return;
-      // If the event has no sessionKey, allow it through when we have an
-      // active runId (the event likely belongs to the current run) or when
-      // it's a lifecycle event that will set the runId. (#72)
-      if (!evSessionKey && sessionKeyRef.current && stream !== "lifecycle" && !runIdRef.current) return;
+      // Strict session isolation: reject events without a matching sessionKey
+      // unless they carry our active runId (#107 — prevents cross-agent leaks)
+      const evRunId = (raw.runId ?? data?.runId) as string | undefined;
+      if (!evSessionKey && sessionKeyRef.current) {
+        // Allow lifecycle start (sets runId) only if no sessionKey mismatch
+        if (stream === "lifecycle" && data?.phase === "start") { /* allow */ }
+        // Allow events matching our active runId
+        else if (runIdRef.current && evRunId === runIdRef.current) { /* allow */ }
+        // Reject everything else — likely belongs to another session
+        else return;
+      }
 
 
       // Ignore events after abort until next lifecycle start

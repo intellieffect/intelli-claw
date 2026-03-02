@@ -321,28 +321,38 @@ async function compressImage(
   const bitmap = await createImageBitmap(file);
   const { width: origW, height: origH } = bitmap;
 
+  // Preserve transparency for PNG/WebP — only use JPEG for opaque images (#102)
+  const hasAlpha = file.type === "image/png" || file.type === "image/webp";
+  const outputType = hasAlpha ? "image/png" : "image/jpeg";
+
   // Try progressively smaller sizes and lower quality
   const scales = [1, 0.75, 0.5, 0.35, 0.25];
-  const qualities = [0.85, 0.7, 0.5, 0.3];
+  const qualities = hasAlpha ? [1] : [0.85, 0.7, 0.5, 0.3];
 
   for (const scale of scales) {
     const w = Math.round(origW * scale);
     const h = Math.round(origH * scale);
     const canvas = new OffscreenCanvas(w, h);
     const ctx = canvas.getContext("2d")!;
+    if (hasAlpha) {
+      ctx.clearRect(0, 0, w, h);
+    }
     ctx.drawImage(bitmap, 0, 0, w, h);
 
     for (const q of qualities) {
-      const blob = await canvas.convertToBlob({ type: "image/jpeg", quality: q });
+      const blobOpts: ImageEncodeOptions = hasAlpha
+        ? { type: outputType }
+        : { type: outputType, quality: q };
+      const blob = await canvas.convertToBlob(blobOpts);
       if (blob.size * 1.37 <= maxB64) {
-        // 1.37 ≈ base64 overhead
+        // 1.37 \u2248 base64 overhead
         const buf = await blob.arrayBuffer();
         const bytes = new Uint8Array(buf);
         let binary = "";
         for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
         const base64 = btoa(binary);
         bitmap.close();
-        return { base64, mimeType: "image/jpeg" };
+        return { base64, mimeType: outputType };
       }
     }
   }
@@ -421,10 +431,13 @@ export async function attachmentToPayload(
 }
 
 async function rawPayload(att: ChatAttachment): Promise<AttachmentPayload> {
-  const base64 = await fileToBase64(att.file);
-  if (base64.length > MAX_BASE64_BYTES) {
-    throw new Error(`파일이 너무 큽니다 (${formatSize(att.file.size)}). 최대 약 75MB까지 지원됩니다.`);
+  // Pre-check file size before base64 conversion to prevent OOM (#105)
+  // base64 expands ~1.37x, so max decoded size ≈ MAX_BASE64_BYTES / 1.37
+  const maxDecodedBytes = Math.floor(MAX_BASE64_BYTES / 1.37);
+  if (att.file.size > maxDecodedBytes) {
+    throw new Error(`파일이 너무 큽니다 (${formatSize(att.file.size)}). 최대 약 ${formatSize(maxDecodedBytes)}까지 지원됩니다.`);
   }
+  const base64 = await fileToBase64(att.file);
   return {
     fileName: att.file.name,
     mimeType: att.file.type || "application/octet-stream",

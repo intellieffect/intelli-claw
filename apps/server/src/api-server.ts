@@ -55,14 +55,35 @@ function shouldInline(mime: string) {
 
 const MAX_SIZE = 100 * 1024 * 1024;
 
+/** Allowed base directories for media file access (#106 security fix) */
+const ALLOWED_MEDIA_ROOTS = [
+  join(homedir(), ".openclaw"),
+  join(homedir(), "Downloads"),
+  join(homedir(), "Documents"),
+  join(homedir(), "Pictures"),
+  join(homedir(), "Desktop"),
+  // Allow /tmp for transient agent files
+  "/tmp",
+];
+
 function validatePath(p: string | null): string | null {
   if (!p) return null;
   if (p.includes("..")) return null;
   // Expand ~ to home directory so agents can reference ~/path/to/file
+  let resolved: string;
   if (p.startsWith("~/") || p === "~") {
-    return join(homedir(), p.slice(1));
+    resolved = resolve(join(homedir(), p.slice(1)));
+  } else if (isAbsolute(p)) {
+    resolved = resolve(p);
+  } else {
+    return null; // reject relative paths without ~
   }
-  return p;
+  // Security: only allow files under approved directories (#106)
+  const allowed = ALLOWED_MEDIA_ROOTS.some(
+    (root) => resolved === root || resolved.startsWith(root + "/"),
+  );
+  if (!allowed) return null;
+  return resolved;
 }
 
 async function handleMedia(req: http.IncomingMessage, res: http.ServerResponse, url: URL) {
