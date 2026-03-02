@@ -1,5 +1,5 @@
 // Re-export from shared package
-export { signChallenge, clearDeviceIdentity, initCryptoAdapter, getCryptoAdapter } from "@intelli-claw/shared";
+export { signChallenge, clearDeviceIdentity, initCryptoAdapter, getCryptoAdapter, type SignChallengeParams } from "@intelli-claw/shared";
 import { getCryptoAdapter } from "@intelli-claw/shared";
 
 // Also export the WebCryptoAdapter initialization for convenience

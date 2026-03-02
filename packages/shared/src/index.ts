@@ -38,6 +38,7 @@ export {
   clearDeviceIdentity,
   initCryptoAdapter,
   getCryptoAdapter,
+  type SignChallengeParams,
 } from "./gateway/device-identity";
 export {
   parseSessionKey,

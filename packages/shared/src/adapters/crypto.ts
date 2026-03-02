@@ -7,17 +7,17 @@
  */
 
 export interface CryptoKeyPairInfo {
-  /** Fingerprint/hash of the public key (used as device ID) */
+  /** Device ID: hex(SHA-256(raw_public_key_bytes)) */
   id: string;
-  /** JSON-serialized public key (JWK format) */
+  /** Raw Ed25519 public key, base64url-encoded (32 bytes) */
   publicKey: string;
 }
 
 export interface CryptoAdapter {
-  /** Get or create an ECDSA P-256 key pair. Returns existing if already stored. */
+  /** Get or create an Ed25519 key pair. Returns existing if already stored. */
   getOrCreateKeyPair(keyId: string): Promise<CryptoKeyPairInfo>;
 
-  /** Sign data with the private key associated with keyId. Returns base64-encoded signature. */
+  /** Sign data with the private key associated with keyId. Returns base64url-encoded signature. */
   sign(keyId: string, data: string): Promise<string>;
 
   /** Check if a key pair exists for the given keyId. */

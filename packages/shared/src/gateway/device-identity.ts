@@ -22,25 +22,61 @@ export function getCryptoAdapter(): CryptoAdapter | null {
   return adapter;
 }
 
+/** Parameters for building the v2 auth payload (must match OpenClaw Gateway's buildDeviceAuthPayload). */
+export interface SignChallengeParams {
+  nonce: string;
+  clientId: string;
+  clientMode: string;
+  role: string;
+  scopes: string[];
+  token: string;
+}
+
 /**
- * Sign a gateway challenge nonce using the device's private key.
- * Creates the device key pair if it doesn't exist yet.
+ * Build the v2 device auth payload string.
+ * Format: v2|deviceId|clientId|clientMode|role|scopes|signedAtMs|token|nonce
+ * Must match OpenClaw Gateway's buildDeviceAuthPayload exactly.
  */
-export async function signChallenge(nonce: string): Promise<DeviceIdentity> {
+function buildAuthPayload(
+  deviceId: string,
+  signedAt: number,
+  params: SignChallengeParams,
+): string {
+  const scopes = params.scopes.join(",");
+  return [
+    "v2",
+    deviceId,
+    params.clientId,
+    params.clientMode,
+    params.role,
+    scopes,
+    String(signedAt),
+    params.token,
+    params.nonce,
+  ].join("|");
+}
+
+/**
+ * Sign a gateway challenge using the device's Ed25519 private key.
+ * Creates the device key pair if it doesn't exist yet.
+ * Uses v2 payload format matching OpenClaw Gateway expectations.
+ */
+export async function signChallenge(params: SignChallengeParams): Promise<DeviceIdentity> {
   if (!adapter) {
     throw new Error("CryptoAdapter not initialized. Call initCryptoAdapter() first.");
   }
 
   const keyPair = await adapter.getOrCreateKeyPair(DEVICE_KEY_ID);
   const signedAt = Date.now();
-  const signature = await adapter.sign(DEVICE_KEY_ID, `${nonce}:${signedAt}`);
+  const payload = buildAuthPayload(keyPair.id, signedAt, params);
+  const signature = await adapter.sign(DEVICE_KEY_ID, payload);
 
   return {
     id: keyPair.id,
     publicKey: keyPair.publicKey,
     signature,
     signedAt,
-    nonce,
+    nonce: params.nonce,
   };
 }
 

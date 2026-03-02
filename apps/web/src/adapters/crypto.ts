@@ -1,19 +1,29 @@
 /**
- * WebCryptoAdapter — CryptoAdapter implementation using Web Crypto API + IndexedDB.
- * Used in both web and Electron (which has the same Web Crypto API).
+ * WebCryptoAdapter — CryptoAdapter implementation using @noble/ed25519 + IndexedDB.
+ * Uses Ed25519 for device identity (matching OpenClaw Gateway expectations).
+ * Used in both web and Electron.
+ *
+ * Note: Web Crypto API does not support Ed25519 until Chrome 137+,
+ * so we use @noble/ed25519 (pure JS) with Web Crypto SHA-512 for hashing.
  */
 
+import * as ed from "@noble/ed25519";
 import type { CryptoAdapter, CryptoKeyPairInfo } from "@intelli-claw/shared";
 
+// --- Configure @noble/ed25519 to use Web Crypto SHA-512 ---
+ed.hashes.sha512Async = async (message: Uint8Array): Promise<Uint8Array> => {
+  const hash = await crypto.subtle.digest("SHA-512", message);
+  return new Uint8Array(hash);
+};
+
 const DB_NAME = "intelli-claw-device";
-const DB_VERSION = 1;
+const DB_VERSION = 2; // Bumped for Ed25519 migration
 const STORE_NAME = "keys";
 
 interface StoredDevice {
   id: string;
-  publicKey: CryptoKey;
-  privateKey: CryptoKey;
-  publicKeyJwk: JsonWebKey;
+  secretKey: Uint8Array; // Ed25519 private key (32 bytes)
+  publicKeyBase64Url: string; // raw Ed25519 public key, base64url-encoded
   createdAt: number;
 }
 
@@ -24,9 +34,11 @@ function openDB(): Promise<IDBDatabase> {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = () => {
       const db = req.result;
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME);
+      // Clear old store on version upgrade (ECDSA → Ed25519 migration)
+      if (db.objectStoreNames.contains(STORE_NAME)) {
+        db.deleteObjectStore(STORE_NAME);
       }
+      db.createObjectStore(STORE_NAME);
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
@@ -60,44 +72,40 @@ function idbDelete(db: IDBDatabase, key: string): Promise<void> {
   });
 }
 
-// --- Crypto helpers ---
+// --- Encoding helpers ---
 
-const ALGO: EcdsaParams & EcKeyGenParams = {
-  name: "ECDSA",
-  namedCurve: "P-256",
-  hash: "SHA-256",
-};
-
-function toBase64(buf: ArrayBuffer): string {
-  const bytes = new Uint8Array(buf);
+function toBase64Url(bytes: Uint8Array): string {
   let binary = "";
   for (let i = 0; i < bytes.length; i++) {
     binary += String.fromCharCode(bytes[i]);
   }
-  return btoa(binary);
+  return btoa(binary)
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/g, "");
 }
 
-async function fingerprint(jwk: JsonWebKey): Promise<string> {
-  const encoded = new TextEncoder().encode(JSON.stringify(jwk));
-  const hash = await crypto.subtle.digest("SHA-256", encoded);
-  return toBase64(hash).replace(/[+/=]/g, "").slice(0, 32);
+function toHex(bytes: Uint8Array): string {
+  return Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }
+
+// --- Device creation ---
 
 async function createDevice(): Promise<StoredDevice> {
-  const keyPair = await crypto.subtle.generateKey(
-    { name: ALGO.name, namedCurve: ALGO.namedCurve },
-    false,
-    ["sign", "verify"],
-  );
+  const secretKey = ed.utils.randomSecretKey();
+  const publicKey = await ed.getPublicKeyAsync(secretKey);
+  const publicKeyBase64Url = toBase64Url(publicKey);
 
-  const publicKeyJwk = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
-  const id = await fingerprint(publicKeyJwk);
+  // Device ID = hex(SHA-256(raw_public_key_bytes)) — matches OpenClaw Gateway
+  const hash = await crypto.subtle.digest("SHA-256", publicKey);
+  const id = toHex(new Uint8Array(hash));
 
   return {
     id,
-    publicKey: keyPair.publicKey,
-    privateKey: keyPair.privateKey,
-    publicKeyJwk,
+    secretKey,
+    publicKeyBase64Url,
     createdAt: Date.now(),
   };
 }
@@ -112,21 +120,21 @@ export class WebCryptoAdapter implements CryptoAdapter {
     // Check cache
     const cached = cache.get(keyId);
     if (cached) {
-      return { id: cached.id, publicKey: JSON.stringify(cached.publicKeyJwk) };
+      return { id: cached.id, publicKey: cached.publicKeyBase64Url };
     }
 
     const db = await openDB();
     try {
       const stored = await idbGet<StoredDevice>(db, keyId);
-      if (stored?.privateKey && stored?.publicKeyJwk) {
+      if (stored?.secretKey && stored?.publicKeyBase64Url) {
         cache.set(keyId, stored);
-        return { id: stored.id, publicKey: JSON.stringify(stored.publicKeyJwk) };
+        return { id: stored.id, publicKey: stored.publicKeyBase64Url };
       }
 
       const device = await createDevice();
       await idbPut(db, keyId, device);
       cache.set(keyId, device);
-      return { id: device.id, publicKey: JSON.stringify(device.publicKeyJwk) };
+      return { id: device.id, publicKey: device.publicKeyBase64Url };
     } finally {
       db.close();
     }
@@ -142,17 +150,13 @@ export class WebCryptoAdapter implements CryptoAdapter {
         db.close();
       }
     }
-    if (!device?.privateKey) {
+    if (!device?.secretKey) {
       throw new Error(`No key pair found for keyId: ${keyId}`);
     }
 
     const payload = new TextEncoder().encode(data);
-    const sigBuf = await crypto.subtle.sign(
-      { name: ALGO.name, hash: ALGO.hash },
-      device.privateKey,
-      payload,
-    );
-    return toBase64(sigBuf);
+    const signature = await ed.signAsync(payload, device.secretKey);
+    return toBase64Url(signature);
   }
 
   async hasKeyPair(keyId: string): Promise<boolean> {
@@ -160,7 +164,7 @@ export class WebCryptoAdapter implements CryptoAdapter {
     const db = await openDB();
     try {
       const stored = await idbGet<StoredDevice>(db, keyId);
-      return !!(stored?.privateKey);
+      return !!stored?.secretKey;
     } finally {
       db.close();
     }
