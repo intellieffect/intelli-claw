@@ -81,3 +81,8 @@ fi
 
 echo ""
 echo "✅ Release v$NEW_VERSION ready!"
+echo ""
+echo "Deploy with:"
+echo "  pnpm deploy:all      # Mac Studio + MacBook"
+echo "  pnpm deploy:local    # Mac Studio only"
+echo "  pnpm deploy:macbook  # MacBook only"

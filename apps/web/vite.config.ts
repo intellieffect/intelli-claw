@@ -13,6 +13,9 @@ const httpsConfig = hasCerts
   ? { key: fs.readFileSync(certKeyPath), cert: fs.readFileSync(certPath) }
   : undefined;
 
+const apiPort = process.env.API_PORT || "4003";
+const apiTarget = `http://localhost:${apiPort}`;
+
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   define: {
@@ -25,7 +28,7 @@ export default defineConfig({
     },
   },
   server: {
-    port: 4000,
+    port: 4002,
     host: true,
     allowedHosts: process.env.ALLOWED_HOSTS?.split(",").map(h => h.trim()) || [],
     https: httpsConfig,
@@ -34,7 +37,7 @@ export default defineConfig({
     },
     proxy: {
       "/api": {
-        target: "http://localhost:4001",
+        target: apiTarget,
         changeOrigin: true,
       },
     },
@@ -45,7 +48,7 @@ export default defineConfig({
     https: httpsConfig,
     proxy: {
       "/api": {
-        target: "http://localhost:4001",
+        target: apiTarget,
         changeOrigin: true,
       },
     },

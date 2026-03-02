@@ -2,6 +2,8 @@
 # intelli-claw Prod Server — Vite preview on port 4100
 cd "$(dirname "$0")/.."
 
+export API_PORT=4003
+
 pkill -f "vite preview.*4100" 2>/dev/null
 pkill -f "api-server" 2>/dev/null
 sleep 1

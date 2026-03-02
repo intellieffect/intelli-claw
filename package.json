@@ -15,7 +15,10 @@
     "lint": "turbo run lint",
     "test": "turbo run test",
     "dev:server": "pnpm --filter @intelli-claw/server dev",
-    "dev:mobile": "pnpm --filter @intelli-claw/mobile dev"
+    "dev:mobile": "pnpm --filter @intelli-claw/mobile dev",
+    "deploy:local": "bash scripts/deploy.sh local",
+    "deploy:macbook": "bash scripts/deploy.sh macbook",
+    "deploy:all": "bash scripts/deploy.sh all"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",
