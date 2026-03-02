@@ -369,10 +369,10 @@ export function ChatHeader({
           <button
             onClick={onOpenTopicHistory}
             className="flex items-center gap-1 rounded-md bg-amber-900/20 border border-amber-600/20 px-2 py-0.5 text-[10px] font-medium text-amber-500 hover:bg-amber-900/40 hover:border-amber-500/40 transition"
-            title="세션 이력 보기"
+            title="대화 이력 보기 (리셋 기록)"
           >
             <History size={10} />
-            <span>세션 {topicCount}</span>
+            <span>대화 {topicCount}</span>
           </button>
         )}
         {onClearMessages && (

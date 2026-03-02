@@ -9,7 +9,7 @@ import { SessionSwitcher } from "./session-switcher";
 import { AgentBrowser } from "./agent-browser";
 import { DropZone, useFileAttachments, attachmentToPayload } from "./file-attachments";
 import { parseSessionKey, sessionDisplayName, type GatewaySession } from "@/lib/gateway/session-utils";
-import { isSessionHidden, hideSession } from "@/lib/gateway/hidden-sessions";
+import { isSessionHidden, hideSession, unhideSession, getHiddenSessions } from "@/lib/gateway/hidden-sessions";
 import { TaskMemo } from "./task-memo";
 import { SessionSettings } from "@/components/settings/session-settings";
 import { ChatHeader } from "./chat-header";
@@ -177,6 +177,46 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
         const delta = matchesShortcutId(e, "prev-session-bracket") ? -1 : 1;
         const nextIdx = (currentIdx + delta + agentSessions.length) % agentSessions.length;
         setSessionKey(agentSessions[nextIdx].key);
+        return;
+      }
+      // Cmd+W: close (hide) current tab
+      if (matchesShortcutId(e, "close-tab")) {
+        if (effectiveSessionKey) {
+          const p = parseSessionKey(effectiveSessionKey);
+          if (p.type !== "main") {
+            e.preventDefault();
+            hideSession(effectiveSessionKey);
+            handleHide(effectiveSessionKey);
+            // Switch to previous tab
+            const currentIdx = agentSessions.findIndex((s) => s.key === effectiveSessionKey);
+            const nextIdx = currentIdx > 0 ? currentIdx - 1 : 0;
+            if (agentSessions[nextIdx]) {
+              setSessionKey(agentSessions[nextIdx].key);
+            } else {
+              setSessionKey(undefined);
+            }
+            return;
+          }
+        }
+        // Don't preventDefault for main — let Electron close the window
+        return;
+      }
+      // Cmd+Shift+T: reopen last hidden session
+      if (matchesShortcutId(e, "reopen-tab")) {
+        e.preventDefault();
+        const hidden = getHiddenSessions();
+        // Find most recently hidden session for this agent
+        const hiddenForAgent = agentSessions.length > 0
+          ? Array.from(hidden).filter((k) => parseSessionKey(k).agentId === agentId)
+          : Array.from(hidden);
+        // Unhide the last one (most recently added)
+        const lastHidden = hiddenForAgent[hiddenForAgent.length - 1];
+        if (lastHidden) {
+          unhideSession(lastHidden);
+          setHiddenVersion((v) => v + 1);
+          setSessionKey(lastHidden);
+          refreshSessions();
+        }
         return;
       }
       // '/' — focus chat input (only when not already in an input/textarea)

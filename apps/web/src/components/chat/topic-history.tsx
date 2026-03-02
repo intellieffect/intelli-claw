@@ -87,7 +87,7 @@ export function TopicHistory({ sessionKey, open, onClose, portalContainer }: Top
         {/* Header */}
         <div className="flex items-center gap-2 border-b border-border px-4 py-3">
           <History size={16} className="text-amber-400" />
-          <span className="text-sm font-semibold text-foreground">세션 이력</span>
+          <span className="text-sm font-semibold text-foreground">대화 이력</span>
           <span className="text-xs text-muted-foreground ml-1">({entries.length}개)</span>
           <div className="flex-1" />
           <button onClick={onClose} className="rounded p-1 text-muted-foreground hover:text-foreground transition">
@@ -101,7 +101,7 @@ export function TopicHistory({ sessionKey, open, onClose, portalContainer }: Top
             <p className="text-center text-sm text-muted-foreground py-8">불러오는 중...</p>
           )}
           {!loading && entries.length === 0 && (
-            <p className="text-center text-sm text-muted-foreground py-8">이전 세션 이력이 없습니다</p>
+            <p className="text-center text-sm text-muted-foreground py-8">이전 대화 이력이 없습니다</p>
           )}
           {!loading && entries.length > 0 && (
             <div className="space-y-3">
@@ -115,7 +115,7 @@ export function TopicHistory({ sessionKey, open, onClose, portalContainer }: Top
                     {idx > 0 && (
                       <div className="flex items-center gap-2 py-2">
                         <div className="flex-1 border-t border-dashed border-zinc-700/50" />
-                        <span className="text-[10px] text-amber-500/60 font-medium">세션 갱신</span>
+                        <span className="text-[10px] text-amber-500/60 font-medium">대화 리셋</span>
                         <div className="flex-1 border-t border-dashed border-zinc-700/50" />
                       </div>
                     )}
@@ -139,7 +139,7 @@ export function TopicHistory({ sessionKey, open, onClose, portalContainer }: Top
                           "text-xs font-medium",
                           isCurrent ? "text-amber-300" : "text-zinc-400"
                         )}>
-                          {isCurrent ? "현재 세션" : `이전 세션 #${entries.length - idx}`}
+                          {isCurrent ? "현재 대화" : `이전 대화 #${entries.length - idx}`}
                         </span>
                         <div className="flex-1" />
                         <span className="text-[10px] text-muted-foreground">
