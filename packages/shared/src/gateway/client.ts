@@ -162,7 +162,18 @@ export class GatewayClient {
   private async handleEvent(frame: EventFrame): Promise<void> {
     if (frame.event === "connect.challenge") {
       const nonce = (frame.payload as { nonce: string })?.nonce;
-      const device = nonce ? await signChallenge(nonce) : undefined;
+      const role = "operator";
+      const scopes = ["operator.read", "operator.write", "operator.admin"];
+      const device = nonce
+        ? await signChallenge({
+            nonce,
+            clientId: "openclaw-control-ui",
+            clientMode: "ui",
+            role,
+            scopes,
+            token: this.token,
+          })
+        : undefined;
       const authFrame = makeReq("connect", {
         minProtocol: 3,
         maxProtocol: 3,
@@ -172,8 +183,8 @@ export class GatewayClient {
           platform: "web",
           mode: "ui",
         },
-        role: "operator",
-        scopes: ["operator.read", "operator.write", "operator.admin"],
+        role,
+        scopes,
         auth: { token: this.token },
         device,
       });

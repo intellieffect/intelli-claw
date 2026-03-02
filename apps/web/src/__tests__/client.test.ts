@@ -3,12 +3,12 @@ import { GatewayClient } from "@/lib/gateway/client";
 
 // Mock device-identity module at the shared package level (where GatewayClient imports from)
 vi.mock("@intelli-claw/shared/gateway/device-identity", () => ({
-  signChallenge: vi.fn(async (nonce: string) => ({
-    id: "test-device-id",
-    publicKey: '{"kty":"EC","crv":"P-256"}',
-    signature: "dGVzdC1zaWduYXR1cmU=",
+  signChallenge: vi.fn(async (params: { nonce: string }) => ({
+    id: "a".repeat(64),
+    publicKey: "dGVzdC1wdWJsaWMta2V5LWJhc2U2NHVybA",
+    signature: "dGVzdC1zaWduYXR1cmU",
     signedAt: 1700000000000,
-    nonce,
+    nonce: params.nonce,
   })),
   initCryptoAdapter: vi.fn(),
   getCryptoAdapter: vi.fn(),
@@ -108,7 +108,7 @@ describe("GatewayClient", () => {
     expect(sent.params.client.id).toBe("openclaw-control-ui");
     // Device identity should be included
     expect(sent.params.device).toBeDefined();
-    expect(sent.params.device.id).toBe("test-device-id");
+    expect(sent.params.device.id).toBe("a".repeat(64));
     expect(sent.params.device.nonce).toBe("abc123");
     expect(sent.params.device.signature).toBeTruthy();
   });

@@ -12,15 +12,17 @@ describe("device-identity", () => {
     await clearDeviceIdentity();
   });
 
-  it("creates a device with id and publicKey", async () => {
+  it("creates a device with hex id and base64url publicKey", async () => {
     const device = await getOrCreateDevice();
     expect(device.id).toBeTruthy();
     expect(typeof device.id).toBe("string");
+    // Device ID should be 64-char hex (SHA-256)
+    expect(device.id).toMatch(/^[0-9a-f]{64}$/);
+    // Public key should be base64url-encoded (no +, /, =)
     expect(device.publicKey).toBeTruthy();
-    // publicKey is a JSON-stringified JWK
-    const jwk = JSON.parse(device.publicKey);
-    expect(jwk.kty).toBe("EC");
-    expect(jwk.crv).toBe("P-256");
+    expect(device.publicKey).not.toContain("+");
+    expect(device.publicKey).not.toContain("/");
+    expect(device.publicKey).not.toContain("=");
   });
 
   it("returns the same device on subsequent calls", async () => {
@@ -34,23 +36,38 @@ describe("device-identity", () => {
     expect(d1.id).toBeTruthy();
   });
 
-  it("signChallenge returns a valid DeviceIdentity", async () => {
-    const identity = await signChallenge("test-nonce-123");
+  it("signChallenge returns a valid DeviceIdentity with v2 payload", async () => {
+    const identity = await signChallenge({
+      nonce: "test-nonce-123",
+      clientId: "openclaw-control-ui",
+      clientMode: "ui",
+      role: "operator",
+      scopes: ["operator.read", "operator.write"],
+      token: "test-token",
+    });
 
     expect(identity.id).toBeTruthy();
+    expect(identity.id).toMatch(/^[0-9a-f]{64}$/);
     expect(identity.nonce).toBe("test-nonce-123");
     expect(identity.signedAt).toBeGreaterThan(0);
     expect(identity.signature).toBeTruthy();
     expect(typeof identity.signature).toBe("string");
-    // publicKey should be a JSON-stringified JWK
-    const jwk = JSON.parse(identity.publicKey);
-    expect(jwk.kty).toBe("EC");
-    expect(jwk.crv).toBe("P-256");
+    // Public key should be base64url
+    expect(identity.publicKey).not.toContain("+");
+    expect(identity.publicKey).not.toContain("/");
+    expect(identity.publicKey).not.toContain("=");
   });
 
   it("signChallenge produces different signatures for different nonces", async () => {
-    const s1 = await signChallenge("nonce-a");
-    const s2 = await signChallenge("nonce-b");
+    const params = {
+      clientId: "openclaw-control-ui",
+      clientMode: "ui",
+      role: "operator",
+      scopes: ["operator.read"],
+      token: "test-token",
+    };
+    const s1 = await signChallenge({ ...params, nonce: "nonce-a" });
+    const s2 = await signChallenge({ ...params, nonce: "nonce-b" });
     expect(s1.signature).not.toBe(s2.signature);
     // But same device ID
     expect(s1.id).toBe(s2.id);
