@@ -1,8 +1,10 @@
 # Development Environment Setup
 
-intelli-claw는 Web Crypto API(ECDSA P-256)를 사용한 device identity 인증을 지원합니다.
+intelli-claw는 Web Crypto API(Ed25519)를 사용한 device identity 인증을 지원합니다.
 Web Crypto API(`crypto.subtle`)는 **secure context**(HTTPS 또는 `localhost`)에서만 동작하므로,
 localhost 이외의 환경에서 접속하려면 HTTPS 설정이 필요합니다.
+
+> **Tailscale Serve 사용 시:** mkcert 대신 Tailscale Serve(Let's Encrypt)를 사용하면 외부 기기에서 CA 설치 없이 접속 가능합니다. 자세한 내용은 [Tailscale Serve + Ed25519 가이드](./tailscale-serve-guide.md) 참고.
 
 ---
 
@@ -100,18 +102,18 @@ mkcert -key-file certificates/localhost-key.pem \
        $(ipconfig getifaddr en0)
 ```
 
-### 3-3. Next.js allowedDevOrigins 설정
+### 3-3. Vite allowedHosts 설정
 
-`next.config.ts`에 접속할 호스트명을 추가합니다:
+환경변수 `ALLOWED_HOSTS`에 접속할 호스트명을 추가합니다:
 
-```ts
-const nextConfig: NextConfig = {
-  reactStrictMode: true,
-  allowedDevOrigins: ["your-hostname"],
-};
+```bash
+# .env.local
+ALLOWED_HOSTS=your-hostname,your-hostname.tailnet.ts.net
 ```
 
-> **왜 필요한가?** Next.js dev server는 기본적으로 `localhost` 이외의 origin에서 오는 HMR WebSocket 연결을 거부합니다. `allowedDevOrigins`에 호스트명을 추가해야 hot reload가 정상 동작합니다.
+이 값은 `vite.config.ts`의 `server.allowedHosts`에 전달됩니다.
+
+> **왜 필요한가?** Vite dev server는 기본적으로 허용되지 않은 호스트의 요청을 거부합니다. `allowedHosts`에 호스트명을 추가해야 정상 접속됩니다.
 
 ### 3-4. Gateway allowedOrigins 설정
 
@@ -168,7 +170,7 @@ mkcert -key-file certificates/localhost-key.pem \
 
 ### 4-3. 나머지 설정
 
-- `next.config.ts`의 `allowedDevOrigins`에 Tailscale 호스트명 추가 (필요 시)
+- `.env.local`의 `ALLOWED_HOSTS`에 Tailscale 호스트명 추가 (필요 시)
 - Gateway `allowedOrigins`에 Tailscale origin 추가 ([6. Gateway 설정](#6-gateway-설정) 참고)
 - `./scripts/start-dev.sh`로 재시작
 
@@ -260,16 +262,17 @@ intelli-claw는 OpenClaw Gateway에 WebSocket으로 연결합니다. HTTPS origi
 
 ### 6-3. WebSocket URL 설정
 
-`.env.local`의 `NEXT_PUBLIC_GATEWAY_URL`도 접속 환경에 맞게 설정합니다:
+`.env.local`의 `VITE_GATEWAY_URL`도 접속 환경에 맞게 설정합니다:
 
 ```bash
 # localhost 접속
-NEXT_PUBLIC_GATEWAY_URL=ws://127.0.0.1:18789
+VITE_GATEWAY_URL=ws://127.0.0.1:18789
 
-# LAN/Tailscale에서 접속하는 경우 (Gateway가 같은 서버에서 실행)
-NEXT_PUBLIC_GATEWAY_URL=ws://127.0.0.1:18789
-# 또는 서버 호스트명/IP로 변경:
-# NEXT_PUBLIC_GATEWAY_URL=ws://your-hostname:18789
+# Tailscale Serve 경유 (권장)
+VITE_GATEWAY_URL=wss://your-hostname.tailnet.ts.net:18789
+
+# LAN에서 접속하는 경우 (mkcert 사용 시)
+# VITE_GATEWAY_URL=ws://your-hostname:18789
 ```
 
 ---
@@ -332,16 +335,16 @@ ERROR: failed to execute keytool: ...
 
 ---
 
-### Next.js HMR WebSocket 연결 실패
+### Vite HMR WebSocket 연결 실패
 
 **증상:** 페이지는 로드되지만 hot reload가 동작하지 않음, 콘솔에 WebSocket 에러
 
-**원인:** `next.config.ts`의 `allowedDevOrigins`에 접속 호스트명이 없음
+**원인:** `ALLOWED_HOSTS`에 접속 호스트명이 없거나, HMR 설정 불일치
 
 **해결:**
-`next.config.ts`에 호스트명 추가:
-```ts
-allowedDevOrigins: ["your-hostname"],
+`.env.local`에 호스트명 추가:
+```bash
+ALLOWED_HOSTS=your-hostname,your-hostname.tailnet.ts.net
 ```
 dev server 재시작.
 
@@ -349,10 +352,13 @@ dev server 재시작.
 
 ## 요약: 시나리오별 체크리스트
 
-| 시나리오 | mkcert 인증서 | allowedDevOrigins | Gateway allowedOrigins | 클라이언트 CA 설치 |
+| 시나리오 | mkcert 인증서 | ALLOWED_HOSTS | Gateway allowedOrigins | 클라이언트 CA 설치 |
 |----------|:---:|:---:|:---:|:---:|
 | localhost (HTTP) | - | - | - | - |
 | localhost (HTTPS) | O | - | O | - |
 | LAN 접속 | O (호스트명/IP 포함) | O | O | O |
-| Tailscale 접속 | O (Tailscale IP 포함) | O | O | O |
+| Tailscale 접속 (mkcert) | O (Tailscale IP 포함) | O | O | O |
+| **Tailscale Serve (권장)** | **로컬만** | **O** | **O** | **불필요** |
 | iOS 접속 | O (IP 포함) | - | O | O (프로파일 설치) |
+
+> **Tailscale Serve**를 사용하면 mkcert CA를 외부 기기에 설치할 필요가 없습니다. 자세한 설정은 [Tailscale Serve 가이드](./tailscale-serve-guide.md) 참고.
