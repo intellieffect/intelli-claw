@@ -1,5 +1,5 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { getAgentAvatar } from "@/lib/agent-avatars";
 import { cn } from "@/lib/utils";
 
@@ -16,6 +16,11 @@ interface AgentAvatarProps {
 export function AgentAvatar({ agentId, size = 32, className }: AgentAvatarProps) {
   const av = getAgentAvatar(agentId);
   const [imgError, setImgError] = useState(false);
+
+  // Reset error state when agentId changes
+  useEffect(() => {
+    setImgError(false);
+  }, [agentId]);
 
   if (av.imageUrl && !imgError) {
     return (
