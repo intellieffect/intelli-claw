@@ -1,6 +1,9 @@
-import { app, BrowserWindow, shell, protocol, net, Menu, screen } from "electron";
+import { app, BrowserWindow, shell, protocol, net, Menu, screen, dialog } from "electron";
 import { join } from "path";
 import { readFileSync, writeFileSync } from "fs";
+
+// Read version from package.json (bundled into the app)
+const appVersion = app.getVersion(); // electron-builder sets this from package.json
 import { registerIpcHandlers } from "./ipc-handlers";
 
 // --- Dev mode detection & isolation ---
@@ -90,7 +93,7 @@ function createWindow(opts?: CreateWindowOpts): BrowserWindow {
     titleBarStyle: "hiddenInset",
     trafficLightPosition: { x: 16, y: 16 },
     backgroundColor: isDev ? "#0d1117" : "#0a0a0a",
-    title: isDev ? "iClaw [DEV]" : "iClaw",
+    title: isDev ? `iClaw [DEV] v${appVersion}` : `iClaw v${appVersion}`,
     webPreferences: {
       preload: join(__dirname, "../preload/index.js"),
       contextIsolation: true,
@@ -218,7 +221,18 @@ app.whenReady().then(() => {
     {
       label: app.name,
       submenu: [
-        { role: "about" },
+        {
+          label: `About iClaw v${appVersion}`,
+          click: () => {
+            dialog.showMessageBox({
+              type: "info",
+              title: "About iClaw",
+              message: `iClaw v${appVersion}`,
+              detail: `Version: ${appVersion}\nElectron: ${process.versions.electron}\nChrome: ${process.versions.chrome}\nNode: ${process.versions.node}\nPlatform: ${process.platform} ${process.arch}`,
+              buttons: ["OK"],
+            });
+          },
+        },
         { type: "separator" },
         { role: "hide" },
         { role: "hideOthers" },

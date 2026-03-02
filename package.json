@@ -9,6 +9,8 @@
     "preview": "pnpm --filter @intelli-claw/web preview",
     "dev:electron": "pnpm --filter @intelli-claw/desktop dev",
     "build:electron": "pnpm --filter @intelli-claw/desktop build",
+    "version:bump": "bash scripts/bump-version.sh",
+    "release": "bash scripts/release.sh",
     "package": "pnpm --filter @intelli-claw/desktop package",
     "lint": "turbo run lint",
     "test": "turbo run test",
