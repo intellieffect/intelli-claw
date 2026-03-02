@@ -72,7 +72,7 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
   const effectiveSessionKey =
     sessionKey || (agentId ? `agent:${agentId}:main` : mainSessionKey) || undefined;
 
-  const { messages, streaming, loading, agentStatus, sendMessage, sendCommand, addUserMessage, addLocalMessage, cancelQueued, abort, sendContextBridge } = useChat(effectiveSessionKey);
+  const { messages, streaming, loading, agentStatus, sendMessage, sendCommand, addUserMessage, addLocalMessage, clearMessages, cancelQueued, abort, sendContextBridge } = useChat(effectiveSessionKey);
   const { agents } = useAgents();
   const { sessions, loading: sessionsLoading, refresh: refreshSessions, patchSession } = useSessions();
 
@@ -338,6 +338,12 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
         return;
       }
 
+      // /clear — clear chat display (keep server history)
+      if (trimmed === "/clear") {
+        clearMessages();
+        return;
+      }
+
       // /help — show help table locally
       if (trimmed === "/help") {
         addLocalMessage(text, "user");
@@ -349,6 +355,7 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
           "| `/status` | 현재 세션 상태 표시 |",
           "| `/model` | 현재 모델 표시 |",
           "| `/model <name>` | 모델 변경 |",
+          "| `/clear` | 채팅 표시 비우기 |",
           "| `/new` | 새 스레드 생성 |",
           "| `/reset` | 세션 초기화 |",
           "| `/reasoning <level>` | 추론 레벨 변경 |",
@@ -480,7 +487,7 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
         sendMessage(text);
       }
     },
-    [attachments, client, isConnected, effectiveSessionKey, sessionKey, clearAttachments, sendMessage, sendCommand, addUserMessage, addLocalMessage, handleStatusCommand, patchSession, abort, refreshSessions, sessions, summarizeLabelFromText]
+    [attachments, client, isConnected, effectiveSessionKey, sessionKey, clearAttachments, sendMessage, sendCommand, addUserMessage, addLocalMessage, clearMessages, handleStatusCommand, patchSession, abort, refreshSessions, sessions, summarizeLabelFromText]
   );
 
   const handleAgentChange = (id: string | undefined) => {
@@ -605,6 +612,11 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
           onRenameSession={(key, label) => handleRename(key, label)}
           onOpenSessionManager={() => setSessionManagerOpen(true)}
           onOpenTopicHistory={() => setTopicHistoryOpen(true)}
+          onClearMessages={() => {
+            if (window.confirm("채팅 내용을 모두 비우시겠습니까?")) {
+              clearMessages();
+            }
+          }}
         />
       )}
 
@@ -624,6 +636,11 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
           agentStatus={agentStatus}
           onLoadPreviousContext={sendContextBridge}
           onOpenTopicHistory={() => setTopicHistoryOpen(true)}
+          onClearMessages={() => {
+            if (window.confirm("채팅 내용을 모두 비우시겠습니까?")) {
+              clearMessages();
+            }
+          }}
         />
       </DropZone>
 
