@@ -63,6 +63,21 @@ export function SubagentStream({ currentSessionKey }: { currentSessionKey?: stri
           existing.toolName = undefined;
         } else if (stream === "lifecycle" && data?.phase === "end") {
           existing.status = "done";
+          // Send completion notification
+          try {
+            const label = existing.label || evSessionKey;
+            if (document.hidden) {
+              // App not focused: use browser Notification API
+              if (Notification.permission === "granted") {
+                new Notification("작업 완료", {
+                  body: `${label} 작업이 완료되었습니다.`,
+                  icon: "/logo.svg",
+                });
+              } else if (Notification.permission === "default") {
+                Notification.requestPermission();
+              }
+            }
+          } catch { /* ignore notification errors */ }
         }
 
         existing.updatedAt = Date.now();
