@@ -321,9 +321,10 @@ const __filename = fileURLToPath(import.meta.url);
 
 if (process.argv[1] && resolve(process.argv[1]) === resolve(__filename)) {
   const port = parseInt(process.env.API_PORT || "4001", 10);
+  const host = process.env.API_HOST || "127.0.0.1";
   const server = http.createServer(createHandler());
-  server.listen(port, () => {
-    console.log(`[api-server] listening on :${port}`);
+  server.listen(port, host, () => {
+    console.log(`[api-server] listening on ${host}:${port}`);
   });
 }
 
