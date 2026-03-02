@@ -1,0 +1,54 @@
+name: ✨ Feature / Improvement
+description: 새 기능 요청 또는 기존 기능 개선
+labels: ["feature"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        기능 요청/개선 사항을 작성해주세요.
+  - type: textarea
+    id: background
+    attributes:
+      label: 배경
+      description: 왜 필요한지, 현재 어떤 불편/한계가 있는지
+      placeholder: "예: 칸반 뷰에서 특정 프로젝트 하위만 필터링할 수 없어서 전체 태스크가 보임"
+    validations:
+      required: true
+  - type: textarea
+    id: requirements
+    attributes:
+      label: 요구사항
+      description: 구체적인 요구사항 목록
+      placeholder: |
+        - [ ] 칸반 뷰에 프로젝트 필터 드롭다운 추가
+        - [ ] 선택한 프로젝트 하위 워크노드만 표시
+        - [ ] 필터 상태 URL에 반영 (공유 가능)
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 수용 기준 (Acceptance Criteria)
+      description: 이렇게 되면 완료
+      placeholder: |
+        - 프로젝트 선택 시 해당 하위 워크노드만 칸반에 표시
+        - 필터 해제 시 전체 복원
+    validations:
+      required: true
+  - type: textarea
+    id: code
+    attributes:
+      label: 관련 코드
+      description: 관련 파일/컴포넌트, 비슷한 기존 구현 위치
+      placeholder: |
+        - 파일: `apps/electron/src/views/KanbanView.tsx`
+        - 참고: 트리뷰의 필터 구현 `TreeFilter.tsx`
+    validations:
+      required: false
+  - type: textarea
+    id: context
+    attributes:
+      label: 추가 컨텍스트
+      description: 디자인 시안, 레퍼런스, BRXCE displayId 등
+    validations:
+      required: false
