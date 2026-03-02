@@ -234,6 +234,15 @@ function extractMediaAttachments(text: string): { cleanedText: string; attachmen
   return { cleanedText, attachments };
 }
 
+export interface ReplyTo {
+  /** ID of the message being replied to */
+  messageId: string;
+  /** Preview snippet of the original message (truncated) */
+  preview: string;
+  /** Role of the original sender */
+  role: "user" | "assistant" | "system";
+}
+
 export interface DisplayMessage {
   id: string;
   role: "user" | "assistant" | "system" | "session-boundary";
@@ -245,6 +254,7 @@ export interface DisplayMessage {
   attachments?: DisplayAttachment[];
   oldSessionId?: string;
   newSessionId?: string;
+  replyTo?: ReplyTo;
 }
 
 export type AgentStatus =
@@ -455,6 +465,7 @@ export function useChat(sessionKey?: string) {
             timestamp: m.timestamp || new Date().toISOString(),
             toolCalls: m.toolCalls || [],
             attachments: allAttachments.length > 0 ? allAttachments : undefined,
+            replyTo: (rawMsg.replyTo as ReplyTo | undefined),
           };
         })
         .filter((m) => !isHiddenMessage(m.role, m.content));
@@ -488,6 +499,7 @@ export function useChat(sessionKey?: string) {
             attachments: lm.attachments as DisplayAttachment[] | undefined,
             oldSessionId: lm.oldSessionId,
             newSessionId: lm.newSessionId,
+            replyTo: lm.replyTo as ReplyTo | undefined,
           });
 
           // Local messages not in gateway — split into older (prepend) and newer (append)
@@ -546,6 +558,7 @@ export function useChat(sessionKey?: string) {
             attachments: lm.attachments as DisplayAttachment[] | undefined,
             oldSessionId: lm.oldSessionId,
             newSessionId: lm.newSessionId,
+            replyTo: lm.replyTo as ReplyTo | undefined,
           }));
         }
       } catch (e) {
@@ -565,6 +578,7 @@ export function useChat(sessionKey?: string) {
           attachments: m.attachments,
           oldSessionId: m.oldSessionId,
           newSessionId: m.newSessionId,
+          replyTo: m.replyTo,
         }));
       saveLocalMessages(sessionKey, toStore).catch(() => {});
 
@@ -955,12 +969,13 @@ export function useChat(sessionKey?: string) {
   }, [doSend, persistQueue]);
 
   const sendMessage = useCallback(
-    (text: string) => {
+    (text: string, replyTo?: ReplyTo) => {
       if (!client || state !== "connected" || !text.trim()) return;
       const msgId = `user-${Date.now()}-${Math.random().toString(36).slice(2)}`;
       const userMsg: DisplayMessage = {
         id: msgId, role: "user", content: text,
         timestamp: new Date().toISOString(), toolCalls: [], queued: streaming,
+        replyTo,
       };
       setMessages((prev) => [...prev, userMsg]);
       // Persist user message to local store
@@ -971,6 +986,7 @@ export function useChat(sessionKey?: string) {
         content: text,
         timestamp: userMsg.timestamp,
         attachments: userMsg.attachments,
+        replyTo: userMsg.replyTo,
       }]).catch(() => {});
       if (streaming) { queueRef.current.push({ id: msgId, text }); persistQueue(); }
       else { doSend(text, msgId); }
@@ -1008,11 +1024,11 @@ export function useChat(sessionKey?: string) {
     }
   }, [client, state, sessionKey, clearStreamingTimeout]);
 
-  const addUserMessage = useCallback((text: string, attachments?: DisplayAttachment[]) => {
+  const addUserMessage = useCallback((text: string, attachments?: DisplayAttachment[], replyTo?: ReplyTo) => {
     const msgId = `user-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const userMsg: DisplayMessage = {
       id: msgId, role: "user", content: text,
-      timestamp: new Date().toISOString(), toolCalls: [], queued: streaming, attachments,
+      timestamp: new Date().toISOString(), toolCalls: [], queued: streaming, attachments, replyTo,
     };
     setMessages((prev) => [...prev, userMsg]);
     if (!streaming) setStreaming(true);
@@ -1024,6 +1040,7 @@ export function useChat(sessionKey?: string) {
       content: text,
       timestamp: userMsg.timestamp,
       attachments: attachments,
+      replyTo: replyTo,
     }]).then(() => {
       if (attachments?.length) console.log('[AWF] Saved user msg with', attachments.length, 'attachments, id:', msgId);
     }).catch((err) => { console.error('[AWF] Failed to save user message:', err); });

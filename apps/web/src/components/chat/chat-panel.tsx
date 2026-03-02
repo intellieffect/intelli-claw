@@ -20,6 +20,7 @@ import { useKeyboardHeight } from "@/lib/hooks/use-keyboard-height";
 import { NewSessionPicker, AgentManager } from "@/components/settings/agent-manager";
 import { SessionManagerPanel } from "./session-manager-panel";
 import { TopicHistory } from "./topic-history";
+import type { ReplyTo } from "@/lib/gateway/hooks";
 
 export interface ChatPanelProps {
   /** Panel id for focus management */
@@ -53,6 +54,7 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
 
   const setSessionKey = useCallback((key: string | undefined) => {
     setSessionKeyRaw(key);
+    setReplyTo(null);
     if (typeof window !== "undefined") {
       if (key) localStorage.setItem(`${storagePrefix}sessionKey`, key);
       else localStorage.removeItem(`${storagePrefix}sessionKey`);
@@ -78,6 +80,7 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
 
   const { attachments, addFiles, removeAttachment, clearAttachments } = useFileAttachments();
 
+  const [replyTo, setReplyTo] = useState<ReplyTo | null>(null);
   const [sessionSwitcherOpen, setSessionSwitcherOpen] = useState(false);
   const [agentBrowserOpen, setAgentBrowserOpen] = useState(false);
   const [newSessionPickerOpen, setNewSessionPickerOpen] = useState(false);
@@ -427,7 +430,7 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
         const payloads = results.flatMap((r) => r.payloads);
         const pdfTexts = results.map((r) => r.prependText).filter(Boolean).join("\n\n");
         const pathHintText = pdfPathHints.join("\n");
-        const userMsg = [text, pathHintText, pdfTexts].filter(Boolean).join("\n\n") || (payloads.length > 0 ? "(image)" : "");
+        const agentMsg = [text, pathHintText, pdfTexts].filter(Boolean).join("\n\n") || (payloads.length > 0 ? "(image)" : "");
 
         const displayAtts = await Promise.all(
           attachments.map(async (att) => {
@@ -445,14 +448,14 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
             };
           })
         );
-        addUserMessage(text || "(첨부 파일)", displayAtts);
+        addUserMessage(text || "(첨부 파일)", displayAtts, replyTo ?? undefined);
         if (client && isConnected) {
           // Send all attachments in a single request.
           // If the single request fails (e.g. payload too large), fall back to
           // sending each attachment individually with a descriptive message.
           try {
             await client.request("chat.send", {
-              message: userMsg,
+              message: agentMsg,
               idempotencyKey: `awf-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
               sessionKey: effectiveSessionKey,
               attachments: payloads,
@@ -462,7 +465,7 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
             try {
               for (let i = 0; i < payloads.length; i++) {
                 await client.request("chat.send", {
-                  message: i === 0 ? (userMsg || `(첨부 ${i + 1}/${payloads.length})`) : `(첨부 ${i + 1}/${payloads.length})`,
+                  message: i === 0 ? (agentMsg || `(첨부 ${i + 1}/${payloads.length})`) : `(첨부 ${i + 1}/${payloads.length})`,
                   idempotencyKey: `awf-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
                   sessionKey: effectiveSessionKey,
                   attachments: [payloads[i]],
@@ -477,10 +480,12 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
         clearAttachments();
       } else {
         await maybeAutoLabelSession(effectiveSessionKey, text);
-        sendMessage(text);
+        sendMessage(text, replyTo ?? undefined);
       }
+      // Clear reply after send
+      if (replyTo) setReplyTo(null);
     },
-    [attachments, client, isConnected, effectiveSessionKey, sessionKey, clearAttachments, sendMessage, sendCommand, addUserMessage, addLocalMessage, handleStatusCommand, patchSession, abort, refreshSessions, sessions, summarizeLabelFromText]
+    [attachments, client, isConnected, effectiveSessionKey, sessionKey, clearAttachments, sendMessage, sendCommand, addUserMessage, addLocalMessage, handleStatusCommand, patchSession, abort, refreshSessions, sessions, summarizeLabelFromText, replyTo]
   );
 
   const handleAgentChange = (id: string | undefined) => {
@@ -624,6 +629,7 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
           agentStatus={agentStatus}
           onLoadPreviousContext={sendContextBridge}
           onOpenTopicHistory={() => setTopicHistoryOpen(true)}
+          onReply={(r) => setReplyTo(r)}
         />
       </DropZone>
 
@@ -641,6 +647,8 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
         model={currentSession?.model ? String(currentSession.model) : undefined}
         tokenStr={tokenStr || undefined}
         tokenPercent={(currentSession as any)?.percentUsed as number | undefined}
+        replyTo={replyTo}
+        onCancelReply={() => setReplyTo(null)}
       />
 
       {/* New Session Picker */}

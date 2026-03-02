@@ -4,11 +4,11 @@ import {
   User, Bot, Clock, X, Copy, Check, ArrowDown, Download,
   FileText, Music, Video, File, Image as ImageIcon,
   FileSpreadsheet, FileCode, FileArchive, FileAudio, FileVideo,
-  RefreshCw, History, Loader2,
+  RefreshCw, History, Loader2, Reply,
 } from "lucide-react";
 import { MarkdownRenderer, MarkdownFilePreview } from "./markdown-renderer";
 import { ToolCallCard } from "./tool-call-card";
-import { HIDDEN_REPLY_RE, type DisplayMessage, type DisplayAttachment, type AgentStatus } from "@/lib/gateway/hooks";
+import { HIDDEN_REPLY_RE, type DisplayMessage, type DisplayAttachment, type AgentStatus, type ReplyTo } from "@/lib/gateway/hooks";
 import { AgentAvatar } from "@/components/ui/agent-avatar";
 
 import { blobDownload, forceDownloadUrl } from "@/lib/utils/download";
@@ -119,6 +119,7 @@ export function MessageList({
   agentStatus,
   onLoadPreviousContext,
   onOpenTopicHistory,
+  onReply,
 }: {
   messages: DisplayMessage[];
   loading: boolean;
@@ -128,6 +129,7 @@ export function MessageList({
   agentStatus?: AgentStatus;
   onLoadPreviousContext?: () => void;
   onOpenTopicHistory?: () => void;
+  onReply?: (replyTo: ReplyTo) => void;
 }) {
   const PAGE_SIZE = 50;
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -224,6 +226,30 @@ export function MessageList({
     if (el) el.scrollTo({ top: 0, behavior: "smooth" });
   }, []);
 
+  // Scroll to a specific message by id (for reply quote click)
+  const scrollToMessage = useCallback((messageId: string) => {
+    const el = containerRef.current;
+    if (!el) return;
+    const msgEl = el.querySelector(`[data-message-id="${messageId}"]`);
+    if (msgEl) {
+      msgEl.scrollIntoView({ behavior: "smooth", block: "center" });
+      // Brief highlight flash
+      msgEl.classList.add("reply-highlight");
+      setTimeout(() => msgEl.classList.remove("reply-highlight"), 1500);
+    }
+  }, []);
+
+  // Handle reply button click
+  const handleReply = useCallback((msg: DisplayMessage) => {
+    if (!onReply) return;
+    const preview = msg.content.slice(0, 80) + (msg.content.length > 80 ? "…" : "");
+    onReply({
+      messageId: msg.id,
+      preview,
+      role: msg.role as "user" | "assistant" | "system",
+    });
+  }, [onReply]);
+
   // Vim-style scroll shortcuts: Shift+G → bottom, gg → top
   const lastGPressRef = useRef(0);
   useEffect(() => {
@@ -307,7 +333,7 @@ export function MessageList({
             const prevRole = idx > 0 ? arr[idx - 1].role : null;
             const showAvatar = msg.role !== "assistant" || prevRole !== "assistant";
             return (
-              <MessageBubble key={msg.id} message={msg} showAvatar={showAvatar} onCancel={msg.queued ? onCancelQueued : undefined} agentId={agentId} agentStatus={msg.streaming ? agentStatus : undefined} />
+              <MessageBubble key={msg.id} message={msg} showAvatar={showAvatar} onCancel={msg.queued ? onCancelQueued : undefined} agentId={agentId} agentStatus={msg.streaming ? agentStatus : undefined} onReply={() => handleReply(msg)} onScrollToMessage={scrollToMessage} />
             );
           })}
         {streaming && !messages.some(m => m.streaming) && <ThinkingIndicator agentId={agentId} />}
@@ -429,7 +455,29 @@ function CopyButton({ text }: { text: string }) {
 }
 
 
-function MessageBubble({ message, showAvatar = true, onCancel, agentId, agentStatus }: { message: DisplayMessage; showAvatar?: boolean; onCancel?: (id: string) => void; agentId?: string; agentStatus?: AgentStatus }) {
+function ReplyQuote({ replyTo, onScrollToMessage }: { replyTo: ReplyTo; onScrollToMessage?: (id: string) => void }) {
+  const isUser = replyTo.role === "user";
+  return (
+    <button
+      onClick={() => onScrollToMessage?.(replyTo.messageId)}
+      className={`mb-1.5 flex w-full items-start gap-2 rounded-lg border px-3 py-1.5 text-left text-xs transition hover:bg-white/5 cursor-pointer ${
+        isUser
+          ? "border-primary/20 bg-primary/5"
+          : "border-zinc-600/30 bg-zinc-700/20"
+      }`}
+    >
+      <div className={`mt-0.5 h-full w-0.5 shrink-0 rounded-full ${isUser ? "bg-primary/60" : "bg-zinc-500/60"}`} style={{ minHeight: 16 }} />
+      <div className="min-w-0 flex-1">
+        <div className={`text-[10px] font-medium ${isUser ? "text-primary/80" : "text-zinc-400"}`}>
+          {isUser ? "나" : "어시스턴트"}
+        </div>
+        <div className="truncate text-zinc-400">{replyTo.preview || "(첨부 파일)"}</div>
+      </div>
+    </button>
+  );
+}
+
+function MessageBubble({ message, showAvatar = true, onCancel, agentId, agentStatus, onReply, onScrollToMessage }: { message: DisplayMessage; showAvatar?: boolean; onCancel?: (id: string) => void; agentId?: string; agentStatus?: AgentStatus; onReply?: () => void; onScrollToMessage?: (id: string) => void }) {
   const isUser = message.role === "user";
   const isSystem = message.role === "system";
   const isQueued = message.queued;
@@ -447,11 +495,20 @@ function MessageBubble({ message, showAvatar = true, onCancel, agentId, agentSta
   }
 
   return (
-    <div className={`group flex gap-3 ${isUser ? "justify-end" : ""}`}>
-      {/* Copy button for user messages (left of bubble) */}
-      {isUser && message.content && (
-        <div className="flex items-start pt-2">
-          <CopyButton text={message.content} />
+    <div data-message-id={message.id} className={`group flex gap-3 ${isUser ? "justify-end" : ""}`}>
+      {/* Action buttons for user messages (left of bubble) */}
+      {isUser && (
+        <div className="flex items-start gap-0.5 pt-2">
+          {onReply && !message.streaming && !message.queued && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onReply(); }}
+              className="rounded p-1 text-muted-foreground opacity-0 transition group-hover:opacity-60 hover:!opacity-100 hover:bg-white/10 hover:text-accent-foreground active:scale-90"
+              title="답장"
+            >
+              <Reply size={12} />
+            </button>
+          )}
+          {message.content && <CopyButton text={message.content} />}
         </div>
       )}
       {!isUser && (
@@ -481,6 +538,8 @@ function MessageBubble({ message, showAvatar = true, onCancel, agentId, agentSta
       >
         {isUser ? (
           <div>
+            {/* Reply quote */}
+            {message.replyTo && <ReplyQuote replyTo={message.replyTo} onScrollToMessage={onScrollToMessage} />}
             {/* Attachment images */}
             {message.attachments && message.attachments.length > 0 && (
               <div className="mb-2 flex flex-wrap gap-2">
@@ -553,6 +612,8 @@ function MessageBubble({ message, showAvatar = true, onCancel, agentId, agentSta
           </div>
         ) : (
           <div>
+            {/* Reply quote */}
+            {message.replyTo && <ReplyQuote replyTo={message.replyTo} onScrollToMessage={onScrollToMessage} />}
             {message.toolCalls.length > 0 && (
               <div className="mb-2">
                 {message.toolCalls.map((tc) => (
@@ -624,6 +685,15 @@ function MessageBubble({ message, showAvatar = true, onCancel, agentId, agentSta
             {!message.streaming && message.content && (
               <div className="mt-1 flex items-center gap-2">
                 <CopyButton text={stripTaskMemo(message.content)} />
+                {onReply && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onReply(); }}
+                    className="rounded p-1 text-muted-foreground opacity-60 sm:opacity-0 transition group-hover:opacity-100 hover:bg-white/10 hover:text-accent-foreground active:scale-90"
+                    title="답장"
+                  >
+                    <Reply size={12} />
+                  </button>
+                )}
                 {time && <span className="text-[10px] text-zinc-500">{time}</span>}
               </div>
             )}

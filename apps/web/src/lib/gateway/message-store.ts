@@ -21,6 +21,7 @@ export interface StoredMessage {
   attachments?: unknown[];
   oldSessionId?: string;
   newSessionId?: string;
+  replyTo?: unknown;
 }
 
 // --- IndexedDB helpers ---

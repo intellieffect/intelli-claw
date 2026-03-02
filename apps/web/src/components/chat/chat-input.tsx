@@ -5,6 +5,7 @@ import { ArrowUp, Paperclip, Square, X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import type { ReplyTo } from "@/lib/gateway/hooks";
 import { useAutosizeTextArea } from "@/hooks/use-autosize-textarea";
 import {
   AttachmentPreview,
@@ -30,6 +31,8 @@ export function ChatInput({
   model,
   tokenStr,
   tokenPercent,
+  replyTo,
+  onCancelReply,
 }: {
   onSend: (text: string) => void;
   onAbort: () => void;
@@ -51,6 +54,10 @@ export function ChatInput({
   tokenStr?: string;
   /** Token usage percent */
   tokenPercent?: number;
+  /** Reply context */
+  replyTo?: ReplyTo | null;
+  /** Cancel reply */
+  onCancelReply?: () => void;
 }) {
   const keyboardHeight = useKeyboardHeight();
   const isMobile = useIsMobile();
@@ -300,6 +307,26 @@ export function ChatInput({
           {toolbar && (
             <div className="flex w-full min-w-0 items-center gap-1.5 px-2.5 pt-2 sm:px-3">
               {toolbar}
+            </div>
+          )}
+
+          {/* Reply preview bar */}
+          {replyTo && (
+            <div className="flex items-center gap-2 px-3 pt-2">
+              <div className={`h-8 w-0.5 shrink-0 rounded-full ${replyTo.role === "user" ? "bg-primary/60" : "bg-zinc-500/60"}`} />
+              <div className="min-w-0 flex-1">
+                <div className={`text-[10px] font-medium ${replyTo.role === "user" ? "text-primary/80" : "text-zinc-400"}`}>
+                  {replyTo.role === "user" ? "나에게 답장" : "어시스턴트에게 답장"}
+                </div>
+                <div className="truncate text-xs text-zinc-400">{replyTo.preview || "(첨부 파일)"}</div>
+              </div>
+              <button
+                onClick={onCancelReply}
+                className="shrink-0 rounded p-1 text-zinc-500 transition hover:bg-white/10 hover:text-zinc-300"
+                title="답장 취소"
+              >
+                <X size={14} />
+              </button>
             </div>
           )}
 
