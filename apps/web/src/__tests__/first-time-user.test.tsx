@@ -27,16 +27,26 @@ const mockGetOrCreateDevice = vi.fn(async () => ({
   createdAt: Date.now(),
 }));
 
+const mockSignChallenge = vi.fn(async (nonce: string) => ({
+  id: "test-device-abc123",
+  publicKey: '{"kty":"EC","crv":"P-256"}',
+  signature: "dGVzdA==",
+  signedAt: Date.now(),
+  nonce,
+}));
+
 vi.mock("@/lib/gateway/device-identity", () => ({
-  signChallenge: vi.fn(async (nonce: string) => ({
-    id: "test-device-abc123",
-    publicKey: '{"kty":"EC","crv":"P-256"}',
-    signature: "dGVzdA==",
-    signedAt: Date.now(),
-    nonce,
-  })),
+  signChallenge: (...args: unknown[]) => mockSignChallenge(...(args as [string])),
   clearDeviceIdentity: (...args: unknown[]) => mockClearDeviceIdentity(...args),
   getOrCreateDevice: (...args: unknown[]) => mockGetOrCreateDevice(...args),
+}));
+
+// Mock shared package device-identity (used by GatewayClient internally)
+vi.mock("@intelli-claw/shared/gateway/device-identity", () => ({
+  signChallenge: (...args: unknown[]) => mockSignChallenge(...(args as [string])),
+  clearDeviceIdentity: (...args: unknown[]) => mockClearDeviceIdentity(...args),
+  initCryptoAdapter: vi.fn(),
+  getCryptoAdapter: vi.fn(),
 }));
 
 // --- Mock WebSocket ---

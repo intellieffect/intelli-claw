@@ -1,4 +1,5 @@
 import { makeReq, parseFrame, type Frame, type ResFrame, type EventFrame, type ErrorShape } from "./protocol";
+import { signChallenge } from "./device-identity";
 
 export type ConnectionState = "disconnected" | "connecting" | "authenticating" | "connected";
 type EventHandler = (event: EventFrame) => void;
@@ -160,6 +161,8 @@ export class GatewayClient {
 
   private async handleEvent(frame: EventFrame): Promise<void> {
     if (frame.event === "connect.challenge") {
+      const nonce = (frame.payload as { nonce: string })?.nonce;
+      const device = nonce ? await signChallenge(nonce) : undefined;
       const authFrame = makeReq("connect", {
         minProtocol: 3,
         maxProtocol: 3,
@@ -172,6 +175,7 @@ export class GatewayClient {
         role: "operator",
         scopes: ["operator.read", "operator.write", "operator.admin"],
         auth: { token: this.token },
+        device,
       });
       this.send(authFrame);
       return;
