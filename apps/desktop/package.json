@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
+    "prepackage": "bash ../../scripts/check-version-bump.sh",
     "package": "electron-vite build && electron-builder --mac"
   },
   "dependencies": {

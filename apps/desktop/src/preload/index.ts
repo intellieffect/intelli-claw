@@ -6,6 +6,7 @@ const windowId = windowIdArg ? parseInt(windowIdArg.split("=")[1], 10) : 0;
 
 const electronAPI = {
   windowId,
+  getVersion: () => ipcRenderer.invoke("app:version") as Promise<string>,
   platform: {
     mediaInfo: (filePath: string) => ipcRenderer.invoke("media:info", filePath),
     mediaServe: (filePath: string) => ipcRenderer.invoke("media:serve", filePath),

@@ -219,6 +219,15 @@ export function ConnectionSettings({ open, onClose }: ConnectionSettingsProps) {
           </div>
         )}
 
+        {/* App Version */}
+        <div className="border-b border-zinc-800 px-4 py-2">
+          <div className="flex items-center gap-3 text-[10px] text-zinc-500">
+            <span>App: <span className="text-zinc-400 font-mono">v{import.meta.env.VITE_APP_VERSION || "0.0.0"}</span></span>
+            <span>·</span>
+            <span className="text-zinc-500">{import.meta.env.MODE}</span>
+          </div>
+        </div>
+
         {/* Actions */}
         <div className="flex gap-2 px-4 py-3">
           <button
