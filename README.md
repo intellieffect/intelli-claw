@@ -147,7 +147,6 @@ pnpm start --port 4100
 | `Cmd+K` | Open session switcher |
 | `Cmd+N` | New session |
 | `Cmd+\` | Split panel |
-| `Cmd+W` | Close panel |
 | `Cmd+1-9` | Switch to panel N |
 | `Enter` | Send message |
 | `Shift+Enter` | New line |

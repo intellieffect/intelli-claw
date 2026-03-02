@@ -30,7 +30,6 @@ export const DEFAULT_SHORTCUTS: ShortcutDef[] = [
   { id: "session-switcher", keys: isMac ? "Cmd+K" : "Ctrl+K", description: "세션 스위처 열기", scope: "panel" },
   { id: "agent-browser", keys: isMac ? "Cmd+O" : "Ctrl+O", description: "에이전트별 세션 브라우저", scope: "panel" },
   { id: "new-tab", keys: isMac ? "Cmd+T" : "Ctrl+T", description: "새 탭 열기 (세션 생성)", scope: "panel" },
-  { id: "close-tab", keys: isMac ? "Cmd+W" : "Ctrl+W", description: "현재 탭 닫기", scope: "panel" },
   { id: "switch-tab-1", keys: isMac ? "Cmd+1" : "Alt+1", description: "탭 1로 이동", scope: "panel" },
   { id: "switch-tab-2", keys: isMac ? "Cmd+2" : "Alt+2", description: "탭 2로 이동", scope: "panel" },
   { id: "switch-tab-3", keys: isMac ? "Cmd+3" : "Alt+3", description: "탭 3로 이동", scope: "panel" },
