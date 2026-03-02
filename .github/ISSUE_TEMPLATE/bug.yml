@@ -1,0 +1,53 @@
+name: 🐛 Bug Report
+description: 기존 기능이 올바르게 동작하지 않을 때
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        버그 리포트를 작성해주세요. 가능한 구체적으로 작성할수록 빠르게 해결됩니다.
+  - type: textarea
+    id: current
+    attributes:
+      label: 현재 동작
+      description: 무엇이 어떻게 잘못되는지 구체적으로
+      placeholder: "예: 트리뷰에서 태그 변경 후 리프레시하면 변경 전 상태로 되돌아감"
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 기대 동작
+      description: 올바르게 동작해야 하는 모습
+      placeholder: "예: 리프레시 후에도 변경된 태그가 유지되어야 함"
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 재현 조건
+      description: 단계별 재현 방법
+      placeholder: |
+        1. 트리뷰에서 워크노드 여러개 선택
+        2. 태그 변경
+        3. 페이지 리프레시
+        4. 태그가 원래 상태로 돌아감
+    validations:
+      required: true
+  - type: textarea
+    id: code
+    attributes:
+      label: 관련 코드
+      description: 관련 파일/컴포넌트/함수 (모르면 "조사 필요" 명시)
+      placeholder: |
+        - 파일: `apps/electron/src/components/TreeView.tsx`
+        - 컴포넌트: `TagEditor`
+    validations:
+      required: false
+  - type: textarea
+    id: context
+    attributes:
+      label: 추가 컨텍스트
+      description: 스크린샷, 로그, BRXCE displayId 등
+    validations:
+      required: false
