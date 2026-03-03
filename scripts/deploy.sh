@@ -77,11 +77,13 @@ deploy_local() {
   echo "── Deploy Local (Mac Studio) ──────────────"
   kill_local
 
-  # Remove old app
-  if [ -d "$INSTALL_PATH" ]; then
-    info "Removing old $INSTALL_PATH..."
-    rm -rf "$INSTALL_PATH"
-  fi
+  # Remove old/legacy app variants (iClaw.app, iclaw.app)
+  for old in "$INSTALL_DIR/iClaw.app" "$INSTALL_DIR/iclaw.app"; do
+    if [ -d "$old" ]; then
+      info "Removing old $old..."
+      rm -rf "$old"
+    fi
+  done
 
   # Copy new app
   info "Copying new app to $INSTALL_PATH..."
@@ -106,9 +108,9 @@ deploy_macbook() {
 
   kill_remote
 
-  # Remove old app on remote
-  info "Removing old app on $REMOTE_HOST..."
-  ssh "$REMOTE_HOST" "rm -rf $REMOTE_INSTALL_PATH"
+  # Remove old/legacy app variants on remote (iClaw.app, iclaw.app)
+  info "Removing old app variants on $REMOTE_HOST..."
+  ssh "$REMOTE_HOST" "rm -rf $REMOTE_INSTALL_DIR/iClaw.app $REMOTE_INSTALL_DIR/iclaw.app"
 
   # Transfer new app via rsync (faster for large .app bundles)
   info "Transferring $APP_NAME.app to $REMOTE_HOST..."
