@@ -125,6 +125,8 @@ describe("HIDDEN_REPLY_RE filtering (#117)", () => {
     ["reply with NO_REPLY", true],
     ["Store durable memories now", true],
     ["[System] 이전 세션이 컨텍스트 한도로 갱신", true],
+    ["(System) 이전 세션이 컨텍스트 한도로 갱신", true],
+    ["이전 세션이 컨텍스트 한도로 갱신되었습니다. 아래는 최근 대화 요약입니다.", true],
     ["[이전 세션 맥락]", true],
     ["Hello world", false],
     ["NO_REPLY is a pattern", false],

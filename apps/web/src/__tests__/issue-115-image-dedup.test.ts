@@ -156,4 +156,44 @@ describe("Issue #115: deduplicateMessages with image attachments", () => {
     // msg-3 has same content as msg-1 but no attachments — should NOT be deduped
     expect(result).toHaveLength(3);
   });
+
+  it("should dedup system bridge variants like [System] vs (System)", () => {
+    const msgs: DisplayMessage[] = [
+      makeMsg({
+        id: "sys-1",
+        role: "assistant",
+        content: "[System] 이전 세션이 컨텍스트 한도로 갱신되었습니다. 아래는 최근 대화 요약입니다.",
+        timestamp: NOW,
+      }),
+      makeMsg({
+        id: "sys-2",
+        role: "assistant",
+        content: "(System) 이전 세션이 컨텍스트 한도로 갱신되었습니다. 아래는 최근 대화 요약입니다.",
+        timestamp: NOW_PLUS_5S,
+      }),
+    ];
+
+    const result = deduplicateMessages(msgs);
+    expect(result).toHaveLength(1);
+  });
+
+  it("should dedup user text with gateway timestamp prefix vs clean text", () => {
+    const msgs: DisplayMessage[] = [
+      makeMsg({
+        id: "u-1",
+        role: "user",
+        content: "[2026-03-03 15:10:00+09:00] 나와 우리 회사의 재정상황에 대해 파악해봐",
+        timestamp: NOW,
+      }),
+      makeMsg({
+        id: "u-2",
+        role: "user",
+        content: "나와 우리 회사의 재정상황에 대해 파악해봐",
+        timestamp: NOW_PLUS_5S,
+      }),
+    ];
+
+    const result = deduplicateMessages(msgs);
+    expect(result).toHaveLength(1);
+  });
 });
