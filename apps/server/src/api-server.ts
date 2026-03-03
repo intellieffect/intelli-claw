@@ -9,7 +9,8 @@
  * Or import createHandler for programmatic use.
  */
 import http from "node:http";
-import { readFile, stat, open, readdir } from "node:fs/promises";
+import { readFile, stat, open, readdir, mkdir, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import { extname, basename, join, resolve, relative, isAbsolute } from "node:path";
 import { homedir } from "node:os";
 
@@ -84,6 +85,80 @@ function validatePath(p: string | null): string | null {
   );
   if (!allowed) return null;
   return resolved;
+}
+
+
+// ---- Media upload handler (#110) ----
+
+const UPLOAD_DIR = join(homedir(), ".openclaw", "media", "uploads");
+const MAX_UPLOAD_B64 = 10 * 1024 * 1024; // 10 MB base64 limit
+const MIME_TO_EXT: Record<string, string> = {
+  "image/jpeg": "jpg", "image/png": "png", "image/gif": "gif",
+  "image/webp": "webp", "image/svg+xml": "svg", "image/bmp": "bmp",
+  "image/tiff": "tiff",
+};
+
+async function handleMediaUpload(req: http.IncomingMessage, res: http.ServerResponse) {
+  // Collect body
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) chunks.push(chunk as Buffer);
+  const raw = Buffer.concat(chunks).toString("utf-8");
+
+  let body: Record<string, unknown>;
+  try {
+    body = JSON.parse(raw);
+  } catch {
+    res.writeHead(400, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "Invalid JSON body" }));
+    return;
+  }
+
+  const data = body.data as string | undefined;
+  const mimeType = body.mimeType as string | undefined;
+  const fileName = body.fileName as string | undefined;
+
+  if (!data || typeof data !== "string") {
+    res.writeHead(400, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "Missing 'data' (base64 string)" }));
+    return;
+  }
+
+  if (!mimeType || typeof mimeType !== "string") {
+    res.writeHead(400, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "Missing 'mimeType'" }));
+    return;
+  }
+
+  if (!mimeType.startsWith("image/")) {
+    res.writeHead(400, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "Only image types are accepted" }));
+    return;
+  }
+
+  if (data.length > MAX_UPLOAD_B64) {
+    res.writeHead(413, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "Data too large (max 10MB base64)" }));
+    return;
+  }
+
+  const ext = MIME_TO_EXT[mimeType] || mimeType.split("/")[1] || "bin";
+  const uuid = randomUUID();
+  const outName = fileName
+    ? `${uuid}-${fileName.replace(/[^a-zA-Z0-9._-]/g, "_")}`
+    : `${uuid}.${ext}`;
+  const outPath = join(UPLOAD_DIR, outName);
+
+  try {
+    await mkdir(UPLOAD_DIR, { recursive: true });
+    const buffer = Buffer.from(data, "base64");
+    await writeFile(outPath, buffer);
+
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ path: outPath }));
+  } catch (err) {
+    res.writeHead(500, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "Failed to save file" }));
+  }
 }
 
 async function handleMedia(req: http.IncomingMessage, res: http.ServerResponse, url: URL) {
@@ -287,11 +362,13 @@ export function createHandler() {
 
     // CORS for dev
     res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Range");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Range, Content-Type");
     if (req.method === "OPTIONS") { res.writeHead(204); res.end(); return; }
 
-    if (path === "/api/media") {
+    if (path === "/api/media/upload" && req.method === "POST") {
+      await handleMediaUpload(req, res);
+    } else if (path === "/api/media") {
       await handleMedia(req, res, url);
     } else if (path === "/api/showcase") {
       await handleShowcaseList(req, res);
