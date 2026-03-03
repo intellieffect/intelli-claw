@@ -13,6 +13,8 @@ type PendingReq = {
 const REQUEST_TIMEOUT = 30_000;
 const AUTH_TIMEOUT = 10_000;
 const RECONNECT_DELAYS = [1000, 2000, 4000, 8000, 16000];
+const RECONNECT_JITTER = 0.3; // ±30% jitter on delays
+const MAX_RECONNECT_ATTEMPTS = 20;
 const PING_INTERVAL = 25_000;
 const PONG_TIMEOUT = 10_000;
 
@@ -36,6 +38,29 @@ export class GatewayClient {
   public serverCommit = "";
   public lastError: ErrorShape | null = null;
 
+  private handleOnline = (): void => {
+    // Network came back — if we're disconnected (not intentionally), reconnect immediately
+    if (this.state === "disconnected" && !this.intentionalClose && this.wasConnected) {
+      this.clearReconnect();
+      this.reconnectAttempt = 0; // reset — network change is a fresh start
+      this.connect();
+    }
+  };
+
+  private handleVisibilityChange = (): void => {
+    if (
+      typeof document !== "undefined" &&
+      !document.hidden &&
+      this.state === "disconnected" &&
+      !this.intentionalClose &&
+      this.wasConnected
+    ) {
+      this.clearReconnect();
+      this.reconnectAttempt = 0;
+      this.connect();
+    }
+  };
+
   constructor(url: string, token: string) {
     this.url = url;
     this.token = token;
@@ -48,6 +73,7 @@ export class GatewayClient {
     this.intentionalClose = false;
     this.lastError = null;
     this.setState("connecting");
+    this.addBrowserListeners();
 
     try {
       this.ws = new WebSocket(this.url);
@@ -65,6 +91,7 @@ export class GatewayClient {
     this.clearReconnect();
     this.clearAuthTimer();
     this.stopPing();
+    this.removeBrowserListeners();
     if (this.ws) {
       this.ws.onclose = null;
       this.ws.close();
@@ -323,7 +350,27 @@ export class GatewayClient {
 
   private scheduleReconnect(): void {
     this.clearReconnect();
-    const delay = RECONNECT_DELAYS[Math.min(this.reconnectAttempt, RECONNECT_DELAYS.length - 1)];
+
+    if (this.reconnectAttempt >= MAX_RECONNECT_ATTEMPTS) {
+      console.warn("[GW] Max reconnect attempts reached, giving up");
+      this.lastError = {
+        code: "reconnect_exhausted",
+        message: `Failed to reconnect after ${MAX_RECONNECT_ATTEMPTS} attempts`,
+      };
+      this.stateHandlers.forEach((h) => h(this.state, this.lastError));
+      // Emit event so UI can prompt user
+      const exhaustedFrame: EventFrame = {
+        type: "event",
+        event: "client.reconnect_exhausted",
+        payload: { attempts: MAX_RECONNECT_ATTEMPTS },
+      };
+      this.eventHandlers.forEach((h) => h(exhaustedFrame));
+      return;
+    }
+
+    const baseDelay = RECONNECT_DELAYS[Math.min(this.reconnectAttempt, RECONNECT_DELAYS.length - 1)];
+    const jitter = baseDelay * RECONNECT_JITTER * Math.random();
+    const delay = baseDelay + jitter;
     this.reconnectAttempt++;
     this.reconnectTimer = setTimeout(() => this.connect(), delay);
   }
@@ -348,5 +395,32 @@ export class GatewayClient {
       p.reject(new Error(reason));
     });
     this.pending.clear();
+  }
+
+  // --- Browser event listeners for mobile reconnection ---
+
+  private browserListenersAdded = false;
+
+  private addBrowserListeners(): void {
+    if (this.browserListenersAdded) return;
+    if (typeof window !== "undefined") {
+      window.addEventListener("online", this.handleOnline);
+      window.addEventListener("offline", () => {}); // reserved for future offline handling
+    }
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", this.handleVisibilityChange);
+    }
+    this.browserListenersAdded = true;
+  }
+
+  private removeBrowserListeners(): void {
+    if (!this.browserListenersAdded) return;
+    if (typeof window !== "undefined") {
+      window.removeEventListener("online", this.handleOnline);
+    }
+    if (typeof document !== "undefined") {
+      document.removeEventListener("visibilitychange", this.handleVisibilityChange);
+    }
+    this.browserListenersAdded = false;
   }
 }
