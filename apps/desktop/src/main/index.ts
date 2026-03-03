@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, protocol, net, Menu, screen, dialog } from "electron";
+import { app, BrowserWindow, shell, protocol, net, Menu, screen, dialog, nativeImage } from "electron";
 import { join } from "path";
 import { readFileSync, writeFileSync } from "fs";
 
@@ -269,6 +269,17 @@ app.on("render-process-gone", (_event, _webContents, details) => {
 });
 
 app.whenReady().then(() => {
+  // Set Dock icon (macOS) — ensures iClaw icon shows in Dock & Cmd+Tab even in dev mode
+  if (process.platform === "darwin") {
+    const iconPath = join(__dirname, "../../../../resources/icon.png");
+    try {
+      const icon = nativeImage.createFromPath(iconPath);
+      if (!icon.isEmpty()) app.dock.setIcon(icon);
+    } catch (err) {
+      console.warn("[main] Failed to set dock icon:", err);
+    }
+  }
+
   registerProtocol();
   registerIpcHandlers();
 
