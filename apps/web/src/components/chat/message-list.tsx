@@ -4,11 +4,11 @@ import {
   User, Bot, Clock, X, Copy, Check, ArrowDown, Download,
   FileText, Music, Video, File, Image as ImageIcon,
   FileSpreadsheet, FileCode, FileArchive, FileAudio, FileVideo,
-  RefreshCw, History, Loader2,
+  RefreshCw, History, Loader2, Reply,
 } from "lucide-react";
 import { MarkdownRenderer, MarkdownFilePreview } from "./markdown-renderer";
 import { ToolCallCard } from "./tool-call-card";
-import { HIDDEN_REPLY_RE, type DisplayMessage, type DisplayAttachment, type AgentStatus } from "@/lib/gateway/hooks";
+import { HIDDEN_REPLY_RE, canBeReplyTarget, type DisplayMessage, type DisplayAttachment, type AgentStatus } from "@/lib/gateway/hooks";
 import { AgentAvatar } from "@/components/ui/agent-avatar";
 
 import { blobDownload, forceDownloadUrl } from "@/lib/utils/download";
@@ -119,6 +119,7 @@ export function MessageList({
   agentStatus,
   onLoadPreviousContext,
   onOpenTopicHistory,
+  onReply,
 }: {
   messages: DisplayMessage[];
   loading: boolean;
@@ -128,6 +129,7 @@ export function MessageList({
   agentStatus?: AgentStatus;
   onLoadPreviousContext?: () => void;
   onOpenTopicHistory?: () => void;
+  onReply?: (msg: DisplayMessage) => void;
 }) {
   const PAGE_SIZE = 50;
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -510,6 +512,7 @@ export function MessageList({
                 agentStatus={msg.streaming ? agentStatus : undefined}
                 focused={focusedIdx === idx}
                 selected={selectedIndices.has(idx)}
+                onReply={onReply}
               />
             );
           })}
@@ -632,8 +635,35 @@ function CopyButton({ text }: { text: string }) {
 }
 
 
-const MessageBubble = React.forwardRef<HTMLDivElement, { message: DisplayMessage; showAvatar?: boolean; onCancel?: (id: string) => void; agentId?: string; agentStatus?: AgentStatus; focused?: boolean; selected?: boolean }>(
-  function MessageBubble({ message, showAvatar = true, onCancel, agentId, agentStatus, focused, selected }, ref) {
+/** Reply quote block shown above message content */
+function ReplyQuoteBlock({ replyTo }: { replyTo: { id: string; content: string; role: string } }) {
+  const roleLabel = replyTo.role === "user" ? "나" : "에이전트";
+  return (
+    <div className="mb-1.5 flex items-start gap-1.5 rounded-lg border-l-2 border-primary/40 bg-primary/5 px-2.5 py-1.5 text-xs text-muted-foreground">
+      <Reply size={12} className="mt-0.5 shrink-0 rotate-180 text-primary/60" />
+      <div className="min-w-0">
+        <span className="font-medium text-primary/80">{roleLabel}</span>
+        <p className="mt-0.5 truncate">{replyTo.content || "(내용 없음)"}</p>
+      </div>
+    </div>
+  );
+}
+
+/** Reply button shown on hover */
+function ReplyButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      onClick={(e) => { e.stopPropagation(); onClick(); }}
+      className="rounded p-1 text-muted-foreground opacity-0 transition group-hover:opacity-60 hover:!opacity-100 hover:bg-white/10 hover:text-accent-foreground active:scale-90"
+      title="답장"
+    >
+      <Reply size={12} />
+    </button>
+  );
+}
+
+const MessageBubble = React.forwardRef<HTMLDivElement, { message: DisplayMessage; showAvatar?: boolean; onCancel?: (id: string) => void; agentId?: string; agentStatus?: AgentStatus; focused?: boolean; selected?: boolean; onReply?: (msg: DisplayMessage) => void }>(
+  function MessageBubble({ message, showAvatar = true, onCancel, agentId, agentStatus, focused, selected, onReply }, ref) {
   const isUser = message.role === "user";
   const isSystem = message.role === "system";
   const isQueued = message.queued;
@@ -652,10 +682,13 @@ const MessageBubble = React.forwardRef<HTMLDivElement, { message: DisplayMessage
 
   return (
     <div ref={ref} className={`group flex gap-3 ${isUser ? "justify-end" : ""} `}>
-      {/* Copy button for user messages (left of bubble) */}
-      {isUser && message.content && (
-        <div className="flex items-start pt-2">
-          <CopyButton text={message.content} />
+      {/* Action buttons for user messages (left of bubble) */}
+      {isUser && (
+        <div className="flex items-start gap-0.5 pt-2">
+          {message.content && <CopyButton text={message.content} />}
+          {onReply && canBeReplyTarget(message) && (
+            <ReplyButton onClick={() => onReply(message)} />
+          )}
         </div>
       )}
       {!isUser && (
@@ -685,6 +718,8 @@ const MessageBubble = React.forwardRef<HTMLDivElement, { message: DisplayMessage
       >
         {isUser ? (
           <div>
+            {/* Reply quote block */}
+            {message.replyTo && <ReplyQuoteBlock replyTo={message.replyTo} />}
             {/* Attachment images */}
             {message.attachments && message.attachments.length > 0 && (
               <div className="mb-2 flex flex-wrap gap-2">
@@ -757,6 +792,8 @@ const MessageBubble = React.forwardRef<HTMLDivElement, { message: DisplayMessage
           </div>
         ) : (
           <div>
+            {/* Reply quote block */}
+            {message.replyTo && <ReplyQuoteBlock replyTo={message.replyTo} />}
             {message.toolCalls.length > 0 && (
               <div className="mb-2">
                 {message.toolCalls.map((tc) => (
@@ -828,6 +865,9 @@ const MessageBubble = React.forwardRef<HTMLDivElement, { message: DisplayMessage
             {!message.streaming && message.content && (
               <div className="mt-1 flex items-center gap-2">
                 <CopyButton text={stripTaskMemo(message.content)} />
+                {onReply && canBeReplyTarget(message) && (
+                  <ReplyButton onClick={() => onReply(message)} />
+                )}
                 {time && <span className="text-[10px] text-zinc-500">{time}</span>}
               </div>
             )}
