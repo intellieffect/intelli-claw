@@ -411,6 +411,56 @@ export function shouldSuppressStreamingPreview(text: string): boolean {
   return /^(N|NO|NO_|NO_R|NO_RE|NO_REP|NO_REPL|NO_REPLY|H|HE|HEA|HEAR|HEART|HEARTB|HEARTBE|HEARTBEA|HEARTBEAT|HEARTBEAT_|HEARTBEAT_O|HEARTBEAT_OK)$/i.test(t);
 }
 
+const PENDING_STREAM_SESSION_KEY_PREFIX = "awf:pending-stream:";
+const PENDING_STREAM_TTL_MS = 45_000;
+
+type PendingToolCall = Pick<ToolCall, "callId" | "name" | "args" | "status" | "result">;
+
+export interface PendingStreamSnapshot {
+  v: 1;
+  runId: string | null;
+  streamId: string;
+  content: string;
+  toolCalls: PendingToolCall[];
+  updatedAt: number;
+}
+
+export function createPendingStreamSnapshot(params: {
+  runId: string | null;
+  streamId: string;
+  content: string;
+  toolCalls: ToolCall[];
+  now?: number;
+}): PendingStreamSnapshot {
+  return {
+    v: 1,
+    runId: params.runId,
+    streamId: params.streamId,
+    content: params.content,
+    toolCalls: params.toolCalls.map((tc) => ({
+      callId: tc.callId,
+      name: tc.name,
+      args: tc.args,
+      status: tc.status,
+      result: tc.result,
+    })),
+    updatedAt: params.now ?? Date.now(),
+  };
+}
+
+export function isPendingStreamSnapshotFresh(
+  snapshot: PendingStreamSnapshot,
+  now = Date.now(),
+  ttlMs = PENDING_STREAM_TTL_MS,
+): boolean {
+  return snapshot.v === 1 && now - snapshot.updatedAt <= ttlMs;
+}
+
+export function finalEventKey(runId: string | null | undefined): string | null {
+  if (!runId) return null;
+  return `run:${runId}`;
+}
+
 export type AgentStatus =
   | { phase: "idle" }
   | { phase: "thinking" }
@@ -475,6 +525,7 @@ export function useChat(sessionKey?: string) {
   const loadVersionRef = useRef(0);
   const lastLoadAtRef = useRef(0); // Throttle for cross-device sync (#120)
   const pendingHistoryReloadRef = useRef(false);
+  const finalizedEventKeysRef = useRef<Set<string>>(new Set());
   const messagesRef = useRef<DisplayMessage[]>([]);
   const sendContextBridgeRef = useRef<(() => Promise<void>) | null>(null);
   const buildContextSummaryRef = useRef<(() => string | null) | null>(null);
@@ -490,6 +541,24 @@ export function useChat(sessionKey?: string) {
   );
 
   const STREAMING_TIMEOUT_MS = 120_000;
+  const queueStorageKey = sessionKey ? `awf:queue:${sessionKey}` : null;
+  const pendingStreamStorageKey = sessionKey ? `${PENDING_STREAM_SESSION_KEY_PREFIX}${sessionKey}` : null;
+
+  const clearPersistedPendingStream = useCallback(() => {
+    if (!pendingStreamStorageKey) return;
+    sessionStorage.removeItem(pendingStreamStorageKey);
+  }, [pendingStreamStorageKey]);
+
+  const persistPendingStream = useCallback(() => {
+    if (!pendingStreamStorageKey || !streamBuf.current) return;
+    const snapshot = createPendingStreamSnapshot({
+      runId: runIdRef.current,
+      streamId: streamBuf.current.id,
+      content: streamBuf.current.content,
+      toolCalls: Array.from(streamBuf.current.toolCalls.values()),
+    });
+    sessionStorage.setItem(pendingStreamStorageKey, JSON.stringify(snapshot));
+  }, [pendingStreamStorageKey]);
 
   const clearStreamingTimeout = useCallback(() => {
     if (streamingTimeoutRef.current) {
@@ -510,10 +579,11 @@ export function useChat(sessionKey?: string) {
         streamBuf.current = null;
       }
       runIdRef.current = null;
+      clearPersistedPendingStream();
       setStreaming(false);
       setAgentStatusDebug({ phase: "idle" });
     }, STREAMING_TIMEOUT_MS);
-  }, [clearStreamingTimeout]);
+  }, [clearStreamingTimeout, clearPersistedPendingStream]);
 
   useEffect(() => {
     streamingRef.current = streaming;
@@ -523,7 +593,63 @@ export function useChat(sessionKey?: string) {
     messagesRef.current = messages;
   }, [messages]);
 
-  const queueStorageKey = sessionKey ? `awf:queue:${sessionKey}` : null;
+  useEffect(() => {
+    if (!pendingStreamStorageKey || streamBuf.current) return;
+    try {
+      const raw = sessionStorage.getItem(pendingStreamStorageKey);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as PendingStreamSnapshot;
+      if (!isPendingStreamSnapshotFresh(parsed)) {
+        sessionStorage.removeItem(pendingStreamStorageKey);
+        return;
+      }
+
+      const toolCalls = new Map<string, ToolCall>();
+      for (const tc of parsed.toolCalls || []) {
+        toolCalls.set(tc.callId, {
+          callId: tc.callId,
+          name: tc.name,
+          args: tc.args,
+          status: tc.status,
+          result: tc.result,
+        });
+      }
+
+      streamBuf.current = {
+        id: parsed.streamId,
+        content: parsed.content,
+        toolCalls,
+      };
+      runIdRef.current = parsed.runId;
+      setStreaming(true);
+      setAgentStatusDebug({ phase: state === "connected" ? "writing" : "waiting" });
+      setMessages((prev) => {
+        const existing = prev.findIndex((m) => m.id === parsed.streamId);
+        const msg: DisplayMessage = {
+          id: parsed.streamId,
+          role: "assistant",
+          content: parsed.content,
+          timestamp: new Date(parsed.updatedAt).toISOString(),
+          toolCalls: Array.from(toolCalls.values()),
+          streaming: true,
+        };
+        if (existing >= 0) {
+          const next = [...prev];
+          next[existing] = { ...next[existing], ...msg };
+          return next;
+        }
+        return [...prev, msg];
+      });
+      startStreamingTimeout();
+      console.log("[AWF] Restored pending stream from sessionStorage", {
+        runId: parsed.runId?.slice(0, 8),
+        streamId: parsed.streamId,
+      });
+    } catch {
+      // ignore corrupted sessionStorage data
+      if (pendingStreamStorageKey) sessionStorage.removeItem(pendingStreamStorageKey);
+    }
+  }, [pendingStreamStorageKey, state, setAgentStatusDebug, startStreamingTimeout]);
 
   useEffect(() => {
     if (sessionKeyRef.current !== sessionKey) {
@@ -535,20 +661,22 @@ export function useChat(sessionKey?: string) {
       clearStreamingTimeout();
       setAgentStatusDebug({ phase: "idle" });
       streamBuf.current = null;
+      finalizedEventKeysRef.current.clear();
+      clearPersistedPendingStream();
       contextBridgeSentRef.current = null; // 새 채팅 전환 시 dedup 리셋
     }
-  }, [sessionKey, clearStreamingTimeout]);
+  }, [sessionKey, clearStreamingTimeout, clearPersistedPendingStream]);
 
   useEffect(() => {
     if (state === "disconnected" && streaming) {
       console.warn("[AWF] connection lost during streaming — preserving in-flight message for reconnect");
       clearStreamingTimeout();
-      runIdRef.current = null;
+      persistPendingStream();
       // Keep streamBuf + message.streaming intact so refresh/reconnect doesn't
       // make the "작성중" bubble disappear.
       setAgentStatusDebug({ phase: "waiting" });
     }
-  }, [state, streaming, clearStreamingTimeout, setAgentStatusDebug]);
+  }, [state, streaming, clearStreamingTimeout, setAgentStatusDebug, persistPendingStream]);
 
   const loadHistory = useCallback(async () => {
     if (!client || state !== "connected") return;
@@ -820,6 +948,14 @@ export function useChat(sessionKey?: string) {
     }
   }, [client, state, sessionKey, queueStorageKey]);
 
+  const flushDeferredHistoryReload = useCallback(() => {
+    if (!pendingHistoryReloadRef.current) return;
+    pendingHistoryReloadRef.current = false;
+    if (Date.now() - lastLoadAtRef.current >= 800) {
+      loadHistory();
+    }
+  }, [loadHistory]);
+
   useEffect(() => { loadHistory(); }, [loadHistory]);
 
   // Backfill previous session messages from API server logs
@@ -900,6 +1036,7 @@ export function useChat(sessionKey?: string) {
         if (shouldDeferHistoryReload(hasStreamingState)) {
           console.log("[AWF] Reconnected during streaming — deferring history reload");
           pendingHistoryReloadRef.current = true;
+          persistPendingStream();
           return;
         }
         console.log("[AWF] Reconnected — reloading history");
@@ -907,7 +1044,7 @@ export function useChat(sessionKey?: string) {
       }
     });
     return unsub;
-  }, [client, loadHistory]);
+  }, [client, loadHistory, persistPendingStream]);
 
   // Handle agent events
   useEffect(() => {
@@ -917,6 +1054,84 @@ export function useChat(sessionKey?: string) {
     // Using the closure value (not the ref) ensures the handler always checks
     // against the sessionKey that was active when the effect was registered.
     const boundSessionKey = sessionKey;
+
+    const resolveRunId = (raw: Record<string, unknown>, data?: Record<string, unknown>): string | null => {
+      const id = (raw.runId ?? data?.runId ?? runIdRef.current) as string | undefined;
+      return id || null;
+    };
+
+    const finalizeActiveStream = (
+      finalText: string | undefined,
+      saveKey: string | undefined,
+    ) => {
+      clearStreamingTimeout();
+      setStreaming(false);
+      setAgentStatusDebug({ phase: "idle" });
+      const snapshot = streamBuf.current;
+      if (!snapshot) {
+        clearPersistedPendingStream();
+        flushDeferredHistoryReload();
+        return;
+      }
+
+      const finalId = snapshot.id;
+      let finalContent = stripTemplateVars(finalText ?? snapshot.content);
+      const finalTools = Array.from(snapshot.toolCalls.values());
+      let finalAttachments: DisplayAttachment[] | undefined;
+      if (finalContent.includes("MEDIA:")) {
+        const extracted = extractMediaAttachments(finalContent);
+        finalContent = extracted.cleanedText;
+        finalAttachments = extracted.attachments.length > 0 ? extracted.attachments : undefined;
+      }
+
+      if (HIDDEN_REPLY_RE.test(finalContent.trim())) {
+        setMessages((prev) => prev.filter((m) => m.id !== finalId));
+      } else {
+        setMessages((prev) => {
+          const idx = prev.findIndex((m) => m.id === finalId);
+          if (idx >= 0) {
+            const next = [...prev];
+            next[idx] = {
+              ...next[idx],
+              content: finalContent,
+              toolCalls: finalTools,
+              streaming: false,
+              attachments: finalAttachments || next[idx].attachments,
+            };
+            return next;
+          }
+          return [
+            ...prev,
+            {
+              id: finalId,
+              role: "assistant",
+              content: finalContent,
+              timestamp: new Date().toISOString(),
+              toolCalls: finalTools,
+              streaming: false,
+              attachments: finalAttachments,
+            },
+          ];
+        });
+      }
+
+      if (saveKey && !HIDDEN_REPLY_RE.test(finalContent.trim())) {
+        saveLocalMessages(saveKey, [{
+          sessionKey: saveKey,
+          id: finalId,
+          role: "assistant",
+          content: finalContent,
+          timestamp: new Date().toISOString(),
+          toolCalls: finalTools,
+          attachments: finalAttachments,
+        }]).catch(() => {});
+      }
+
+      streamBuf.current = null;
+      runIdRef.current = null;
+      clearPersistedPendingStream();
+      flushDeferredHistoryReload();
+    };
 
     const unsub = client.onEvent((frame: EventFrame) => {
       if (frame.event !== "agent") return;
@@ -981,6 +1196,7 @@ export function useChat(sessionKey?: string) {
             return [...prev, msg];
           });
         }
+        persistPendingStream();
       } else if (stream === "tool-start" && data) {
         const callId = (data.toolCallId || data.callId || "") as string;
         const name = (data.name || data.tool || "") as string;
@@ -1001,6 +1217,7 @@ export function useChat(sessionKey?: string) {
           if (existing >= 0) { const next = [...prev]; next[existing] = msg; return next; }
           return [...prev, msg];
         });
+        persistPendingStream();
       } else if (stream === "tool-end" && data) {
         const callId = (data.toolCallId || data.callId || "") as string;
         const result = data.result as string | undefined;
@@ -1018,6 +1235,7 @@ export function useChat(sessionKey?: string) {
             }
             return prev;
           });
+          persistPendingStream();
         }
       } else if (stream === "inbound" && data) {
         // Messages from other surfaces/devices (Telegram, other tabs, etc.)
@@ -1053,84 +1271,29 @@ export function useChat(sessionKey?: string) {
         setStreaming(true);
         abortedRef.current = false;
         startStreamingTimeout();
-        runIdRef.current = (raw.runId as string) ?? null;
+        runIdRef.current = resolveRunId(raw, data);
+        const runKey = finalEventKey(runIdRef.current);
+        if (runKey) {
+          finalizedEventKeysRef.current.delete(runKey);
+        }
+        // Route post-run history sync through a single deferred gate.
+        pendingHistoryReloadRef.current = true;
         setAgentStatusDebug({ phase: "thinking" });
+        persistPendingStream();
       } else if (stream === "lifecycle" && data?.phase === "end") {
-        clearStreamingTimeout();
-        setStreaming(false);
-        setAgentStatusDebug({ phase: "idle" });
-        if (streamBuf.current) {
-          const finalId = streamBuf.current.id;
-          let finalContent = stripTemplateVars(streamBuf.current.content);
-          const finalTools = Array.from(streamBuf.current.toolCalls.values());
-          let finalAttachments: DisplayAttachment[] | undefined;
-          if (finalContent.includes('MEDIA:')) {
-            const extracted = extractMediaAttachments(finalContent);
-            finalContent = extracted.cleanedText;
-            finalAttachments = extracted.attachments.length > 0 ? extracted.attachments : undefined;
-          }
-          if (HIDDEN_REPLY_RE.test(finalContent.trim())) {
-            // Remove hidden message (HEARTBEAT_OK, NO_REPLY, etc.) from display
-            setMessages((prev) => prev.filter((m) => m.id !== finalId));
-          } else {
-            setMessages((prev) =>
-              prev.map((m) => m.id === finalId
-                ? { ...m, content: finalContent, toolCalls: finalTools, streaming: false, attachments: finalAttachments || m.attachments }
-                : m)
-            );
-          }
-          // Persist assistant message to local store (skip hidden)
-          // Use the event's own sessionKey (evSessionKey) or the bound closure
-          // value — NEVER sessionKeyRef.current which may have drifted (#5536-v2)
-          const saveKey = evSessionKey || boundSessionKey;
-          if (saveKey && !HIDDEN_REPLY_RE.test(finalContent.trim())) saveLocalMessages(saveKey, [{
-            sessionKey: saveKey,
-            id: finalId,
-            role: "assistant",
-            content: finalContent,
-            timestamp: new Date().toISOString(),
-            toolCalls: finalTools,
-            attachments: finalAttachments,
-          }]).catch(() => {});
-          streamBuf.current = null;
-        }
-        // Reload history after agent run ends to sync user messages from other devices (#120).
-        // Also flush deferred reconnect reloads once streaming is complete.
-        const shouldFlushDeferred = pendingHistoryReloadRef.current;
-        if (shouldFlushDeferred) pendingHistoryReloadRef.current = false;
-        // Throttled unless this was a deferred reconnect flush.
-        if (shouldFlushDeferred || Date.now() - lastLoadAtRef.current >= 2000) {
-          loadHistory();
-        }
+        const eventRunId = resolveRunId(raw, data);
+        const key = finalEventKey(eventRunId);
+        if (key && finalizedEventKeysRef.current.has(key)) return;
+        if (key) finalizedEventKeysRef.current.add(key);
+        const saveKey = evSessionKey || boundSessionKey;
+        finalizeActiveStream(undefined, saveKey);
       } else if (stream === "done" || stream === "end" || stream === "finish") {
-        clearStreamingTimeout();
-        setStreaming(false);
-        setAgentStatusDebug({ phase: "idle" });
-        if (streamBuf.current) {
-          const finalId = streamBuf.current.id;
-          let finalContent = stripTemplateVars((data?.text as string) || streamBuf.current.content);
-          const finalTools = Array.from(streamBuf.current.toolCalls.values());
-          let finalAttachments: DisplayAttachment[] | undefined;
-          if (finalContent.includes('MEDIA:')) {
-            const extracted = extractMediaAttachments(finalContent);
-            finalContent = extracted.cleanedText;
-            finalAttachments = extracted.attachments.length > 0 ? extracted.attachments : undefined;
-          }
-          if (HIDDEN_REPLY_RE.test(finalContent.trim())) {
-            setMessages((prev) => prev.filter((m) => m.id !== finalId));
-          } else {
-            setMessages((prev) =>
-              prev.map((m) => m.id === finalId
-                ? { ...m, content: finalContent, toolCalls: finalTools, streaming: false, attachments: finalAttachments || m.attachments }
-                : m)
-            );
-          }
-          streamBuf.current = null;
-        }
-        if (pendingHistoryReloadRef.current) {
-          pendingHistoryReloadRef.current = false;
-          loadHistory();
-        }
+        const eventRunId = resolveRunId(raw, data);
+        const key = finalEventKey(eventRunId);
+        if (key && finalizedEventKeysRef.current.has(key)) return;
+        if (key) finalizedEventKeysRef.current.add(key);
+        const saveKey = evSessionKey || boundSessionKey;
+        finalizeActiveStream(data?.text as string | undefined, saveKey);
       } else if (stream === "error") {
         clearStreamingTimeout();
         setStreaming(false);
@@ -1145,14 +1308,22 @@ export function useChat(sessionKey?: string) {
           );
           streamBuf.current = null;
         }
-        if (pendingHistoryReloadRef.current) {
-          pendingHistoryReloadRef.current = false;
-          loadHistory();
-        }
+        runIdRef.current = null;
+        clearPersistedPendingStream();
+        flushDeferredHistoryReload();
       }
     });
     return unsub;
-  }, [client, sessionKey]);
+  }, [
+    client,
+    sessionKey,
+    clearStreamingTimeout,
+    startStreamingTimeout,
+    setAgentStatusDebug,
+    persistPendingStream,
+    clearPersistedPendingStream,
+    flushDeferredHistoryReload,
+  ]);
 
   // Message queue
   const queueRef = useRef<{ id: string; text: string }[]>(
@@ -1284,6 +1455,7 @@ export function useChat(sessionKey?: string) {
       streamBuf.current = null;
     }
     runIdRef.current = null;
+    clearPersistedPendingStream();
     setStreaming(false);
     setAgentStatusDebug({ phase: "idle" });
     // Fire-and-forget the gateway abort
@@ -1291,7 +1463,7 @@ export function useChat(sessionKey?: string) {
       client.request("chat.abort", { sessionKey, runId: currentRunId ?? undefined })
         .catch((err: unknown) => console.warn("[AWF] chat.abort failed:", String(err)));
     }
-  }, [client, state, sessionKey, clearStreamingTimeout]);
+  }, [client, state, sessionKey, clearStreamingTimeout, clearPersistedPendingStream]);
 
   const addUserMessage = useCallback((text: string, attachments?: DisplayAttachment[]) => {
     const msgId = `user-${Date.now()}-${Math.random().toString(36).slice(2)}`;
