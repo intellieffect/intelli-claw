@@ -122,6 +122,66 @@ export async function clearMessages(sessionKey: string): Promise<void> {
   });
 }
 
+// --- One-time migration: clear corrupted data (#5536-v2) ---
+
+const MIGRATION_KEY = "intelli-claw-msg-migration";
+const MIGRATION_VERSION = 1; // bump to force re-migration
+
+/**
+ * One-time migration to purge potentially corrupted IndexedDB message data.
+ * Before #5536, agent events without sessionKey could leak into the wrong
+ * chat room and get persisted with the wrong sessionKey. On app restart,
+ * these corrupted messages would reappear in the wrong room.
+ *
+ * This migration clears ALL locally stored messages, forcing a fresh
+ * re-sync from gateway history. Gateway history is the source of truth
+ * and is always loaded fresh on each session.
+ */
+export function runMessageStoreMigration(): void {
+  try {
+    const done = localStorage.getItem(MIGRATION_KEY);
+    if (done && parseInt(done, 10) >= MIGRATION_VERSION) return;
+
+    // Clear entire messages IndexedDB store
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onsuccess = () => {
+      const db = req.result;
+      try {
+        const tx = db.transaction(STORE_NAME, "readwrite");
+        tx.objectStore(STORE_NAME).clear();
+        tx.oncomplete = () => {
+          db.close();
+          localStorage.setItem(MIGRATION_KEY, String(MIGRATION_VERSION));
+          // Also clear backfill markers so sessions get re-backfilled
+          localStorage.removeItem("intelli-claw-backfill-done");
+          console.log("[AWF] Message store migration complete — cleared corrupted data (#5536-v2)");
+        };
+        tx.onerror = () => db.close();
+      } catch {
+        db.close();
+      }
+    };
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(STORE_NAME)) {
+        const store = db.createObjectStore(STORE_NAME, {
+          keyPath: ["sessionKey", "id"],
+        });
+        store.createIndex("bySessionKey", "sessionKey", { unique: false });
+        store.createIndex("byTimestamp", ["sessionKey", "timestamp"], {
+          unique: false,
+        });
+      }
+    };
+    req.onerror = () => {
+      // Fallback: mark as done to avoid infinite retries
+      localStorage.setItem(MIGRATION_KEY, String(MIGRATION_VERSION));
+    };
+  } catch {
+    // ignore — migration is best-effort
+  }
+}
+
 // --- Backfill from API ---
 
 const BACKFILL_KEY = "intelli-claw-backfill-done";

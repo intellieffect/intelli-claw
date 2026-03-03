@@ -49,6 +49,7 @@ import {
   getLocalMessages,
   backfillFromApi,
   isBackfillDone,
+  runMessageStoreMigration,
   type StoredMessage,
 } from "./message-store";
 
@@ -75,6 +76,9 @@ function saveConfig(url: string, token: string): void {
 }
 
 // --- Web GatewayProvider (wraps shared with localStorage persistence) ---
+
+// Run one-time migration on module load to purge corrupted IndexedDB data (#5536-v2)
+runMessageStoreMigration();
 
 export function GatewayProvider({ children }: { children: ReactNode }) {
   const config = loadGatewayConfig();
@@ -691,6 +695,10 @@ export function useChat(sessionKey?: string) {
   useEffect(() => {
     if (!client) return;
     let lastSeq = -1;
+    // Capture sessionKey from the effect closure for strict matching (#5536-v2).
+    // Using the closure value (not the ref) ensures the handler always checks
+    // against the sessionKey that was active when the effect was registered.
+    const boundSessionKey = sessionKey;
 
     const unsub = client.onEvent((frame: EventFrame) => {
       if (frame.event !== "agent") return;
@@ -705,12 +713,15 @@ export function useChat(sessionKey?: string) {
       // Check both top-level sessionKey and data.sessionKey — gateway may
       // nest the key inside data depending on event type (#48)
       const evSessionKey = (raw.sessionKey ?? data?.sessionKey) as string | undefined;
+
+      // Strict session isolation (#5536-v2):
+      // 1) If event has a sessionKey, it MUST match our bound session key
+      // 2) If event has NO sessionKey, reject it when we have a session
+      // 3) Double-check against both the closure value AND the ref to catch
+      //    any edge case where one drifts from the other
+      if (evSessionKey && evSessionKey !== boundSessionKey) return;
       if (evSessionKey && evSessionKey !== sessionKeyRef.current) return;
-      // Strict session isolation (#5536): reject ALL events without a matching
-      // sessionKey. The previous logic allowed lifecycle-start events without a
-      // sessionKey through, which caused runIdRef to latch onto another agent's
-      // run and leak all subsequent events into the wrong chat panel.
-      if (!evSessionKey && sessionKeyRef.current) return;
+      if (!evSessionKey && (boundSessionKey || sessionKeyRef.current)) return;
 
 
       // Ignore events after abort until next lifecycle start
@@ -829,8 +840,11 @@ export function useChat(sessionKey?: string) {
             );
           }
           // Persist assistant message to local store (skip hidden)
-          if (!HIDDEN_REPLY_RE.test(finalContent.trim())) saveLocalMessages(sessionKeyRef.current, [{
-            sessionKey: sessionKeyRef.current,
+          // Use the event's own sessionKey (evSessionKey) or the bound closure
+          // value — NEVER sessionKeyRef.current which may have drifted (#5536-v2)
+          const saveKey = evSessionKey || boundSessionKey;
+          if (saveKey && !HIDDEN_REPLY_RE.test(finalContent.trim())) saveLocalMessages(saveKey, [{
+            sessionKey: saveKey,
             id: finalId,
             role: "assistant",
             content: finalContent,
@@ -1018,8 +1032,10 @@ export function useChat(sessionKey?: string) {
     setMessages((prev) => [...prev, userMsg]);
     if (!streaming) setStreaming(true);
     // Persist user message (with attachments/images) to local store
-    saveLocalMessages(sessionKeyRef.current, [{
-      sessionKey: sessionKeyRef.current,
+    // Use sessionKey from closure (not ref) to ensure correct session (#5536-v2)
+    const saveKey = sessionKey;
+    if (saveKey) saveLocalMessages(saveKey, [{
+      sessionKey: saveKey,
       id: msgId,
       role: "user",
       content: text,
@@ -1028,7 +1044,7 @@ export function useChat(sessionKey?: string) {
     }]).then(() => {
       if (attachments?.length) console.log('[AWF] Saved user msg with', attachments.length, 'attachments, id:', msgId);
     }).catch((err) => { console.error('[AWF] Failed to save user message:', err); });
-  }, [streaming]);
+  }, [streaming, sessionKey]);
 
   const addLocalMessage = useCallback((content: string, role: "user" | "assistant" | "system" = "system") => {
     const msgId = `local-${Date.now()}-${Math.random().toString(36).slice(2)}`;
