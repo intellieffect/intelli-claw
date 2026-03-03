@@ -638,11 +638,11 @@ export function useChat(sessionKey?: string) {
             !gatewayContentKeys.has(`${lm.role}:${lm.content.replace(/\s+/g, " ").trim().slice(0, 200)}:${attachmentFingerprint(lm.attachments as DisplayAttachment[] | undefined)}`);
 
           const prependMsgs = localMsgs
-            .filter((lm) => isNotInGateway(lm) && new Date(lm.timestamp).getTime() < oldestGatewayTs)
+            .filter((lm) => isNotInGateway(lm) && !isHiddenMessage(lm.role, lm.content) && new Date(lm.timestamp).getTime() < oldestGatewayTs)
             .map(toDisplayMsg);
 
           const appendMsgs = localMsgs
-            .filter((lm) => isNotInGateway(lm) && new Date(lm.timestamp).getTime() >= newestGatewayTs)
+            .filter((lm) => isNotInGateway(lm) && !isHiddenMessage(lm.role, lm.content) && new Date(lm.timestamp).getTime() >= newestGatewayTs)
             .map(toDisplayMsg);
 
           // Restore attachments stripped by compaction (e.g. images)
@@ -678,24 +678,26 @@ export function useChat(sessionKey?: string) {
             );
           }
         } else if (localMsgs.length > 0 && dedupedHistMsgs.length === 0) {
-          // Gateway returned nothing — show local messages
-          mergedMsgs = localMsgs.map((lm) => ({
-            id: lm.id,
-            role: lm.role as DisplayMessage["role"],
-            content: lm.content,
-            timestamp: lm.timestamp,
-            toolCalls: (lm.toolCalls || []) as ToolCall[],
-            attachments: lm.attachments as DisplayAttachment[] | undefined,
-            oldSessionId: lm.oldSessionId,
-            newSessionId: lm.newSessionId,
-          }));
+          // Gateway returned nothing — show local messages (filter hidden)
+          mergedMsgs = localMsgs
+            .filter((lm) => !isHiddenMessage(lm.role, lm.content))
+            .map((lm) => ({
+              id: lm.id,
+              role: lm.role as DisplayMessage["role"],
+              content: lm.content,
+              timestamp: lm.timestamp,
+              toolCalls: (lm.toolCalls || []) as ToolCall[],
+              attachments: lm.attachments as DisplayAttachment[] | undefined,
+              oldSessionId: lm.oldSessionId,
+              newSessionId: lm.newSessionId,
+            }));
         }
       } catch (e) {
         console.warn("[AWF] Failed to load local messages:", e);
       }
 
-      // Final dedup safety net on merged messages (#121)
-      mergedMsgs = deduplicateMessages(mergedMsgs);
+      // Final dedup + hidden filter safety net on merged messages (#121, #117)
+      mergedMsgs = deduplicateMessages(mergedMsgs).filter((m) => !isHiddenMessage(m.role, m.content));
 
       // Persist gateway history to local store for future recovery
       const toStore: StoredMessage[] = dedupedHistMsgs
