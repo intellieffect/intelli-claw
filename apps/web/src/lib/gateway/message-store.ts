@@ -52,7 +52,7 @@ export async function saveMessages(
   sessionKey: string,
   messages: StoredMessage[],
 ): Promise<void> {
-  if (messages.length === 0) return;
+  if (!sessionKey || messages.length === 0) return;
   const db = await openDB();
   return new Promise<void>((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, "readwrite");
@@ -75,6 +75,8 @@ export async function saveMessages(
 export async function getLocalMessages(
   sessionKey: string,
 ): Promise<StoredMessage[]> {
+  // Guard: undefined/empty sessionKey would return ALL records (#121)
+  if (!sessionKey) return [];
   const db = await openDB();
   return new Promise<StoredMessage[]>((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, "readonly");
@@ -125,7 +127,7 @@ export async function clearMessages(sessionKey: string): Promise<void> {
 // --- One-time migration: clear corrupted data (#5536-v2) ---
 
 const MIGRATION_KEY = "intelli-claw-msg-migration";
-const MIGRATION_VERSION = 1; // bump to force re-migration
+const MIGRATION_VERSION = 2; // bump to force re-migration (v2: #121 dedup fix)
 
 /**
  * One-time migration to purge potentially corrupted IndexedDB message data.
