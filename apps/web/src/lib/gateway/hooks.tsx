@@ -705,10 +705,10 @@ export function useChat(sessionKey?: string) {
             );
           }
         }
-        // Reload to pick up backfilled messages
-        const topics2 = await getTopicHistory(sessionKey);
-        if (topics2.some((t) => t.endedAt && !isBackfillDone(sessionKey, t.sessionId) === false)) {
-          // Re-run loadHistory to merge any newly backfilled messages
+        // Always reload after backfill attempts to merge any newly backfilled messages
+        // The previous condition was unreliable due to operator precedence issues (#112)
+        if (previousSessions.length > 0) {
+          console.log("[AWF] Reloading history after backfill to merge previous session messages");
           loadHistory();
         }
       } catch (e) {
@@ -1110,11 +1110,11 @@ export function useChat(sessionKey?: string) {
   const buildContextSummary = useCallback((): string | null => {
     const relevant = messages
       .filter((m) => (m.role === "user" || m.role === "assistant") && m.content.trim())
-      .slice(-5);
+      .slice(-10);
     if (relevant.length === 0) return null;
 
-    const MAX_PER_MSG = 500;
-    const lines: string[] = ["[System] 이전 세션이 컨텍스트 한도로 갱신되었습니다. 아래는 최근 대화 요약입니다."];
+    const MAX_PER_MSG = 1000;
+    const lines: string[] = ["[이전 세션 맥락] 이전 세션이 컨텍스트 한도로 갱신되었습니다. 아래는 최근 대화 요약입니다."];
 
     for (const m of relevant) {
       const label = m.role === "user" ? "사용자" : "어시스턴트";
@@ -1124,9 +1124,10 @@ export function useChat(sessionKey?: string) {
       lines.push(`${label}: ${text}${text.length >= MAX_PER_MSG ? "…" : ""}${toolSuffix}`);
     }
 
+    lines.push("에이전트 메모리 파일(memory/)을 참조하여 프로젝트 컨텍스트를 복원하세요.");
     lines.push("위 맥락을 참고하여 대화를 이어주세요. 이 메시지에 대해 별도 답변하지 마세요.");
     const full = lines.join("\n");
-    return full.length > 2000 ? full.slice(0, 1997) + "…" : full;
+    return full.length > 4000 ? full.slice(0, 3997) + "…" : full;
   }, [messages]);
 
   const sendContextBridge = useCallback(async () => {
