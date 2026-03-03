@@ -211,24 +211,41 @@ function stripTemplateVars(text: string): string {
  * Two messages are considered duplicates if they have the same role, similar
  * content (first 200 chars after normalization), and timestamps within 60s.
  */
-function deduplicateMessages<T extends { id: string; role: string; content: string; timestamp: string }>(
+/**
+ * Build an attachment fingerprint for dedup comparison.
+ * Uses attachment count + first dataUrl prefix (to distinguish different images)
+ * while still matching optimistic vs server echo of the same image.
+ * Returns empty string for messages with no attachments.
+ */
+function attachmentFingerprint(attachments?: DisplayAttachment[]): string {
+  if (!attachments || attachments.length === 0) return "";
+  // Use count + sorted first 80 chars of each dataUrl/downloadUrl for identity
+  const keys = attachments
+    .map((a) => (a.dataUrl || a.downloadUrl || a.fileName || "").slice(0, 80))
+    .sort();
+  return `[${attachments.length}]${keys.join("|")}`;
+}
+
+export function deduplicateMessages<T extends { id: string; role: string; content: string; timestamp: string; attachments?: DisplayAttachment[] }>(
   msgs: T[],
 ): T[] {
-  const seen: Array<{ role: string; contentKey: string; ts: number }> = [];
+  const seen: Array<{ role: string; contentKey: string; attKey: string; ts: number }> = [];
   return msgs.filter((m) => {
     // Always keep session boundaries
     if (m.role === "session-boundary") return true;
     const contentKey = m.content.replace(/\s+/g, " ").trim().slice(0, 200);
+    const attKey = attachmentFingerprint(m.attachments);
     const ts = new Date(m.timestamp).getTime();
     // Check if a similar message was already seen
     const isDup = seen.some(
       (s) =>
         s.role === m.role &&
         s.contentKey === contentKey &&
+        s.attKey === attKey &&
         Math.abs(s.ts - ts) < 60_000, // 60-second window
     );
     if (isDup) return false;
-    seen.push({ role: m.role, contentKey, ts });
+    seen.push({ role: m.role, contentKey, attKey, ts });
     return true;
   });
 }
@@ -508,7 +525,7 @@ export function useChat(sessionKey?: string) {
           // Build lookup sets for dedup — match by id AND by content+role+close-timestamp
           const gatewayIds = new Set(dedupedHistMsgs.map((m) => m.id));
           const gatewayContentKeys = new Set(
-            dedupedHistMsgs.map((m) => `${m.role}:${m.content.replace(/\s+/g, " ").trim().slice(0, 200)}`),
+            dedupedHistMsgs.map((m) => `${m.role}:${m.content.replace(/\s+/g, " ").trim().slice(0, 200)}:${attachmentFingerprint(m.attachments)}`),
           );
           const oldestGatewayTs = Math.min(
             ...dedupedHistMsgs.map((m) => new Date(m.timestamp).getTime()),
@@ -532,7 +549,7 @@ export function useChat(sessionKey?: string) {
           // Use normalized content matching (consistent with gatewayContentKeys) (#121)
           const isNotInGateway = (lm: StoredMessage) =>
             !gatewayIds.has(lm.id) &&
-            !gatewayContentKeys.has(`${lm.role}:${lm.content.replace(/\s+/g, " ").trim().slice(0, 200)}`);
+            !gatewayContentKeys.has(`${lm.role}:${lm.content.replace(/\s+/g, " ").trim().slice(0, 200)}:${attachmentFingerprint(lm.attachments as DisplayAttachment[] | undefined)}`);
 
           const prependMsgs = localMsgs
             .filter((lm) => isNotInGateway(lm) && new Date(lm.timestamp).getTime() < oldestGatewayTs)
