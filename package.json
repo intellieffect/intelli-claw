@@ -1,6 +1,6 @@
 {
   "name": "intelli-claw",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "private": true,
   "packageManager": "pnpm@10.12.4",
   "scripts": {
