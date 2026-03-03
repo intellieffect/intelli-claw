@@ -15,13 +15,13 @@ import { blobDownload, forceDownloadUrl } from "@/lib/utils/download";
 import { formatTime } from "@/lib/utils/format-time";
 
 /** Get file extension from filename */
-function getExt(name: string): string {
+export function getExt(name: string): string {
   const dot = name.lastIndexOf(".");
   return dot >= 0 ? name.slice(dot + 1).toLowerCase() : "";
 }
 
 /** Render file icon by MIME type */
-function renderFileIcon(mime: string, ext: string, size: number) {
+export function renderFileIcon(mime: string, ext: string, size: number) {
   if (mime.startsWith("image/")) return <ImageIcon size={size} />;
   if (mime.startsWith("video/")) return <FileVideo size={size} />;
   if (mime.startsWith("audio/")) return <FileAudio size={size} />;
@@ -34,7 +34,7 @@ function renderFileIcon(mime: string, ext: string, size: number) {
 }
 
 /** Get accent color by file type */
-function getFileAccent(mime: string, ext: string): string {
+export function getFileAccent(mime: string, ext: string): string {
   if (mime.includes("pdf")) return "bg-red-500/20 text-red-400";
   if (mime.startsWith("image/")) return "bg-blue-500/20 text-blue-400";
   if (mime.startsWith("video/")) return "bg-purple-500/20 text-purple-400";
@@ -106,7 +106,7 @@ function AssistantImage({ src, fileName }: { src: string; fileName: string }) {
 
 /** Strip task-memo HTML comments from display text */
 const TASK_MEMO_STRIP_RE = /\s*<!--\s*task-memo:\s*\{[\s\S]*?\}\s*-->\s*/g;
-function stripTaskMemo(text: string): string {
+export function stripTaskMemo(text: string): string {
   return text.replace(TASK_MEMO_STRIP_RE, "").trimEnd();
 }
 
@@ -662,7 +662,7 @@ function ReplyButton({ onClick }: { onClick: () => void }) {
   );
 }
 
-const MessageBubble = React.forwardRef<HTMLDivElement, { message: DisplayMessage; showAvatar?: boolean; onCancel?: (id: string) => void; agentId?: string; agentStatus?: AgentStatus; focused?: boolean; selected?: boolean; onReply?: (msg: DisplayMessage) => void }>(
+const MessageBubble = React.memo(React.forwardRef<HTMLDivElement, { message: DisplayMessage; showAvatar?: boolean; onCancel?: (id: string) => void; agentId?: string; agentStatus?: AgentStatus; focused?: boolean; selected?: boolean; onReply?: (msg: DisplayMessage) => void }>(
   function MessageBubble({ message, showAvatar = true, onCancel, agentId, agentStatus, focused, selected, onReply }, ref) {
   const isUser = message.role === "user";
   const isSystem = message.role === "system";
@@ -882,4 +882,23 @@ const MessageBubble = React.forwardRef<HTMLDivElement, { message: DisplayMessage
       )}
     </div>
   );
-});
+}), messageBubbleAreEqual);
+
+/** React.memo comparator for MessageBubble — exported for testing */
+export function messageBubbleAreEqual(
+  prev: { message: DisplayMessage; showAvatar?: boolean; agentId?: string; agentStatus?: AgentStatus; focused?: boolean; selected?: boolean },
+  next: { message: DisplayMessage; showAvatar?: boolean; agentId?: string; agentStatus?: AgentStatus; focused?: boolean; selected?: boolean },
+): boolean {
+  const pm = prev.message, nm = next.message;
+  return pm.id === nm.id
+    && pm.content === nm.content
+    && pm.streaming === nm.streaming
+    && pm.role === nm.role
+    && (pm.toolCalls?.length ?? 0) === (nm.toolCalls?.length ?? 0)
+    && (pm.attachments?.length ?? 0) === (nm.attachments?.length ?? 0)
+    && prev.focused === next.focused
+    && prev.selected === next.selected
+    && prev.agentId === next.agentId
+    && prev.agentStatus?.phase === next.agentStatus?.phase
+    && prev.showAvatar === next.showAvatar;
+}
