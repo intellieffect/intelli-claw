@@ -26,4 +26,7 @@ export interface PlatformAPI {
 
   /** Build a URL to serve a showcase file */
   showcaseUrl(relativePath: string): string;
+
+  /** Upload an image (base64) for permanent server-side storage (#110) */
+  mediaUpload?(data: string, mimeType: string, fileName?: string): Promise<{ path: string }>;
 }
