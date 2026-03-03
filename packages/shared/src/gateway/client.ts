@@ -12,7 +12,8 @@ type PendingReq = {
 
 const REQUEST_TIMEOUT = 30_000;
 const AUTH_TIMEOUT = 10_000;
-const RECONNECT_DELAYS = [1000, 2000, 4000, 8000, 16000];
+const RECONNECT_DELAYS = [1000, 2000, 4000, 8000, 16000, 30000, 60000];
+const MAX_RECONNECT_DELAY = 60_000;
 const RECONNECT_JITTER = 0.3; // ±30% jitter on delays
 const MAX_RECONNECT_ATTEMPTS = 20;
 const PING_INTERVAL = 25_000;
@@ -33,6 +34,7 @@ export class GatewayClient {
   private pongTimer: ReturnType<typeof setTimeout> | null = null;
   private intentionalClose = false;
   private wasConnected = false;
+  private networkCleanup: (() => void) | null = null;
   public mainSessionKey = "";
   public serverVersion = "";
   public serverCommit = "";
@@ -72,6 +74,7 @@ export class GatewayClient {
     if (this.ws && this.state !== "disconnected") return;
     this.intentionalClose = false;
     this.lastError = null;
+    this.setupNetworkListeners();
     this.setState("connecting");
     this.addBrowserListeners();
 
@@ -91,6 +94,7 @@ export class GatewayClient {
     this.clearReconnect();
     this.clearAuthTimer();
     this.stopPing();
+    this.teardownNetworkListeners();
     this.removeBrowserListeners();
     if (this.ws) {
       this.ws.onclose = null;
@@ -373,6 +377,47 @@ export class GatewayClient {
     const delay = baseDelay + jitter;
     this.reconnectAttempt++;
     this.reconnectTimer = setTimeout(() => this.connect(), delay);
+  }
+
+  /**
+   * Listen for network/visibility changes to trigger reconnect (#119).
+   * On mobile, WiFi↔5G transitions and app backgrounding cause code 1006 closes.
+   */
+  private setupNetworkListeners(): void {
+    if (this.networkCleanup) return; // already set up
+    const handleOnline = () => {
+      if (this.state === "disconnected" && !this.intentionalClose) {
+        console.log("[GW] Network online — triggering reconnect");
+        this.reconnectAttempt = 0; // Reset backoff on network change
+        this.clearReconnect();
+        this.connect();
+      }
+    };
+    const handleVisibility = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "visible") {
+        if (this.state === "disconnected" && !this.intentionalClose) {
+          console.log("[GW] Page visible — triggering reconnect");
+          this.reconnectAttempt = 0;
+          this.clearReconnect();
+          this.connect();
+        }
+      }
+    };
+    if (typeof window !== "undefined") {
+      window.addEventListener("online", handleOnline);
+    }
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", handleVisibility);
+    }
+    this.networkCleanup = () => {
+      if (typeof window !== "undefined") window.removeEventListener("online", handleOnline);
+      if (typeof document !== "undefined") document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  }
+
+  private teardownNetworkListeners(): void {
+    this.networkCleanup?.();
+    this.networkCleanup = null;
   }
 
   private clearReconnect(): void {
