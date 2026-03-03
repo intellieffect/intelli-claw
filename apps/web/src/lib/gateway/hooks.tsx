@@ -303,6 +303,12 @@ export function extractMediaAttachments(text: string): { cleanedText: string; at
   return { cleanedText, attachments };
 }
 
+export interface ReplyTo {
+  id: string;
+  content: string;
+  role: string;
+}
+
 export interface DisplayMessage {
   id: string;
   role: "user" | "assistant" | "system" | "session-boundary";
@@ -314,6 +320,7 @@ export interface DisplayMessage {
   attachments?: DisplayAttachment[];
   oldSessionId?: string;
   newSessionId?: string;
+  replyTo?: ReplyTo;
 }
 
 export type AgentStatus =
@@ -329,11 +336,38 @@ export type AgentStatus =
  */
 export const HIDDEN_REPLY_RE = /^(NO_REPLY|HEARTBEAT_OK|NO_?)\s*$|Pre-compaction memory flush|^Read HEARTBEAT\.md|reply with NO_REPLY|Store durable memories now|\[System\] 이전 세션이 컨텍스트 한도로 갱신|\[이전 세션 맥락\]/;
 
+// --- Reply/Quote Helpers ---
+
+/** Truncate content for reply preview display */
+export function truncateForPreview(content: string, maxLen = 100): string {
+  const oneLine = content.replace(/\n/g, " ").trim();
+  if (oneLine.length <= maxLen) return oneLine;
+  return oneLine.slice(0, maxLen - 1) + "…";
+}
+
+/** Check if a message can be used as a reply target */
+export function canBeReplyTarget(msg: DisplayMessage): boolean {
+  if (msg.role === "system" || msg.role === "session-boundary") return false;
+  if (HIDDEN_REPLY_RE.test(msg.content.trim())) return false;
+  return true;
+}
+
+/** Build a ReplyTo object from a message */
+export function buildReplyTo(msg: DisplayMessage): ReplyTo | null {
+  if (!canBeReplyTarget(msg)) return null;
+  return {
+    id: msg.id,
+    content: truncateForPreview(msg.content),
+    role: msg.role,
+  };
+}
+
 export function useChat(sessionKey?: string) {
   const { client, state } = useGateway();
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
   const [streaming, setStreaming] = useState(false);
   const streamingRef = useRef(false);
+  const [replyingTo, setReplyingToState] = useState<ReplyTo | null>(null);
   const [loading, setLoading] = useState(false);
   const [agentStatus, setAgentStatus] = useState<AgentStatus>({ phase: "idle" });
   const setAgentStatusDebug = useCallback((s: AgentStatus) => {
@@ -1069,13 +1103,24 @@ export function useChat(sessionKey?: string) {
     } finally { processingQueue.current = false; }
   }, [doSend, persistQueue]);
 
+  const setReplyTo = useCallback((msg: DisplayMessage) => {
+    const reply = buildReplyTo(msg);
+    if (reply) setReplyingToState(reply);
+  }, []);
+
+  const clearReplyTo = useCallback(() => {
+    setReplyingToState(null);
+  }, []);
+
   const sendMessage = useCallback(
-    (text: string) => {
+    (text: string, options?: { replyTo?: ReplyTo }) => {
       if (!client || state !== "connected" || !text.trim()) return;
       const msgId = `user-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const replyTo = options?.replyTo || replyingTo || undefined;
       const userMsg: DisplayMessage = {
         id: msgId, role: "user", content: text,
         timestamp: new Date().toISOString(), toolCalls: [], queued: streaming,
+        replyTo,
       };
       setMessages((prev) => [...prev, userMsg]);
       // Persist user message to local store
@@ -1087,10 +1132,12 @@ export function useChat(sessionKey?: string) {
         timestamp: userMsg.timestamp,
         attachments: userMsg.attachments,
       }]).catch(() => {});
+      // Clear replyingTo after send
+      if (replyingTo) setReplyingToState(null);
       if (streaming) { queueRef.current.push({ id: msgId, text }); persistQueue(); }
       else { doSend(text, msgId); }
     },
-    [client, state, streaming, doSend]
+    [client, state, streaming, doSend, replyingTo]
   );
 
   useEffect(() => {
@@ -1256,5 +1303,6 @@ export function useChat(sessionKey?: string) {
     messages, streaming, loading, agentStatus,
     sendMessage, sendCommand, addUserMessage, addLocalMessage, clearMessages,
     cancelQueued, abort, reload: loadHistory, sendContextBridge,
+    replyingTo, setReplyTo, clearReplyTo,
   };
 }
