@@ -205,6 +205,34 @@ function stripTemplateVars(text: string): string {
   return text.replace(/\[\[[^\]]+\]\]\s*/g, "").trim();
 }
 
+/**
+ * Deduplicate messages by role + normalized content + timestamp proximity.
+ * Keeps the first occurrence (gateway messages should come first in the array).
+ * Two messages are considered duplicates if they have the same role, similar
+ * content (first 200 chars after normalization), and timestamps within 60s.
+ */
+function deduplicateMessages<T extends { id: string; role: string; content: string; timestamp: string }>(
+  msgs: T[],
+): T[] {
+  const seen: Array<{ role: string; contentKey: string; ts: number }> = [];
+  return msgs.filter((m) => {
+    // Always keep session boundaries
+    if (m.role === "session-boundary") return true;
+    const contentKey = m.content.replace(/\s+/g, " ").trim().slice(0, 200);
+    const ts = new Date(m.timestamp).getTime();
+    // Check if a similar message was already seen
+    const isDup = seen.some(
+      (s) =>
+        s.role === m.role &&
+        s.contentKey === contentKey &&
+        Math.abs(s.ts - ts) < 60_000, // 60-second window
+    );
+    if (isDup) return false;
+    seen.push({ role: m.role, contentKey, ts });
+    return true;
+  });
+}
+
 // --- useChat (web-specific: uses localStorage, platform, mime-types) ---
 
 export interface DisplayAttachment {
@@ -463,24 +491,30 @@ export function useChat(sessionKey?: string) {
         })
         .filter((m) => !isHiddenMessage(m.role, m.content));
 
+      // Dedup gateway messages in case the API returns duplicates (#121)
+      const dedupedHistMsgs = deduplicateMessages(histMsgs);
+      if (dedupedHistMsgs.length !== histMsgs.length) {
+        console.warn(`[AWF] Removed ${histMsgs.length - dedupedHistMsgs.length} duplicate gateway messages`);
+      }
+
       // Final stale check before writing state
       if (loadVersionRef.current !== thisLoadVersion) return;
 
       // --- Merge local messages (pre-compaction) with gateway history ---
-      let mergedMsgs = histMsgs;
+      let mergedMsgs = dedupedHistMsgs;
       try {
         const localMsgs = await getLocalMessages(sessionKey);
-        if (localMsgs.length > 0 && histMsgs.length > 0) {
+        if (localMsgs.length > 0 && dedupedHistMsgs.length > 0) {
           // Build lookup sets for dedup — match by id AND by content+role+close-timestamp
-          const gatewayIds = new Set(histMsgs.map((m) => m.id));
+          const gatewayIds = new Set(dedupedHistMsgs.map((m) => m.id));
           const gatewayContentKeys = new Set(
-            histMsgs.map((m) => `${m.role}:${m.content.slice(0, 100)}`),
+            dedupedHistMsgs.map((m) => `${m.role}:${m.content.replace(/\s+/g, " ").trim().slice(0, 200)}`),
           );
           const oldestGatewayTs = Math.min(
-            ...histMsgs.map((m) => new Date(m.timestamp).getTime()),
+            ...dedupedHistMsgs.map((m) => new Date(m.timestamp).getTime()),
           );
           const newestGatewayTs = Math.max(
-            ...histMsgs.map((m) => new Date(m.timestamp).getTime()),
+            ...dedupedHistMsgs.map((m) => new Date(m.timestamp).getTime()),
           );
 
           const toDisplayMsg = (lm: StoredMessage): DisplayMessage => ({
@@ -495,9 +529,10 @@ export function useChat(sessionKey?: string) {
           });
 
           // Local messages not in gateway — split into older (prepend) and newer (append)
+          // Use normalized content matching (consistent with gatewayContentKeys) (#121)
           const isNotInGateway = (lm: StoredMessage) =>
             !gatewayIds.has(lm.id) &&
-            !gatewayContentKeys.has(`${lm.role}:${lm.content.slice(0, 100)}`);
+            !gatewayContentKeys.has(`${lm.role}:${lm.content.replace(/\s+/g, " ").trim().slice(0, 200)}`);
 
           const prependMsgs = localMsgs
             .filter((lm) => isNotInGateway(lm) && new Date(lm.timestamp).getTime() < oldestGatewayTs)
@@ -512,7 +547,7 @@ export function useChat(sessionKey?: string) {
             (lm) => lm.attachments && (lm.attachments as DisplayAttachment[]).length > 0
           );
           const IMAGE_PLACEHOLDERS = new Set(["(image)", "(첨부 파일)", ""]);
-          for (const hm of histMsgs) {
+          for (const hm of dedupedHistMsgs) {
             if (hm.attachments && hm.attachments.length > 0) continue;
             // 1. Match by content
             let local = localWithAtts.find(
@@ -534,12 +569,12 @@ export function useChat(sessionKey?: string) {
           }
 
           if (prependMsgs.length > 0 || appendMsgs.length > 0) {
-            mergedMsgs = [...prependMsgs, ...histMsgs, ...appendMsgs];
+            mergedMsgs = [...prependMsgs, ...dedupedHistMsgs, ...appendMsgs];
             console.log(
               `[AWF] Restored ${prependMsgs.length} pre + ${appendMsgs.length} post messages from local store`,
             );
           }
-        } else if (localMsgs.length > 0 && histMsgs.length === 0) {
+        } else if (localMsgs.length > 0 && dedupedHistMsgs.length === 0) {
           // Gateway returned nothing — show local messages
           mergedMsgs = localMsgs.map((lm) => ({
             id: lm.id,
@@ -556,8 +591,11 @@ export function useChat(sessionKey?: string) {
         console.warn("[AWF] Failed to load local messages:", e);
       }
 
+      // Final dedup safety net on merged messages (#121)
+      mergedMsgs = deduplicateMessages(mergedMsgs);
+
       // Persist gateway history to local store for future recovery
-      const toStore: StoredMessage[] = histMsgs
+      const toStore: StoredMessage[] = dedupedHistMsgs
         .filter((m) => !m.id.startsWith("local-"))
         .map((m) => ({
           sessionKey,
