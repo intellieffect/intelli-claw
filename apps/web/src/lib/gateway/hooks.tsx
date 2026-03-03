@@ -243,7 +243,7 @@ export interface DisplayAttachment {
   textContent?: string;
 }
 
-function extractMediaAttachments(text: string): { cleanedText: string; attachments: DisplayAttachment[] } {
+export function extractMediaAttachments(text: string): { cleanedText: string; attachments: DisplayAttachment[] } {
   const MEDIA_RE = /^MEDIA:(.+)$/gm;
   const attachments: DisplayAttachment[] = [];
   let match: RegExpExecArray | null;
