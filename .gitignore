@@ -23,6 +23,10 @@ public/agents/
 .serena/
 public/agents/*.jpg
 
+# editor
+*.swp
+*.swo
+
 # local dev
 .mcp.json
 .playwright-mcp/
