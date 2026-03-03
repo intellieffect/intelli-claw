@@ -426,7 +426,6 @@ export function ChatInput({
               value={text}
               onChange={(e) => setText(e.target.value)}
               onKeyDown={handleKeyDown}
-              onFocus={() => document.dispatchEvent(new CustomEvent("focus-chat-input"))}
               onPaste={handlePaste}
               onCompositionStart={() => {
                 composingRef.current = true;
