@@ -72,7 +72,7 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
   const effectiveSessionKey =
     sessionKey || (agentId ? `agent:${agentId}:main` : mainSessionKey) || undefined;
 
-  const { messages, streaming, loading, agentStatus, sendMessage, sendCommand, addUserMessage, addLocalMessage, clearMessages, cancelQueued, abort, sendContextBridge } = useChat(effectiveSessionKey);
+  const { messages, streaming, loading, agentStatus, sendMessage, sendCommand, addUserMessage, addLocalMessage, clearMessages, cancelQueued, abort, sendContextBridge, replyingTo, setReplyTo, clearReplyTo } = useChat(effectiveSessionKey);
   const { agents } = useAgents();
   const { sessions, loading: sessionsLoading, refresh: refreshSessions, patchSession } = useSessions();
 
@@ -671,6 +671,7 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
           agentStatus={agentStatus}
           onLoadPreviousContext={sendContextBridge}
           onOpenTopicHistory={() => setTopicHistoryOpen(true)}
+          onReply={setReplyTo}
           onClearMessages={() => {
             if (window.confirm("채팅 내용을 모두 비우시겠습니까?")) {
               clearMessages();
@@ -693,6 +694,8 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
         model={currentSession?.model ? String(currentSession.model) : undefined}
         tokenStr={tokenStr || undefined}
         tokenPercent={(currentSession as any)?.percentUsed as number | undefined}
+        replyingTo={replyingTo}
+        onClearReply={clearReplyTo}
       />
 
       {/* New Session Picker */}
