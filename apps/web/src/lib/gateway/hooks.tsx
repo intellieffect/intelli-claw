@@ -7,6 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import { getMimeType } from "@/lib/mime-types";
+import { validateMediaPath, sanitizeAttachmentPath } from "@/lib/platform/media-path";
 import { platform } from "@/lib/platform";
 import type {
   EventFrame,
@@ -206,10 +207,23 @@ function stripTemplateVars(text: string): string {
 }
 
 /**
+ * Image placeholder variants treated as equivalent for dedup (#115).
+ * Optimistic UI may use "(첨부 파일)" while gateway stores "(image)".
+ */
+const IMAGE_PLACEHOLDERS_DEDUP = new Set(["(image)", "(첨부 파일)", "(이미지)", ""]);
+
+function normalizeContentForDedup(content: string): string {
+  const trimmed = content.replace(/\s+/g, " ").trim();
+  if (IMAGE_PLACEHOLDERS_DEDUP.has(trimmed)) return "(image)";
+  return trimmed.slice(0, 200);
+}
+
+/**
  * Deduplicate messages by role + normalized content + timestamp proximity.
  * Keeps the first occurrence (gateway messages should come first in the array).
  * Two messages are considered duplicates if they have the same role, similar
  * content (first 200 chars after normalization), and timestamps within 60s.
+ * Image placeholder variants are normalized to prevent optimistic UI duplicates (#115).
  */
 /**
  * Build an attachment fingerprint for dedup comparison.
@@ -233,17 +247,21 @@ export function deduplicateMessages<T extends { id: string; role: string; conten
   return msgs.filter((m) => {
     // Always keep session boundaries
     if (m.role === "session-boundary") return true;
-    const contentKey = m.content.replace(/\s+/g, " ").trim().slice(0, 200);
+    const contentKey = normalizeContentForDedup(m.content);
     const attKey = attachmentFingerprint(m.attachments);
     const ts = new Date(m.timestamp).getTime();
-    // Check if a similar message was already seen
-    const isDup = seen.some(
-      (s) =>
-        s.role === m.role &&
-        s.contentKey === contentKey &&
-        s.attKey === attKey &&
-        Math.abs(s.ts - ts) < 60_000, // 60-second window
-    );
+    // For image placeholders (#115): if the current message OR a seen message
+    // has no attachments, it's likely an optimistic vs server echo mismatch.
+    // In that case, skip attachment comparison. If BOTH have attachments,
+    // still compare them to distinguish genuinely different images.
+    const isImagePlaceholder = IMAGE_PLACEHOLDERS_DEDUP.has(m.content.replace(/\s+/g, " ").trim());
+    const isDup = seen.some((s) => {
+      if (s.role !== m.role || s.contentKey !== contentKey) return false;
+      if (Math.abs(s.ts - ts) >= 60_000) return false;
+      // For image placeholders: skip att comparison if either side has no attachments
+      if (isImagePlaceholder && (!attKey || !s.attKey)) return true;
+      return s.attKey === attKey;
+    });
     if (isDup) return false;
     seen.push({ role: m.role, contentKey, attKey, ts });
     return true;
@@ -260,11 +278,11 @@ function isDuplicateOfOptimistic(
   content: string,
   timestamp: string,
 ): boolean {
-  const normalizedContent = content.replace(/\s+/g, " ").trim().slice(0, 200);
+  const normalizedContent = normalizeContentForDedup(content);
   const inboundTs = new Date(timestamp).getTime();
   return existing.some((m) => {
     if (m.role !== role) return false;
-    const existingContent = m.content.replace(/\s+/g, " ").trim().slice(0, 200);
+    const existingContent = normalizeContentForDedup(m.content);
     const existingTs = new Date(m.timestamp).getTime();
     return existingContent === normalizedContent && Math.abs(existingTs - inboundTs) < 30_000;
   });
@@ -285,7 +303,11 @@ export function extractMediaAttachments(text: string): { cleanedText: string; at
   const attachments: DisplayAttachment[] = [];
   let match: RegExpExecArray | null;
   while ((match = MEDIA_RE.exec(text)) !== null) {
-    const raw = match[1].trim();
+    const raw = sanitizeAttachmentPath(match[1].trim());
+    const pathCheck = validateMediaPath(raw);
+    if (!pathCheck.valid) {
+      console.warn(`[AWF] Skipping invalid media path: ${raw} (${pathCheck.reason})`);
+    }
     const fileName = raw.split("/").pop() || raw;
     const ext = fileName.split(".").pop()?.toLowerCase() || "";
     const mimeType = getMimeType(ext);
@@ -385,6 +407,7 @@ export function useChat(sessionKey?: string) {
   const streamingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sessionKeyRef = useRef(sessionKey);
   const loadVersionRef = useRef(0);
+  const lastLoadAtRef = useRef(0); // Throttle for cross-device sync (#120)
   const sendContextBridgeRef = useRef<(() => Promise<void>) | null>(null);
   const buildContextSummaryRef = useRef<(() => string | null) | null>(null);
   const contextBridgeSentRef = useRef<string | null>(null);
@@ -727,6 +750,7 @@ export function useChat(sessionKey?: string) {
     } finally {
       if (loadVersionRef.current === thisLoadVersion) {
         setLoading(false);
+        lastLoadAtRef.current = Date.now();
       }
     }
   }, [client, state, sessionKey, queueStorageKey]);
@@ -986,6 +1010,11 @@ export function useChat(sessionKey?: string) {
             attachments: finalAttachments,
           }]).catch(() => {});
           streamBuf.current = null;
+        }
+        // Reload history after agent run ends to sync user messages from other devices (#120).
+        // Throttled: skip if last load was < 2s ago to avoid UI flicker.
+        if (Date.now() - lastLoadAtRef.current >= 2000) {
+          loadHistory();
         }
       } else if (stream === "done" || stream === "end" || stream === "finish") {
         clearStreamingTimeout();
