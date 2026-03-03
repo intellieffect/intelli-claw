@@ -17,6 +17,7 @@ import { matchesShortcutId } from "@/lib/shortcuts";
 import { windowStoragePrefix } from "@/lib/utils";
 import { useIsMobile } from "@/lib/hooks/use-mobile";
 import { useKeyboardHeight } from "@/lib/hooks/use-keyboard-height";
+import { useSwipeGesture, getNextAgentIndex } from "@/lib/hooks/use-swipe-gesture";
 import { NewSessionPicker, AgentManager } from "@/components/settings/agent-manager";
 import { SessionManagerPanel } from "./session-manager-panel";
 import { TopicHistory } from "./topic-history";
@@ -85,6 +86,38 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
   const [sessionManagerOpen, setSessionManagerOpen] = useState(false);
   const [topicHistoryOpen, setTopicHistoryOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
+
+  // Swipe gesture for mobile agent switching
+  const handleSwipeLeft = useCallback(() => {
+    if (agents.length <= 1) return;
+    const currentIdx = agents.findIndex((a) => a.id === agentId);
+    const nextIdx = getNextAgentIndex(
+      currentIdx === -1 ? 0 : currentIdx,
+      agents.length,
+      "left",
+    );
+    const nextAgent = agents[nextIdx];
+    if (nextAgent) handleAgentChange(nextAgent.id);
+  }, [agents, agentId]);
+
+  const handleSwipeRight = useCallback(() => {
+    if (agents.length <= 1) return;
+    const currentIdx = agents.findIndex((a) => a.id === agentId);
+    const nextIdx = getNextAgentIndex(
+      currentIdx === -1 ? 0 : currentIdx,
+      agents.length,
+      "right",
+    );
+    const nextAgent = agents[nextIdx];
+    if (nextAgent) handleAgentChange(nextAgent.id);
+  }, [agents, agentId]);
+
+  useSwipeGesture(panelRef, {
+    onSwipeLeft: handleSwipeLeft,
+    onSwipeRight: handleSwipeRight,
+    threshold: 50,
+    enabled: isMobile,
+  });
 
   // Build ordered session list for current agent (matches header tab order: main first, then by updatedAt desc)
   const [hiddenVersion, setHiddenVersion] = useState(0);
