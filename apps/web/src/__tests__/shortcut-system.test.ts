@@ -170,14 +170,14 @@ describe("matchesShortcutId", () => {
     expect(matchesShortcutId(e, "focus-panel-5")).toBe(true);
   });
 
-  it("matches next-session (Tab)", () => {
+  it("next-session (Tab) removed — returns false", () => {
     const e = createKeyboardEvent("Tab", { code: "Tab" });
-    expect(matchesShortcutId(e, "next-session")).toBe(true);
+    expect(matchesShortcutId(e, "next-session")).toBe(false);
   });
 
-  it("matches prev-session (Shift+Tab)", () => {
+  it("prev-session (Shift+Tab) removed — returns false", () => {
     const e = createKeyboardEvent("Tab", { shiftKey: true, code: "Tab" });
-    expect(matchesShortcutId(e, "prev-session")).toBe(true);
+    expect(matchesShortcutId(e, "prev-session")).toBe(false);
   });
 
   it("returns false for unknown shortcut id", () => {
@@ -260,8 +260,6 @@ describe("shortcut definitions completeness", () => {
     "reopen-panel",
     "new-session",
     "abort-stream",
-    "next-session",
-    "prev-session",
     "session-switcher",
     "agent-browser",
     "focus-panel-1",

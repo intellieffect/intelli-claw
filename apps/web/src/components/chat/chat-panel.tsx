@@ -264,25 +264,10 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
     }
     document.addEventListener("keydown", handleKeyDown);
 
-    // Tab/Shift+Tab: capture phase to intercept before browser focus navigation
-    function handleTab(e: KeyboardEvent) {
-      if (!isActive) return;
-      if (!(matchesShortcutId(e, "next-session") || matchesShortcutId(e, "prev-session"))) return;
-      if (agentSessions.length <= 1) return;
-      const target = e.target as HTMLElement;
-      if (!target.closest("[data-chat-panel]")) return;
-      e.preventDefault();
-      e.stopPropagation();
-      const currentIdx = agentSessions.findIndex((s) => s.key === effectiveSessionKey);
-      const delta = matchesShortcutId(e, "prev-session") ? -1 : 1;
-      const nextIdx = (currentIdx + delta + agentSessions.length) % agentSessions.length;
-      setSessionKey(agentSessions[nextIdx].key);
-    }
-    document.addEventListener("keydown", handleTab, true);
+    // Tab/Shift+Tab 세션 전환 제거 — Cmd+[/] 사용
 
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
-      document.removeEventListener("keydown", handleTab, true);
     };
   }, [isActive, agentId, setSessionKey, refreshSessions, agentSessions, effectiveSessionKey, streaming, abort, sessions, handleDelete]);
 
