@@ -31,11 +31,11 @@ ok()    { echo "  ✅ $*"; }
 warn()  { echo "  ⚠️  $*"; }
 fail()  { echo "  ❌ $*" >&2; exit 1; }
 
-# ─── Preflight ────────────────────────────────────────────────────────
-if [ ! -d "$BUILD_APP" ]; then
-  fail "Build artifact not found: $BUILD_APP"
-  echo "    Run 'pnpm release' first."
-fi
+# ─── Build ────────────────────────────────────────────────────────────
+info "Building Electron app (build + package)..."
+pnpm build:electron
+pnpm package
+ok "Build + package complete"
 
 VERSION=$(node -e "console.log(require('$ROOT_DIR/package.json').version)")
 
