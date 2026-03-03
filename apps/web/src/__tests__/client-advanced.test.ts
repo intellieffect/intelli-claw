@@ -84,16 +84,22 @@ async function completeHandshake(client: GatewayClient): Promise<MockWebSocket> 
 describe("GatewayClient – Advanced", () => {
   let originalWebSocket: typeof globalThis.WebSocket;
 
+  let originalMathRandom: typeof Math.random;
+
   beforeEach(() => {
     vi.useFakeTimers();
     originalWebSocket = globalThis.WebSocket;
     // @ts-expect-error mock
     globalThis.WebSocket = MockWebSocket;
+    // Pin Math.random to 0 so jitter is deterministic (delay = baseDelay + 0)
+    originalMathRandom = Math.random;
+    Math.random = () => 0;
   });
 
   afterEach(() => {
     vi.useRealTimers();
     globalThis.WebSocket = originalWebSocket;
+    Math.random = originalMathRandom;
   });
 
   // ─── Reconnect Logic ───────────────────────────────────────
@@ -108,8 +114,8 @@ describe("GatewayClient – Advanced", () => {
       ws.simulateClose();
       expect(client.getState()).toBe("disconnected");
 
-      // After 1s, should attempt reconnect (+ 1ms for MockWebSocket onopen setTimeout)
-      await vi.advanceTimersByTimeAsync(1001);
+      // After base delay + jitter (pinned to 0) + 1ms for MockWebSocket onopen setTimeout
+      await vi.advanceTimersByTimeAsync(1002);
       expect(client.getState()).toBe("authenticating");
     });
 
