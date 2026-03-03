@@ -25,8 +25,7 @@ export const DEFAULT_SHORTCUTS: ShortcutDef[] = [
   { id: "reopen-panel", keys: "Ctrl+Shift+X", description: "닫은 패널 다시 열기", scope: "global" },
   { id: "new-session", keys: isMac ? "Ctrl+N" : "Alt+N", description: "현재 패널 새 세션", scope: "panel" },
   { id: "abort-stream", keys: "Ctrl+C", description: "스트리밍 중지", scope: "panel" },
-  { id: "next-session", keys: "Tab", description: "다음 세션 탭으로 이동", scope: "panel" },
-  { id: "prev-session", keys: "Shift+Tab", description: "이전 세션 탭으로 이동", scope: "panel" },
+  // Tab/Shift+Tab 세션 전환 제거 — Cmd+[/] 사용 (#next-session-bracket, #prev-session-bracket)
   { id: "session-switcher", keys: isMac ? "Cmd+K" : "Ctrl+K", description: "세션 스위처 열기", scope: "panel" },
   { id: "agent-browser", keys: isMac ? "Cmd+O" : "Ctrl+O", description: "에이전트별 세션 브라우저", scope: "panel" },
   { id: "new-tab", keys: isMac ? "Cmd+T" : "Ctrl+T", description: "새 탭 열기 (세션 생성)", scope: "panel" },

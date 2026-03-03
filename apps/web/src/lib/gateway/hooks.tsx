@@ -212,7 +212,7 @@ function stripTemplateVars(text: string): string {
  */
 const IMAGE_PLACEHOLDERS_DEDUP = new Set(["(image)", "(첨부 파일)", "(이미지)", ""]);
 
-function normalizeContentForDedup(content: string): string {
+export function normalizeContentForDedup(content: string): string {
   // Keep normalization aligned across history merge + final dedup.
   let normalized = content.replace(/\s+/g, " ").trim();
 
@@ -525,8 +525,12 @@ export function useChat(sessionKey?: string) {
   const loadVersionRef = useRef(0);
   const lastLoadAtRef = useRef(0); // Throttle for cross-device sync (#120)
   const pendingHistoryReloadRef = useRef(false);
+  const reconnectSafetyRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const finalizedEventKeysRef = useRef<Set<string>>(new Set());
   const messagesRef = useRef<DisplayMessage[]>([]);
+  // Throttle streaming UI updates to once per animation frame
+  const streamRafRef = useRef<number | null>(null);
+  const pendingStreamUpdate = useRef<(() => void) | null>(null);
   const sendContextBridgeRef = useRef<(() => Promise<void>) | null>(null);
   const buildContextSummaryRef = useRef<(() => string | null) | null>(null);
   const contextBridgeSentRef = useRef<string | null>(null);
@@ -549,7 +553,7 @@ export function useChat(sessionKey?: string) {
     sessionStorage.removeItem(pendingStreamStorageKey);
   }, [pendingStreamStorageKey]);
 
-  const persistPendingStream = useCallback(() => {
+  const persistPendingStreamImmediate = useCallback(() => {
     if (!pendingStreamStorageKey || !streamBuf.current) return;
     const snapshot = createPendingStreamSnapshot({
       runId: runIdRef.current,
@@ -559,6 +563,16 @@ export function useChat(sessionKey?: string) {
     });
     sessionStorage.setItem(pendingStreamStorageKey, JSON.stringify(snapshot));
   }, [pendingStreamStorageKey]);
+
+  // Throttled version: persist at most once per 500ms during streaming
+  const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const persistPendingStream = useCallback(() => {
+    if (persistTimerRef.current) return;
+    persistTimerRef.current = setTimeout(() => {
+      persistTimerRef.current = null;
+      persistPendingStreamImmediate();
+    }, 500);
+  }, [persistPendingStreamImmediate]);
 
   const clearStreamingTimeout = useCallback(() => {
     if (streamingTimeoutRef.current) {
@@ -592,6 +606,20 @@ export function useChat(sessionKey?: string) {
   useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
+
+  // Force-persist pending stream before page unload so refresh doesn't lose content.
+  // The throttled persistPendingStream may not have flushed yet when the user hits F5.
+  useEffect(() => {
+    const onBeforeUnload = () => {
+      if (persistTimerRef.current) {
+        clearTimeout(persistTimerRef.current);
+        persistTimerRef.current = null;
+      }
+      persistPendingStreamImmediate();
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [persistPendingStreamImmediate]);
 
   useEffect(() => {
     if (!pendingStreamStorageKey || streamBuf.current) return;
@@ -684,7 +712,11 @@ export function useChat(sessionKey?: string) {
     // When sessionKey changes mid-flight, the old callback must not overwrite
     // messages loaded by the new callback (#63).
     const thisLoadVersion = ++loadVersionRef.current;
-    setLoading(true);
+    // Only show loading spinner on initial load (no messages yet).
+    // Post-stream reloads should update silently to avoid full-screen flash.
+    if (messagesRef.current.length === 0) {
+      setLoading(true);
+    }
     try {
       const res = await client.request<{ messages: ChatMessage[] }>(
         "chat.history",
@@ -831,12 +863,18 @@ export function useChat(sessionKey?: string) {
             !gatewayIds.has(lm.id) &&
             !gatewayContentKeys.has(`${lm.role}:${normalizeContentForDedup(lm.content)}:${attachmentFingerprint(lm.attachments as DisplayAttachment[] | undefined)}`);
 
+          // Separate session-boundary messages — these are local-only and must
+          // be re-inserted at the correct position regardless of timestamp range.
+          const boundaryMsgs = localMsgs
+            .filter((lm) => lm.role === "session-boundary")
+            .map(toDisplayMsg);
+
           const prependMsgs = localMsgs
-            .filter((lm) => isNotInGateway(lm) && !isHiddenMessage(lm.role, lm.content) && new Date(lm.timestamp).getTime() < oldestGatewayTs)
+            .filter((lm) => lm.role !== "session-boundary" && isNotInGateway(lm) && !isHiddenMessage(lm.role, lm.content) && new Date(lm.timestamp).getTime() < oldestGatewayTs)
             .map(toDisplayMsg);
 
           const appendMsgs = localMsgs
-            .filter((lm) => isNotInGateway(lm) && !isHiddenMessage(lm.role, lm.content) && new Date(lm.timestamp).getTime() >= newestGatewayTs)
+            .filter((lm) => lm.role !== "session-boundary" && isNotInGateway(lm) && !isHiddenMessage(lm.role, lm.content) && new Date(lm.timestamp).getTime() >= newestGatewayTs)
             .map(toDisplayMsg);
 
           // Restore attachments stripped by compaction (e.g. images)
@@ -870,6 +908,22 @@ export function useChat(sessionKey?: string) {
             console.log(
               `[AWF] Restored ${prependMsgs.length} pre + ${appendMsgs.length} post messages from local store`,
             );
+          }
+
+          // Re-insert session boundaries at the correct position by timestamp.
+          // Boundaries are local-only markers and would otherwise be lost during
+          // the timestamp-range merge above.
+          for (const bm of boundaryMsgs) {
+            const bmTs = new Date(bm.timestamp).getTime();
+            // Insert just before the first message newer than the boundary
+            let insertIdx = mergedMsgs.length;
+            for (let j = 0; j < mergedMsgs.length; j++) {
+              if (new Date(mergedMsgs[j].timestamp).getTime() > bmTs) {
+                insertIdx = j;
+                break;
+              }
+            }
+            mergedMsgs.splice(insertIdx, 0, bm);
           }
         } else if (localMsgs.length > 0 && dedupedHistMsgs.length === 0) {
           // Gateway returned nothing — show local messages (filter hidden)
@@ -929,11 +983,28 @@ export function useChat(sessionKey?: string) {
         try {
           const queue = JSON.parse(savedQueue) as { id: string; text: string }[];
           queueRef.current = queue;
-          const queuedMsgs: DisplayMessage[] = queue.map((q) => ({
+          // Filter out queue items already present in mergedMsgs (by id or content)
+          const mergedIds = new Set(mergedMsgs.map((m) => m.id));
+          const mergedContentKeys = new Set(
+            mergedMsgs.map((m) => `${m.role}:${normalizeContentForDedup(m.content)}`),
+          );
+          const freshQueue = queue.filter(
+            (q) => !mergedIds.has(q.id) && !mergedContentKeys.has(`user:${normalizeContentForDedup(q.text)}`),
+          );
+          if (freshQueue.length < queue.length) {
+            // Clean up stale queue items from localStorage
+            if (freshQueue.length === 0) {
+              localStorage.removeItem(queueStorageKey);
+            } else {
+              localStorage.setItem(queueStorageKey, JSON.stringify(freshQueue));
+            }
+            queueRef.current = freshQueue;
+          }
+          const queuedMsgs: DisplayMessage[] = freshQueue.map((q) => ({
             id: q.id, role: "user" as const, content: q.text,
             timestamp: new Date().toISOString(), toolCalls: [], queued: true,
           }));
-          setMessages([...mergedMsgs, ...queuedMsgs]);
+          setMessages(queuedMsgs.length > 0 ? [...mergedMsgs, ...queuedMsgs] : mergedMsgs);
         } catch { setMessages(mergedMsgs); }
       } else {
         setMessages(mergedMsgs);
@@ -1033,18 +1104,37 @@ export function useChat(sessionKey?: string) {
           streamingRef.current ||
           !!streamBuf.current ||
           messagesRef.current.some((m) => m.streaming);
-        if (shouldDeferHistoryReload(hasStreamingState)) {
-          console.log("[AWF] Reconnected during streaming — deferring history reload");
-          pendingHistoryReloadRef.current = true;
-          persistPendingStream();
-          return;
-        }
-        console.log("[AWF] Reconnected — reloading history");
+        // Always reload history on reconnect — the loading flash is fixed
+        // (setLoading only triggers when no messages exist).
+        console.log("[AWF] Reconnected — reloading history", { hasStreamingState });
+        pendingHistoryReloadRef.current = false;
         loadHistory();
+        // If we had streaming state, set a safety timer: if no new events
+        // arrive within 10s, the agent likely finished during the disconnect
+        // window and lifecycle.end was missed.
+        if (hasStreamingState) {
+          persistPendingStream();
+          if (reconnectSafetyRef.current) clearTimeout(reconnectSafetyRef.current);
+          reconnectSafetyRef.current = setTimeout(() => {
+            reconnectSafetyRef.current = null;
+            if (!streamBuf.current) return; // already finalized
+            console.warn("[AWF] No new events after reconnect — force finalizing stale stream");
+            const id = streamBuf.current.id;
+            setMessages((prev) =>
+              prev.map((m) => m.id === id ? { ...m, streaming: false } : m)
+            );
+            streamBuf.current = null;
+            runIdRef.current = null;
+            clearPersistedPendingStream();
+            setStreaming(false);
+            setAgentStatusDebug({ phase: "idle" });
+            clearStreamingTimeout();
+          }, 3_000);
+        }
       }
     });
     return unsub;
-  }, [client, loadHistory, persistPendingStream]);
+  }, [client, loadHistory, persistPendingStream, clearPersistedPendingStream, clearStreamingTimeout]);
 
   // Handle agent events
   useEffect(() => {
@@ -1064,6 +1154,9 @@ export function useChat(sessionKey?: string) {
       finalText: string | undefined,
       saveKey: string | undefined,
     ) => {
+      // Flush any pending throttled persist & cancel pending rAF
+      if (persistTimerRef.current) { clearTimeout(persistTimerRef.current); persistTimerRef.current = null; }
+      if (streamRafRef.current) { cancelAnimationFrame(streamRafRef.current); streamRafRef.current = null; }
       clearStreamingTimeout();
       setStreaming(false);
       setAgentStatusDebug({ phase: "idle" });
@@ -1162,6 +1255,8 @@ export function useChat(sessionKey?: string) {
 
       if (stream === "assistant" && (typeof data?.delta === "string" || typeof data?.text === "string")) {
         const chunk = (data?.delta as string | undefined) ?? (data?.text as string);
+        // Cancel reconnect safety timer — events are flowing again
+        if (reconnectSafetyRef.current) { clearTimeout(reconnectSafetyRef.current); reconnectSafetyRef.current = null; }
         setStreaming(true);
         startStreamingTimeout();
         setAgentStatusDebug({ phase: "writing" });
@@ -1179,21 +1274,38 @@ export function useChat(sessionKey?: string) {
         }
         // Skip hidden/control messages during streaming (#117)
         // Also suppress short control-token prefixes to prevent flicker ("N"/"NO").
-        if (shouldSuppressStreamingPreview(displayContent)) {
-          // Remove the streaming placeholder entirely
-          setMessages((prev) => prev.filter((m) => m.id !== snap.id));
-        } else {
-          setMessages((prev) => {
-            const existing = prev.findIndex((m) => m.id === snap.id);
-            const prevAttachments = existing >= 0 ? prev[existing].attachments : undefined;
-            const msg: DisplayMessage = {
-              id: snap.id, role: "assistant", content: displayContent,
-              timestamp: new Date().toISOString(),
-              toolCalls: Array.from(snap.toolCalls.values()),
-              streaming: true, attachments: streamAttachments ?? prevAttachments,
-            };
-            if (existing >= 0) { const next = [...prev]; next[existing] = msg; return next; }
-            return [...prev, msg];
+        // Throttle UI updates to once per animation frame to avoid flicker
+        const scheduleStreamRender = () => {
+          const curSnap = streamBuf.current;
+          if (!curSnap) return;
+          let curContent = curSnap.content;
+          let curAttachments: DisplayAttachment[] | undefined;
+          if (curContent.includes('MEDIA:')) {
+            const ext = extractMediaAttachments(curContent);
+            curContent = ext.cleanedText;
+            curAttachments = ext.attachments.length > 0 ? ext.attachments : undefined;
+          }
+          if (shouldSuppressStreamingPreview(curContent)) {
+            setMessages((prev) => prev.filter((m) => m.id !== curSnap.id));
+          } else {
+            setMessages((prev) => {
+              const existing = prev.findIndex((m) => m.id === curSnap.id);
+              const prevAttachments = existing >= 0 ? prev[existing].attachments : undefined;
+              const msg: DisplayMessage = {
+                id: curSnap.id, role: "assistant", content: curContent,
+                timestamp: new Date().toISOString(),
+                toolCalls: Array.from(curSnap.toolCalls.values()),
+                streaming: true, attachments: curAttachments ?? prevAttachments,
+              };
+              if (existing >= 0) { const next = [...prev]; next[existing] = msg; return next; }
+              return [...prev, msg];
+            });
+          }
+        };
+        if (!streamRafRef.current) {
+          streamRafRef.current = requestAnimationFrame(() => {
+            streamRafRef.current = null;
+            scheduleStreamRender();
           });
         }
         persistPendingStream();
@@ -1268,6 +1380,8 @@ export function useChat(sessionKey?: string) {
           });
         }
       } else if (stream === "lifecycle" && data?.phase === "start") {
+        // Cancel reconnect safety timer — new lifecycle starting
+        if (reconnectSafetyRef.current) { clearTimeout(reconnectSafetyRef.current); reconnectSafetyRef.current = null; }
         setStreaming(true);
         abortedRef.current = false;
         startStreamingTimeout();
@@ -1358,7 +1472,6 @@ export function useChat(sessionKey?: string) {
           message: text,
           idempotencyKey: `awf-${Date.now()}-${Math.random().toString(36).slice(2)}`,
           sessionKey,
-          deviceId: deviceIdRef.current,
         });
       } catch (err) {
         console.error("[AWF] chat.send error:", String(err));
@@ -1505,7 +1618,6 @@ export function useChat(sessionKey?: string) {
           message: text,
           idempotencyKey: `awf-${Date.now()}-${Math.random().toString(36).slice(2)}`,
           sessionKey,
-          deviceId: deviceIdRef.current,
         });
       } catch (err) { console.error("[AWF] command error:", String(err)); }
     },
