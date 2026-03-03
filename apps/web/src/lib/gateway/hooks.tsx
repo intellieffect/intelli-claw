@@ -345,6 +345,62 @@ export interface DisplayMessage {
   replyTo?: ReplyTo;
 }
 
+/**
+ * During reconnect/history refresh, keep in-flight streaming messages visible
+ * unless a semantically equivalent history message already exists.
+ */
+export function mergeLiveStreamingIntoHistory(
+  historyMessages: DisplayMessage[],
+  liveMessages: DisplayMessage[],
+): DisplayMessage[] {
+  if (liveMessages.length === 0) return historyMessages;
+  const merged = [...historyMessages];
+  const hasById = new Set(historyMessages.map((m) => m.id));
+
+  for (const live of liveMessages) {
+    if (!live.streaming || live.role === "system" || HIDDEN_REPLY_RE.test(live.content.trim())) continue;
+    if (hasById.has(live.id)) continue;
+
+    const liveKey = normalizeContentForDedup(live.content);
+    const liveAtt = attachmentFingerprint(live.attachments);
+    const duplicatedByHistory = historyMessages.some((h) => {
+      if (h.role !== live.role) return false;
+      const sameContent = normalizeContentForDedup(h.content) === liveKey;
+      if (!sameContent) return false;
+      const hAtt = attachmentFingerprint(h.attachments);
+      // If either side has no attachments, treat as same message variant.
+      if (!liveAtt || !hAtt) return true;
+      return liveAtt === hAtt;
+    });
+
+    if (!duplicatedByHistory) {
+      merged.push(live);
+      hasById.add(live.id);
+    }
+  }
+
+  return merged;
+}
+
+/**
+ * If reconnect happens while streaming is still active, defer history reload
+ * to avoid clobbering "작성중" state.
+ */
+export function shouldDeferHistoryReload(hasStreamingState: boolean): boolean {
+  return hasStreamingState;
+}
+
+/**
+ * Suppress short control-token prefixes during streaming to avoid transient
+ * flashes like "N" or "NO" before hidden-message filtering fully resolves.
+ */
+export function shouldSuppressStreamingPreview(text: string): boolean {
+  const t = text.trim();
+  if (!t) return false;
+  if (HIDDEN_REPLY_RE.test(t)) return true;
+  return /^(N|NO|NO_|NO_R|NO_RE|NO_REP|NO_REPL|NO_REPLY|H|HE|HEA|HEAR|HEART|HEARTB|HEARTBE|HEARTBEA|HEARTBEAT|HEARTBEAT_|HEARTBEAT_O|HEARTBEAT_OK)$/i.test(t);
+}
+
 export type AgentStatus =
   | { phase: "idle" }
   | { phase: "thinking" }
@@ -408,6 +464,8 @@ export function useChat(sessionKey?: string) {
   const sessionKeyRef = useRef(sessionKey);
   const loadVersionRef = useRef(0);
   const lastLoadAtRef = useRef(0); // Throttle for cross-device sync (#120)
+  const pendingHistoryReloadRef = useRef(false);
+  const messagesRef = useRef<DisplayMessage[]>([]);
   const sendContextBridgeRef = useRef<(() => Promise<void>) | null>(null);
   const buildContextSummaryRef = useRef<(() => string | null) | null>(null);
   const contextBridgeSentRef = useRef<string | null>(null);
@@ -451,6 +509,10 @@ export function useChat(sessionKey?: string) {
     streamingRef.current = streaming;
   }, [streaming]);
 
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
   const queueStorageKey = sessionKey ? `awf:queue:${sessionKey}` : null;
 
   useEffect(() => {
@@ -469,20 +531,14 @@ export function useChat(sessionKey?: string) {
 
   useEffect(() => {
     if (state === "disconnected" && streaming) {
-      console.warn("[AWF] connection lost — resetting streaming state");
+      console.warn("[AWF] connection lost during streaming — preserving in-flight message for reconnect");
       clearStreamingTimeout();
-      if (streamBuf.current) {
-        const id = streamBuf.current.id;
-        setMessages((prev) =>
-          prev.map((m) => m.id === id ? { ...m, streaming: false } : m)
-        );
-        streamBuf.current = null;
-      }
       runIdRef.current = null;
-      setStreaming(false);
-      setAgentStatusDebug({ phase: "idle" });
+      // Keep streamBuf + message.streaming intact so refresh/reconnect doesn't
+      // make the "작성중" bubble disappear.
+      setAgentStatusDebug({ phase: "waiting" });
     }
-  }, [state]);
+  }, [state, streaming, clearStreamingTimeout, setAgentStatusDebug]);
 
   const loadHistory = useCallback(async () => {
     if (!client || state !== "connected") return;
@@ -715,23 +771,20 @@ export function useChat(sessionKey?: string) {
         }));
       saveLocalMessages(sessionKey, toStore).catch(() => {});
 
-      // Preserve in-flight streaming message that isn't in history yet
-      const streamingMsg = streamBuf.current
-        ? (() => {
-            const mergedIds = new Set(mergedMsgs.map((m) => m.id));
-            if (!mergedIds.has(streamBuf.current!.id)) {
-              return {
-                id: streamBuf.current!.id,
-                role: "assistant" as const,
-                content: streamBuf.current!.content,
-                timestamp: new Date().toISOString(),
-                toolCalls: Array.from(streamBuf.current!.toolCalls.values()),
-                streaming: true,
-              } satisfies DisplayMessage;
-            }
-            return null;
-          })()
-        : null;
+      // Preserve in-flight streaming message(s) that aren't in history yet.
+      // Important on reconnect/refresh: keep "작성중" visible and drop stream-vs-history duplicates.
+      const liveStreaming = messagesRef.current.filter((m) => m.streaming);
+      if (streamBuf.current && !liveStreaming.some((m) => m.id === streamBuf.current!.id)) {
+        liveStreaming.push({
+          id: streamBuf.current.id,
+          role: "assistant",
+          content: streamBuf.current.content,
+          timestamp: new Date().toISOString(),
+          toolCalls: Array.from(streamBuf.current.toolCalls.values()),
+          streaming: true,
+        });
+      }
+      mergedMsgs = mergeLiveStreamingIntoHistory(mergedMsgs, liveStreaming);
 
       const savedQueue = queueStorageKey ? localStorage.getItem(queueStorageKey) : null;
       if (savedQueue) {
@@ -742,10 +795,10 @@ export function useChat(sessionKey?: string) {
             id: q.id, role: "user" as const, content: q.text,
             timestamp: new Date().toISOString(), toolCalls: [], queued: true,
           }));
-          setMessages([...mergedMsgs, ...(streamingMsg ? [streamingMsg] : []), ...queuedMsgs]);
-        } catch { setMessages([...mergedMsgs, ...(streamingMsg ? [streamingMsg] : [])]); }
+          setMessages([...mergedMsgs, ...queuedMsgs]);
+        } catch { setMessages(mergedMsgs); }
       } else {
-        setMessages([...mergedMsgs, ...(streamingMsg ? [streamingMsg] : [])]);
+        setMessages(mergedMsgs);
       }
     } catch {
       // silently fail
@@ -823,11 +876,22 @@ export function useChat(sessionKey?: string) {
     })();
   }, [sessionKey, state]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Reload history on reconnect (catches messages missed during disconnect)
+  // Reload history on reconnect (catches messages missed during disconnect).
+  // If an assistant stream is still in-flight, defer reload to avoid dropping
+  // the visible streaming bubble during full message replacement.
   useEffect(() => {
     if (!client) return;
     const unsub = client.onEvent((frame: EventFrame) => {
       if (frame.event === "client.reconnected") {
+        const hasStreamingState =
+          streamingRef.current ||
+          !!streamBuf.current ||
+          messagesRef.current.some((m) => m.streaming);
+        if (shouldDeferHistoryReload(hasStreamingState)) {
+          console.log("[AWF] Reconnected during streaming — deferring history reload");
+          pendingHistoryReloadRef.current = true;
+          return;
+        }
         console.log("[AWF] Reconnected — reloading history");
         loadHistory();
       }
@@ -888,8 +952,9 @@ export function useChat(sessionKey?: string) {
           displayContent = extracted.cleanedText;
           streamAttachments = extracted.attachments.length > 0 ? extracted.attachments : undefined;
         }
-        // Skip hidden messages during streaming (#117 — bare "NO", NO_REPLY, HEARTBEAT_OK)
-        if (HIDDEN_REPLY_RE.test(displayContent.trim())) {
+        // Skip hidden/control messages during streaming (#117)
+        // Also suppress short control-token prefixes to prevent flicker ("N"/"NO").
+        if (shouldSuppressStreamingPreview(displayContent)) {
           // Remove the streaming placeholder entirely
           setMessages((prev) => prev.filter((m) => m.id !== snap.id));
         } else {
@@ -1020,8 +1085,11 @@ export function useChat(sessionKey?: string) {
           streamBuf.current = null;
         }
         // Reload history after agent run ends to sync user messages from other devices (#120).
-        // Throttled: skip if last load was < 2s ago to avoid UI flicker.
-        if (Date.now() - lastLoadAtRef.current >= 2000) {
+        // Also flush deferred reconnect reloads once streaming is complete.
+        const shouldFlushDeferred = pendingHistoryReloadRef.current;
+        if (shouldFlushDeferred) pendingHistoryReloadRef.current = false;
+        // Throttled unless this was a deferred reconnect flush.
+        if (shouldFlushDeferred || Date.now() - lastLoadAtRef.current >= 2000) {
           loadHistory();
         }
       } else if (stream === "done" || stream === "end" || stream === "finish") {
@@ -1049,6 +1117,10 @@ export function useChat(sessionKey?: string) {
           }
           streamBuf.current = null;
         }
+        if (pendingHistoryReloadRef.current) {
+          pendingHistoryReloadRef.current = false;
+          loadHistory();
+        }
       } else if (stream === "error") {
         clearStreamingTimeout();
         setStreaming(false);
@@ -1062,6 +1134,10 @@ export function useChat(sessionKey?: string) {
               : m)
           );
           streamBuf.current = null;
+        }
+        if (pendingHistoryReloadRef.current) {
+          pendingHistoryReloadRef.current = false;
+          loadHistory();
         }
       }
     });
