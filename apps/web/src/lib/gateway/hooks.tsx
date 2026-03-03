@@ -250,6 +250,26 @@ export function deduplicateMessages<T extends { id: string; role: string; conten
   });
 }
 
+/**
+ * Check if an inbound user message duplicates an existing optimistic message.
+ * Used to prevent echoes when the gateway broadcasts a user's own message back (#120).
+ */
+function isDuplicateOfOptimistic(
+  existing: DisplayMessage[],
+  role: string,
+  content: string,
+  timestamp: string,
+): boolean {
+  const normalizedContent = content.replace(/\s+/g, " ").trim().slice(0, 200);
+  const inboundTs = new Date(timestamp).getTime();
+  return existing.some((m) => {
+    if (m.role !== role) return false;
+    const existingContent = m.content.replace(/\s+/g, " ").trim().slice(0, 200);
+    const existingTs = new Date(m.timestamp).getTime();
+    return existingContent === normalizedContent && Math.abs(existingTs - inboundTs) < 30_000;
+  });
+}
+
 // --- useChat (web-specific: uses localStorage, platform, mime-types) ---
 
 export interface DisplayAttachment {
@@ -334,6 +354,15 @@ export function useChat(sessionKey?: string) {
   const sendContextBridgeRef = useRef<(() => Promise<void>) | null>(null);
   const buildContextSummaryRef = useRef<(() => string | null) | null>(null);
   const contextBridgeSentRef = useRef<string | null>(null);
+  // Stable per-tab device identifier for cross-device message dedup (#120)
+  const deviceIdRef = useRef<string>(
+    (() => {
+      const key = "__iclaw_device_id__";
+      let id = sessionStorage.getItem(key);
+      if (!id) { id = `dev-${Date.now()}-${Math.random().toString(36).slice(2)}`; sessionStorage.setItem(key, id); }
+      return id;
+    })()
+  );
 
   const STREAMING_TIMEOUT_MS = 120_000;
 
@@ -850,19 +879,34 @@ export function useChat(sessionKey?: string) {
           });
         }
       } else if (stream === "inbound" && data) {
-        // Messages from other surfaces (Telegram, other devices, etc.)
+        // Messages from other surfaces/devices (Telegram, other tabs, etc.)
+        // Cross-device sync with dedup (#120)
         const text = ((data.text ?? data.content ?? "") as string);
         const role = (data.role ?? "user") as "user" | "assistant";
         if (text) {
           const cleanedText = role === "user" ? stripInboundMeta(text) : text;
+          const originDeviceId = data.deviceId as string | undefined;
+          const timestamp = (data.timestamp as string) ?? new Date().toISOString();
+
+          // Skip echo from our own device
+          if (originDeviceId && originDeviceId === deviceIdRef.current) {
+            return;
+          }
+
           const inboundId = `inbound-${Date.now()}-${++streamIdCounter.current}`;
-          setMessages((prev) => [...prev, {
-            id: inboundId,
-            role,
-            content: cleanedText,
-            timestamp: new Date().toISOString(),
-            toolCalls: [],
-          }]);
+          setMessages((prev) => {
+            // Content-based dedup only for legacy gateways without deviceId
+            if (!originDeviceId && role === "user" && isDuplicateOfOptimistic(prev, role, cleanedText, timestamp)) {
+              return prev;
+            }
+            return [...prev, {
+              id: inboundId,
+              role,
+              content: cleanedText,
+              timestamp,
+              toolCalls: [],
+            }];
+          });
         }
       } else if (stream === "lifecycle" && data?.phase === "start") {
         setStreaming(true);
@@ -986,6 +1030,7 @@ export function useChat(sessionKey?: string) {
           message: text,
           idempotencyKey: `awf-${Date.now()}-${Math.random().toString(36).slice(2)}`,
           sessionKey,
+          deviceId: deviceIdRef.current,
         });
       } catch (err) {
         console.error("[AWF] chat.send error:", String(err));
@@ -1118,6 +1163,7 @@ export function useChat(sessionKey?: string) {
           message: text,
           idempotencyKey: `awf-${Date.now()}-${Math.random().toString(36).slice(2)}`,
           sessionKey,
+          deviceId: deviceIdRef.current,
         });
       } catch (err) { console.error("[AWF] command error:", String(err)); }
     },
