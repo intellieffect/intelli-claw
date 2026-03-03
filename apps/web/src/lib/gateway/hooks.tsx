@@ -404,6 +404,7 @@ export function useChat(sessionKey?: string) {
   const streamIdCounter = useRef(0);
   const runIdRef = useRef<string | null>(null);
   const abortedRef = useRef(false);
+  const awaitingResponseRef = useRef(false); // Layer 1: pendingSend guard (#121)
   const streamingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sessionKeyRef = useRef(sessionKey);
   const loadVersionRef = useRef(0);
@@ -865,6 +866,23 @@ export function useChat(sessionKey?: string) {
       if (evSessionKey && evSessionKey !== sessionKeyRef.current) return;
       if (!evSessionKey && (boundSessionKey || sessionKeyRef.current)) return;
 
+      // Layer 2: agentId cross-validation (#121)
+      // Extract expected agentId from our bound sessionKey and reject events
+      // where the payload's agentId doesn't match, even if sessionKey passed.
+      if (boundSessionKey) {
+        const parts = boundSessionKey.split(":");
+        if (parts[0] === "agent" && parts.length >= 3) {
+          const expectedAgentId = parts[1];
+          const evAgentId = (raw.agentId ?? data?.agentId) as string | undefined;
+          if (evAgentId && evAgentId !== expectedAgentId) return;
+        }
+      }
+
+      // Layer 1: pendingSend guard (#121)
+      // For lifecycle:start without sessionKey, only accept if this panel
+      // actually sent a message (prevents cross-panel leaks when gateway
+      // doesn't include sessionKey in lifecycle events).
+      if (stream === "lifecycle" && data?.phase === "start" && !evSessionKey && !awaitingResponseRef.current) return;
 
       // Ignore events after abort until next lifecycle start
       if (abortedRef.current && stream !== "lifecycle") return;
@@ -973,6 +991,7 @@ export function useChat(sessionKey?: string) {
         runIdRef.current = (raw.runId as string) ?? null;
         setAgentStatusDebug({ phase: "thinking" });
       } else if (stream === "lifecycle" && data?.phase === "end") {
+        awaitingResponseRef.current = false; // Layer 1: clear pending send (#121)
         clearStreamingTimeout();
         setStreaming(false);
         setAgentStatusDebug({ phase: "idle" });
@@ -1000,7 +1019,9 @@ export function useChat(sessionKey?: string) {
           // Use the event's own sessionKey (evSessionKey) or the bound closure
           // value — NEVER sessionKeyRef.current which may have drifted (#5536-v2)
           const saveKey = evSessionKey || boundSessionKey;
-          if (saveKey && !HIDDEN_REPLY_RE.test(finalContent.trim())) saveLocalMessages(saveKey, [{
+          // Layer 3: validate saveKey matches bound session before persisting (#121)
+          const validSaveKey = saveKey && saveKey === boundSessionKey;
+          if (validSaveKey && !HIDDEN_REPLY_RE.test(finalContent.trim())) saveLocalMessages(saveKey, [{
             sessionKey: saveKey,
             id: finalId,
             role: "assistant",
@@ -1085,6 +1106,7 @@ export function useChat(sessionKey?: string) {
     async (text: string, msgId: string) => {
       if (!client || state !== "connected") return;
       setMessages((prev) => prev.map((m) => (m.id === msgId ? { ...m, queued: false } : m)));
+      awaitingResponseRef.current = true; // Layer 1: mark pending send (#121)
       setStreaming(true);
       startStreamingTimeout();
       setAgentStatusDebug({ phase: "thinking" });
@@ -1097,6 +1119,7 @@ export function useChat(sessionKey?: string) {
         });
       } catch (err) {
         console.error("[AWF] chat.send error:", String(err));
+        awaitingResponseRef.current = false; // Layer 1: clear on error (#121)
         clearStreamingTimeout();
         setStreaming(false);
       }
@@ -1182,6 +1205,7 @@ export function useChat(sessionKey?: string) {
   const abort = useCallback(() => {
     // Immediately stop UI — don't await the RPC
     abortedRef.current = true;
+    awaitingResponseRef.current = false; // Layer 1: clear pending send on abort (#121)
     const currentRunId = runIdRef.current;
     clearStreamingTimeout();
     if (streamBuf.current) {
