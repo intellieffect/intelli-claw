@@ -1,7 +1,7 @@
 
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowUp, Paperclip, Square, X } from "lucide-react";
+import { ArrowUp, Paperclip, Square, X, Reply } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,7 @@ import { SkillPicker, BUILTIN_COMMANDS } from "./skill-picker";
 import { useSkills } from "@/lib/gateway/use-skills";
 import { useKeyboardHeight } from "@/lib/hooks/use-keyboard-height";
 import { useIsMobile } from "@/lib/hooks/use-mobile";
+import type { ReplyTo } from "@/lib/gateway/hooks";
 
 export function ChatInput({
   onSend,
@@ -30,6 +31,8 @@ export function ChatInput({
   model,
   tokenStr,
   tokenPercent,
+  replyingTo,
+  onClearReply,
 }: {
   onSend: (text: string) => void;
   onAbort: () => void;
@@ -51,6 +54,10 @@ export function ChatInput({
   tokenStr?: string;
   /** Token usage percent */
   tokenPercent?: number;
+  /** Currently replying to message */
+  replyingTo?: ReplyTo | null;
+  /** Clear reply target */
+  onClearReply?: () => void;
 }) {
   const keyboardHeight = useKeyboardHeight();
   const isMobile = useIsMobile();
@@ -306,6 +313,26 @@ export function ChatInput({
             "focus-within:border-primary focus-within:ring-[3px] focus-within:ring-inset focus-within:ring-primary/40"
           )}
         >
+          {/* Reply preview bar */}
+          {replyingTo && (
+            <div className="flex items-center gap-2 border-b border-primary/20 bg-primary/5 px-3 py-2">
+              <Reply size={14} className="shrink-0 rotate-180 text-primary/60" />
+              <div className="min-w-0 flex-1">
+                <span className="text-xs font-medium text-primary/80">
+                  {replyingTo.role === "user" ? "나" : "에이전트"}에게 답장
+                </span>
+                <p className="truncate text-xs text-muted-foreground">{replyingTo.content || "(내용 없음)"}</p>
+              </div>
+              <button
+                onClick={onClearReply}
+                className="shrink-0 rounded p-1 text-muted-foreground transition hover:bg-muted hover:text-foreground"
+                title="답장 취소"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          )}
+
           {/* Toolbar: controls */}
           {toolbar && (
             <div className="flex w-full min-w-0 items-center gap-1.5 px-2.5 pt-2 sm:px-3">
