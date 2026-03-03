@@ -213,9 +213,19 @@ function stripTemplateVars(text: string): string {
 const IMAGE_PLACEHOLDERS_DEDUP = new Set(["(image)", "(첨부 파일)", "(이미지)", ""]);
 
 function normalizeContentForDedup(content: string): string {
-  const trimmed = content.replace(/\s+/g, " ").trim();
-  if (IMAGE_PLACEHOLDERS_DEDUP.has(trimmed)) return "(image)";
-  return trimmed.slice(0, 200);
+  // Keep normalization aligned across history merge + final dedup.
+  let normalized = content.replace(/\s+/g, " ").trim();
+
+  // Normalize gateway-injected timestamp prefix on user messages
+  // e.g. "[2026-03-03 15:10:00+09:00] 질문" -> "질문"
+  normalized = normalized.replace(/^\[\d{4}-\d{2}-\d{2}[\w\s\-:+]*\]\s*/i, "");
+
+  // Normalize bridge/system wrappers that may vary by source
+  // e.g. "[System] ..." / "(System) ..." / "System: ..."
+  normalized = normalized.replace(/^\s*(?:\[System\]|\(System\)|System:)\s*/i, "");
+
+  if (IMAGE_PLACEHOLDERS_DEDUP.has(normalized)) return "(image)";
+  return normalized.slice(0, 200);
 }
 
 /**
@@ -412,7 +422,7 @@ export type AgentStatus =
  * Patterns for messages that should be hidden from the chat UI.
  * Used in both streaming completion, history load, and display-layer filtering.
  */
-export const HIDDEN_REPLY_RE = /^(NO_REPLY|HEARTBEAT_OK|NO_?)\s*$|Pre-compaction memory flush|^Read HEARTBEAT\.md|reply with NO_REPLY|Store durable memories now|\[System\] 이전 세션이 컨텍스트 한도로 갱신|\[이전 세션 맥락\]/;
+export const HIDDEN_REPLY_RE = /^(NO_REPLY|HEARTBEAT_OK|NO_?)\s*$|Pre-compaction memory flush|^Read HEARTBEAT\.md|reply with NO_REPLY|Store durable memories now|(?:\[System\]|\(System\)|System:)\s*이전 세션이 컨텍스트 한도로 갱신|^이전 세션이 컨텍스트 한도로 갱신되었습니다\.\s*아래는 최근 대화 요약입니다\.|\[이전 세션 맥락\]/;
 
 // --- Reply/Quote Helpers ---
 
@@ -667,7 +677,7 @@ export function useChat(sessionKey?: string) {
           // Build lookup sets for dedup — match by id AND by content+role+close-timestamp
           const gatewayIds = new Set(dedupedHistMsgs.map((m) => m.id));
           const gatewayContentKeys = new Set(
-            dedupedHistMsgs.map((m) => `${m.role}:${m.content.replace(/\s+/g, " ").trim().slice(0, 200)}:${attachmentFingerprint(m.attachments)}`),
+            dedupedHistMsgs.map((m) => `${m.role}:${normalizeContentForDedup(m.content)}:${attachmentFingerprint(m.attachments)}`),
           );
           const oldestGatewayTs = Math.min(
             ...dedupedHistMsgs.map((m) => new Date(m.timestamp).getTime()),
@@ -691,7 +701,7 @@ export function useChat(sessionKey?: string) {
           // Use normalized content matching (consistent with gatewayContentKeys) (#121)
           const isNotInGateway = (lm: StoredMessage) =>
             !gatewayIds.has(lm.id) &&
-            !gatewayContentKeys.has(`${lm.role}:${lm.content.replace(/\s+/g, " ").trim().slice(0, 200)}:${attachmentFingerprint(lm.attachments as DisplayAttachment[] | undefined)}`);
+            !gatewayContentKeys.has(`${lm.role}:${normalizeContentForDedup(lm.content)}:${attachmentFingerprint(lm.attachments as DisplayAttachment[] | undefined)}`);
 
           const prependMsgs = localMsgs
             .filter((lm) => isNotInGateway(lm) && !isHiddenMessage(lm.role, lm.content) && new Date(lm.timestamp).getTime() < oldestGatewayTs)
