@@ -522,6 +522,11 @@ export function useChat(sessionKey?: string) {
   const abortedRef = useRef(false);
   const streamingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sessionKeyRef = useRef(sessionKey);
+  /** Set by the restore-effect when a pending-stream snapshot is successfully restored
+   *  from sessionStorage. The sessionKey change effect checks this to avoid wiping
+   *  the just-restored streaming state (which happens during the default→real
+   *  sessionKey settlement on page load). */
+  const restoredFromSnapshotRef = useRef(false);
   const loadVersionRef = useRef(0);
   const lastLoadAtRef = useRef(0); // Throttle for cross-device sync (#120)
   const pendingHistoryReloadRef = useRef(false);
@@ -609,17 +614,32 @@ export function useChat(sessionKey?: string) {
 
   // Force-persist pending stream before page unload so refresh doesn't lose content.
   // The throttled persistPendingStream may not have flushed yet when the user hits F5.
+  // Also saves a minimal marker during "thinking" phase (streaming=true but no content yet)
+  // so the restored page knows a run was active and can show the thinking indicator.
   useEffect(() => {
     const onBeforeUnload = () => {
       if (persistTimerRef.current) {
         clearTimeout(persistTimerRef.current);
         persistTimerRef.current = null;
       }
+      // Save full content if streamBuf has data
       persistPendingStreamImmediate();
+      // If streaming is active but no content yet (thinking/tool phase), save a minimal marker
+      if (!streamBuf.current && streamingRef.current && pendingStreamStorageKey) {
+        const snapshot: PendingStreamSnapshot = {
+          v: 1,
+          runId: runIdRef.current,
+          streamId: `stream-pending-${Date.now()}`,
+          content: "",
+          toolCalls: [],
+          updatedAt: Date.now(),
+        };
+        sessionStorage.setItem(pendingStreamStorageKey, JSON.stringify(snapshot));
+      }
     };
     window.addEventListener("beforeunload", onBeforeUnload);
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
-  }, [persistPendingStreamImmediate]);
+  }, [persistPendingStreamImmediate, pendingStreamStorageKey]);
 
   useEffect(() => {
     if (!pendingStreamStorageKey || streamBuf.current) return;
@@ -643,31 +663,40 @@ export function useChat(sessionKey?: string) {
         });
       }
 
-      streamBuf.current = {
-        id: parsed.streamId,
-        content: parsed.content,
-        toolCalls,
-      };
       runIdRef.current = parsed.runId;
       setStreaming(true);
-      setAgentStatusDebug({ phase: state === "connected" ? "writing" : "waiting" });
-      setMessages((prev) => {
-        const existing = prev.findIndex((m) => m.id === parsed.streamId);
-        const msg: DisplayMessage = {
+
+      // Empty content = "thinking" marker (saved when streaming was active but
+      // no text chunks had arrived yet). Just restore streaming + agentStatus
+      // so the UI shows the thinking indicator. Gateway events will resume after reconnect.
+      if (!parsed.content && toolCalls.size === 0) {
+        setAgentStatusDebug({ phase: state === "connected" ? "thinking" : "waiting" });
+      } else {
+        streamBuf.current = {
           id: parsed.streamId,
-          role: "assistant",
           content: parsed.content,
-          timestamp: new Date(parsed.updatedAt).toISOString(),
-          toolCalls: Array.from(toolCalls.values()),
-          streaming: true,
+          toolCalls,
         };
-        if (existing >= 0) {
-          const next = [...prev];
-          next[existing] = { ...next[existing], ...msg };
-          return next;
-        }
+        setAgentStatusDebug({ phase: state === "connected" ? "writing" : "waiting" });
+        setMessages((prev) => {
+          const existing = prev.findIndex((m) => m.id === parsed.streamId);
+          const msg: DisplayMessage = {
+            id: parsed.streamId,
+            role: "assistant",
+            content: parsed.content,
+            timestamp: new Date(parsed.updatedAt).toISOString(),
+            toolCalls: Array.from(toolCalls.values()),
+            streaming: true,
+          };
+          if (existing >= 0) {
+            const next = [...prev];
+            next[existing] = { ...next[existing], ...msg };
+            return next;
+          }
         return [...prev, msg];
-      });
+        });
+      }
+      restoredFromSnapshotRef.current = true;
       startStreamingTimeout();
       console.log("[AWF] Restored pending stream from sessionStorage", {
         runId: parsed.runId?.slice(0, 8),
@@ -681,19 +710,36 @@ export function useChat(sessionKey?: string) {
 
   useEffect(() => {
     if (sessionKeyRef.current !== sessionKey) {
+      const oldKey = sessionKeyRef.current;
       sessionKeyRef.current = sessionKey;
       // Invalidate any in-flight loadHistory before clearing messages (#63)
       ++loadVersionRef.current;
-      setMessages([]);
-      setStreaming(false);
-      clearStreamingTimeout();
-      setAgentStatusDebug({ phase: "idle" });
-      streamBuf.current = null;
-      finalizedEventKeysRef.current.clear();
-      clearPersistedPendingStream();
-      contextBridgeSentRef.current = null; // 새 채팅 전환 시 dedup 리셋
+
+      if (restoredFromSnapshotRef.current) {
+        // The restore-effect (which runs before this effect in the same commit)
+        // just recovered a pending-stream snapshot from sessionStorage.
+        // This happens during the default→real sessionKey settlement on page load.
+        // Do NOT wipe state — the restored streaming content must be preserved.
+        restoredFromSnapshotRef.current = false;
+      } else {
+        // Genuine session switch (user navigated to a different agent/chat):
+        // wipe all state so the new session starts fresh.
+        setMessages([]);
+        setStreaming(false);
+        clearStreamingTimeout();
+        setAgentStatusDebug({ phase: "idle" });
+        streamBuf.current = null;
+        finalizedEventKeysRef.current.clear();
+        contextBridgeSentRef.current = null; // 새 채팅 전환 시 dedup 리셋
+      }
+      // Clear the OLD session's pending stream, not the new one's.
+      // This prevents wiping a snapshot that beforeunload saved for the new session.
+      if (oldKey) {
+        const oldStorageKey = `${PENDING_STREAM_SESSION_KEY_PREFIX}${oldKey}`;
+        sessionStorage.removeItem(oldStorageKey);
+      }
     }
-  }, [sessionKey, clearStreamingTimeout, clearPersistedPendingStream]);
+  }, [sessionKey, clearStreamingTimeout]);
 
   useEffect(() => {
     if (state === "disconnected" && streaming) {
@@ -1117,8 +1163,7 @@ export function useChat(sessionKey?: string) {
           if (reconnectSafetyRef.current) clearTimeout(reconnectSafetyRef.current);
           reconnectSafetyRef.current = setTimeout(() => {
             reconnectSafetyRef.current = null;
-            if (!streamBuf.current) return; // already finalized
-            console.warn("[AWF] No new events after reconnect — force finalizing stale stream");
+            if (!streamBuf.current) return;
             const id = streamBuf.current.id;
             setMessages((prev) =>
               prev.map((m) => m.id === id ? { ...m, streaming: false } : m)
