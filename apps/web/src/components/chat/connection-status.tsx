@@ -13,6 +13,11 @@ export const STATUS_CONFIG: Record<
   connected: { label: "연결됨", color: "bg-emerald-500", pulse: false },
 };
 
+/** Error codes that get specific mobile-friendly labels */
+const ERROR_LABELS: Record<string, string> = {
+  reconnect_exhausted: "재연결 실패 — 탭하여 다시 시도",
+};
+
 interface ConnectionStatusProps {
   state: ConnectionState;
   error?: ErrorShape | null;
@@ -24,11 +29,15 @@ export function ConnectionStatus({ state, error, onClick }: ConnectionStatusProp
 
   let label = config.label;
   if (state === "disconnected" && error) {
-    const classified = classifyError(error.code, error.message);
-    if (classified) {
-      label = classified.label;
-    } else if (error.message) {
-      label = error.message.length > 20 ? error.message.slice(0, 20) + "..." : error.message;
+    if (error.code && ERROR_LABELS[error.code]) {
+      label = ERROR_LABELS[error.code];
+    } else {
+      const classified = classifyError(error.code, error.message);
+      if (classified) {
+        label = classified.label;
+      } else if (error.message) {
+        label = error.message.length > 20 ? error.message.slice(0, 20) + "..." : error.message;
+      }
     }
   }
 
