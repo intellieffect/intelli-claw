@@ -22,6 +22,7 @@ import { NewSessionPicker, AgentManager } from "@/components/settings/agent-mana
 import { SessionManagerPanel } from "./session-manager-panel";
 import { TopicHistory } from "./topic-history";
 import { resolveInitialSessionState, getRememberedSessionForAgent } from "@/lib/session-continuity";
+import { platform } from "@/lib/platform";
 
 export interface ChatPanelProps {
   /** Show header controls (agent selector, session switcher) */
@@ -493,7 +494,23 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
         const payloads = results.flatMap((r) => r.payloads);
         const pdfTexts = results.map((r) => r.prependText).filter(Boolean).join("\n\n");
         const pathHintText = pdfPathHints.join("\n");
-        const userMsg = [text, pathHintText, pdfTexts].filter(Boolean).join("\n\n") || (payloads.length > 0 ? "(image)" : "");
+
+        // Upload images to server for permanent storage (#110)
+        const mediaLines: string[] = [];
+        if (platform.mediaUpload) {
+          for (const p of payloads) {
+            if (p.mimeType?.startsWith("image/") && p.content) {
+              try {
+                const { path: savedPath } = await platform.mediaUpload(p.content, p.mimeType, p.fileName);
+                mediaLines.push(`MEDIA:${savedPath}`);
+              } catch (err) {
+                console.warn("[AWF] Image upload failed, sending inline:", err);
+              }
+            }
+          }
+        }
+
+        const userMsg = [text, pathHintText, pdfTexts, ...mediaLines].filter(Boolean).join("\n\n") || (payloads.length > 0 ? "(image)" : "");
 
         const displayAtts = await Promise.all(
           attachments.map(async (att) => {
