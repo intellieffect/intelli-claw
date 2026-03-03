@@ -886,18 +886,24 @@ export function useChat(sessionKey?: string) {
           displayContent = extracted.cleanedText;
           streamAttachments = extracted.attachments.length > 0 ? extracted.attachments : undefined;
         }
-        setMessages((prev) => {
-          const existing = prev.findIndex((m) => m.id === snap.id);
-          const prevAttachments = existing >= 0 ? prev[existing].attachments : undefined;
-          const msg: DisplayMessage = {
-            id: snap.id, role: "assistant", content: displayContent,
-            timestamp: new Date().toISOString(),
-            toolCalls: Array.from(snap.toolCalls.values()),
-            streaming: true, attachments: streamAttachments ?? prevAttachments,
-          };
-          if (existing >= 0) { const next = [...prev]; next[existing] = msg; return next; }
-          return [...prev, msg];
-        });
+        // Skip hidden messages during streaming (#117 — bare "NO", NO_REPLY, HEARTBEAT_OK)
+        if (HIDDEN_REPLY_RE.test(displayContent.trim())) {
+          // Remove the streaming placeholder entirely
+          setMessages((prev) => prev.filter((m) => m.id !== snap.id));
+        } else {
+          setMessages((prev) => {
+            const existing = prev.findIndex((m) => m.id === snap.id);
+            const prevAttachments = existing >= 0 ? prev[existing].attachments : undefined;
+            const msg: DisplayMessage = {
+              id: snap.id, role: "assistant", content: displayContent,
+              timestamp: new Date().toISOString(),
+              toolCalls: Array.from(snap.toolCalls.values()),
+              streaming: true, attachments: streamAttachments ?? prevAttachments,
+            };
+            if (existing >= 0) { const next = [...prev]; next[existing] = msg; return next; }
+            return [...prev, msg];
+          });
+        }
       } else if (stream === "tool-start" && data) {
         const callId = (data.toolCallId || data.callId || "") as string;
         const name = (data.name || data.tool || "") as string;
