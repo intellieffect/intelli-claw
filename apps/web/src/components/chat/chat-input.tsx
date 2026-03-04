@@ -3,7 +3,7 @@ import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowUp, Paperclip, Square, X, Reply } from "lucide-react";
 
-import { cn } from "@/lib/utils";
+import { cn, windowStoragePrefix } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useAutosizeTextArea } from "@/hooks/use-autosize-textarea";
 import {
@@ -74,7 +74,7 @@ export function ChatInput({
     </div>
   ) : null;
   const agentSlot = agentSlotProp || agentSlotFromAvatar;
-  const storageKey = panelId ? `awf:draft:${panelId}` : null;
+  const storageKey = panelId ? `awf:${windowStoragePrefix()}draft:${panelId}` : null;
   const [text, setText] = useState(() => {
     if (storageKey && typeof window !== "undefined") {
       return localStorage.getItem(storageKey) || "";
