@@ -2,6 +2,16 @@
 
 OpenClaw Gateway 기반 AI 에이전트 채팅 클라이언트 — pnpm 모노레포
 
+## OpenClaw 참조
+
+이 프로젝트는 OpenClaw 게이트웨이 위에서 동작한다. 에이전트 설정, 배포, 운영 컨텍스트는 아래를 참조:
+
+- **OpenClaw 설정**: `~/.openclaw/` — 게이트웨이 설정, 에이전트 워크스페이스, 크론 잡
+- **OpenClaw CLAUDE.md**: `~/.openclaw/CLAUDE.md` — 에이전트 구조, 배포 워크플로우, 핵심 규칙
+- **에이전트 워크스페이스**: `~/.openclaw/workspace-intelliclaw/` — IntelliClaw 에이전트 전용 (IDENTITY, PLAYBOOK, MEMORY)
+- **Gateway 프로토콜**: `wss://127.0.0.1:18789` (loopback TLS)
+- **배포**: `scripts/deploy.sh` → Electron 빌드 + Mac Studio/MacBook 배포
+
 ## Tech Stack
 
 - **Monorepo**: pnpm workspaces + Turborepo
