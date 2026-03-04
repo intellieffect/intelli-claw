@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import { MarkdownRenderer, MarkdownFilePreview } from "./markdown-renderer";
 import { ToolCallCard } from "./tool-call-card";
-import { HIDDEN_REPLY_RE, canBeReplyTarget, type DisplayMessage, type DisplayAttachment, type AgentStatus } from "@/lib/gateway/hooks";
+import { HIDDEN_REPLY_RE, canBeReplyTarget, stripTrailingControlTokens, type DisplayMessage, type DisplayAttachment, type AgentStatus } from "@/lib/gateway/hooks";
 import { AgentAvatar } from "@/components/ui/agent-avatar";
 
 import { blobDownload, forceDownloadUrl } from "@/lib/utils/download";
@@ -149,10 +149,16 @@ export function MessageList({
 
   // Filter messages for display, then paginate
   const displayMessages = useMemo(() => {
-    return messages.filter((msg) => {
-      if (msg.content && HIDDEN_REPLY_RE.test(msg.content.trim())) return false;
-      return msg.role === "session-boundary" || msg.content || msg.toolCalls.length > 0 || msg.streaming || (msg.attachments && msg.attachments.length > 0);
-    });
+    return messages
+      .map((msg) => {
+        // Strip trailing control tokens from stored messages (e.g. "본문\n\nREPLY_SKIP")
+        const cleaned = msg.content ? stripTrailingControlTokens(msg.content) : msg.content;
+        return cleaned !== msg.content ? { ...msg, content: cleaned } : msg;
+      })
+      .filter((msg) => {
+        if (msg.content && HIDDEN_REPLY_RE.test(msg.content.trim())) return false;
+        return msg.role === "session-boundary" || msg.content || msg.toolCalls.length > 0 || msg.streaming || (msg.attachments && msg.attachments.length > 0);
+      });
   }, [messages]);
 
   const hasMore = displayMessages.length > visibleCount;

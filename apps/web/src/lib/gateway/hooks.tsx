@@ -474,6 +474,12 @@ export type AgentStatus =
  */
 export const HIDDEN_REPLY_RE = /^(NO_REPLY|REPLY_SKIP|HEARTBEAT_OK|NO_?)\s*$|Pre-compaction memory flush|^Read HEARTBEAT\.md|reply with NO_REPLY|Store durable memories now|(?:\[System\]|\(System\)|System:)\s*이전 세션이 컨텍스트 한도로 갱신|^이전 세션이 컨텍스트 한도로 갱신되었습니다\.\s*아래는 최근 대화 요약입니다\.|\[이전 세션 맥락\]/;
 
+/** Strip trailing control tokens from message content for display */
+export const TRAILING_CONTROL_TOKEN_RE = /\n{1,2}(REPLY_SKIP|NO_REPLY|HEARTBEAT_OK)\s*$/;
+export function stripTrailingControlTokens(text: string): string {
+  return text.replace(TRAILING_CONTROL_TOKEN_RE, "").trim();
+}
+
 // --- Reply/Quote Helpers ---
 
 /** Truncate content for reply preview display */
@@ -841,6 +847,7 @@ export function useChat(sessionKey?: string) {
             }
           }
 
+          textContent = stripTrailingControlTokens(textContent);
           if (m.role === 'user') textContent = stripInboundMeta(textContent);
 
           // Extract MEDIA: lines from both user and assistant messages (#64)
@@ -1421,7 +1428,11 @@ export function useChat(sessionKey?: string) {
           console.debug("[AWF:INBOUND]", { rawRole, isAgentSource, role, surface: data.surface, source: data.source, provenance: data.inputProvenance, keys: Object.keys(data) });
         }
         if (text) {
-          const cleanedText = role === "user" ? stripInboundMeta(text) : text;
+          // Strip trailing control tokens (REPLY_SKIP, NO_REPLY, etc.)
+          const stripped = text.replace(/\n{1,2}(REPLY_SKIP|NO_REPLY|HEARTBEAT_OK)\s*$/g, "").trim();
+          // Skip entirely if the message is purely a control token
+          if (!stripped || HIDDEN_REPLY_RE.test(stripped)) return;
+          const cleanedText = role === "user" ? stripInboundMeta(stripped) : stripped;
           const originDeviceId = data.deviceId as string | undefined;
           const timestamp = (data.timestamp as string) ?? new Date().toISOString();
 
