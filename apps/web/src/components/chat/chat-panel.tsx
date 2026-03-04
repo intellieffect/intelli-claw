@@ -23,22 +23,16 @@ import { SessionManagerPanel } from "./session-manager-panel";
 import { TopicHistory } from "./topic-history";
 
 export interface ChatPanelProps {
-  /** Panel id for focus management */
-  panelId: string;
-  /** Whether this panel is the active/focused one */
-  isActive: boolean;
-  /** Called when this panel gains focus */
-  onFocus: () => void;
   /** Show header controls (agent selector, session switcher) */
   showHeader?: boolean;
 }
 
-export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: ChatPanelProps) {
+export function ChatPanel({ showHeader = true }: ChatPanelProps) {
   const { client, state, mainSessionKey } = useGateway();
   const isMobile = useIsMobile();
   const keyboardHeight = useKeyboardHeight();
 
-  const storagePrefix = `awf:${windowStoragePrefix()}panel:${panelId}:`;
+  const storagePrefix = `awf:${windowStoragePrefix()}`;
 
   const [sessionKey, setSessionKeyRaw] = useState<string | undefined>(undefined);
   const [agentId, setAgentId] = useState<string>(import.meta.env.VITE_DEFAULT_AGENT || "default");
@@ -170,7 +164,7 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
   // Shortcuts (active panel only)
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      if (!isActive) return;
+      // Single panel — always active
       if (matchesShortcutId(e, "session-switcher")) {
         e.preventDefault();
         setSessionSwitcherOpen((prev) => !prev);
@@ -269,12 +263,12 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [isActive, agentId, setSessionKey, refreshSessions, agentSessions, effectiveSessionKey, streaming, abort, sessions, handleDelete]);
+  }, [agentId, setSessionKey, refreshSessions, agentSessions, effectiveSessionKey, streaming, abort, sessions, handleDelete]);
 
-  // Focus textarea when panel becomes active
+  // Focus textarea on mount
   useEffect(() => {
-    if (isActive) refocusPanel();
-  }, [isActive, refocusPanel]);
+    refocusPanel();
+  }, [refocusPanel]);
 
   const makeDefaultThreadLabel = useCallback((agent: string) => {
     const now = new Date();
@@ -648,7 +642,7 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
       data-chat-panel
       className="relative flex h-full flex-col bg-background"
       style={isMobile && keyboardHeight > 0 ? { paddingBottom: keyboardHeight } : undefined}
-      onClick={onFocus}
+      onClick={undefined}
     >
       {/* Chat Header — agent name + topic */}
       {showHeader && effectiveSessionKey && (
@@ -707,7 +701,7 @@ export function ChatPanel({ panelId, isActive, onFocus, showHeader = true }: Cha
         attachments={attachments}
         onAttachFiles={addFiles}
         onRemoveAttachment={removeAttachment}
-        panelId={panelId}
+        panelId="main"
         toolbar={undefined}
         model={currentSession?.model ? String(currentSession.model) : undefined}
         tokenStr={tokenStr || undefined}
