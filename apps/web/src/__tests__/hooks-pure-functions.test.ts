@@ -71,6 +71,13 @@ describe("shouldSuppressStreamingPreview", () => {
     }
   });
 
+  it("suppresses progressive REPLY_SKIP prefixes", () => {
+    const prefixes = ["R", "RE", "REP", "REPL", "REPLY", "REPLY_", "REPLY_S", "REPLY_SK", "REPLY_SKI", "REPLY_SKIP"];
+    for (const prefix of prefixes) {
+      expect(shouldSuppressStreamingPreview(prefix)).toBe(true);
+    }
+  });
+
   it("does not suppress normal text", () => {
     expect(shouldSuppressStreamingPreview("Hello world")).toBe(false);
     expect(shouldSuppressStreamingPreview("Not a control token")).toBe(false);
@@ -83,6 +90,7 @@ describe("shouldSuppressStreamingPreview", () => {
   it("suppresses full hidden reply patterns", () => {
     expect(shouldSuppressStreamingPreview("NO_REPLY")).toBe(true);
     expect(shouldSuppressStreamingPreview("HEARTBEAT_OK")).toBe(true);
+    expect(shouldSuppressStreamingPreview("REPLY_SKIP")).toBe(true);
   });
 });
 
@@ -250,6 +258,7 @@ describe("HIDDEN_REPLY_RE", () => {
   it("matches known hidden patterns", () => {
     const patterns = [
       "NO_REPLY",
+      "REPLY_SKIP",
       "HEARTBEAT_OK",
       "NO_",
       "NO",

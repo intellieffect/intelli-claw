@@ -408,7 +408,7 @@ export function shouldSuppressStreamingPreview(text: string): boolean {
   const t = text.trim();
   if (!t) return false;
   if (HIDDEN_REPLY_RE.test(t)) return true;
-  return /^(N|NO|NO_|NO_R|NO_RE|NO_REP|NO_REPL|NO_REPLY|H|HE|HEA|HEAR|HEART|HEARTB|HEARTBE|HEARTBEA|HEARTBEAT|HEARTBEAT_|HEARTBEAT_O|HEARTBEAT_OK)$/i.test(t);
+  return /^(N|NO|NO_|NO_R|NO_RE|NO_REP|NO_REPL|NO_REPLY|H|HE|HEA|HEAR|HEART|HEARTB|HEARTBE|HEARTBEA|HEARTBEAT|HEARTBEAT_|HEARTBEAT_O|HEARTBEAT_OK|R|RE|REP|REPL|REPLY|REPLY_|REPLY_S|REPLY_SK|REPLY_SKI|REPLY_SKIP)$/i.test(t);
 }
 
 const PENDING_STREAM_SESSION_KEY_PREFIX = "awf:pending-stream:";
@@ -472,7 +472,7 @@ export type AgentStatus =
  * Patterns for messages that should be hidden from the chat UI.
  * Used in both streaming completion, history load, and display-layer filtering.
  */
-export const HIDDEN_REPLY_RE = /^(NO_REPLY|HEARTBEAT_OK|NO_?)\s*$|Pre-compaction memory flush|^Read HEARTBEAT\.md|reply with NO_REPLY|Store durable memories now|(?:\[System\]|\(System\)|System:)\s*이전 세션이 컨텍스트 한도로 갱신|^이전 세션이 컨텍스트 한도로 갱신되었습니다\.\s*아래는 최근 대화 요약입니다\.|\[이전 세션 맥락\]/;
+export const HIDDEN_REPLY_RE = /^(NO_REPLY|REPLY_SKIP|HEARTBEAT_OK|NO_?)\s*$|Pre-compaction memory flush|^Read HEARTBEAT\.md|reply with NO_REPLY|Store durable memories now|(?:\[System\]|\(System\)|System:)\s*이전 세션이 컨텍스트 한도로 갱신|^이전 세션이 컨텍스트 한도로 갱신되었습니다\.\s*아래는 최근 대화 요약입니다\.|\[이전 세션 맥락\]/;
 
 // --- Reply/Quote Helpers ---
 
