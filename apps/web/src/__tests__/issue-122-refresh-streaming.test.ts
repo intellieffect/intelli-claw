@@ -47,7 +47,10 @@ describe("#122 — refresh during streaming", () => {
     expect(shouldSuppressStreamingPreview("NO")).toBe(true);
     expect(shouldSuppressStreamingPreview("NO_REPLY")).toBe(true);
     expect(shouldSuppressStreamingPreview("HEARTBEAT_OK")).toBe(true);
+    expect(shouldSuppressStreamingPreview("REPLY_SKIP")).toBe(true);
+    expect(shouldSuppressStreamingPreview("REPLY_")).toBe(true);
     expect(shouldSuppressStreamingPreview("NO problem")).toBe(false);
     expect(shouldSuppressStreamingPreview("Normal content")).toBe(false);
+    expect(shouldSuppressStreamingPreview("REPLY to this")).toBe(false);
   });
 });
