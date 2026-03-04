@@ -155,21 +155,6 @@ describe("matchesShortcutId", () => {
     expect(matchesShortcutId(e, "help")).toBe(true);
   });
 
-  it("matches add-panel (Cmd+\\ / Ctrl+\\)", () => {
-    const e = createKeyboardEvent("\\", { ...cmdMod, code: "Backslash" });
-    expect(matchesShortcutId(e, "add-panel")).toBe(true);
-  });
-
-  it("matches focus-panel-1 (Ctrl+1)", () => {
-    const e = createKeyboardEvent("1", { ctrlKey: true, code: "Digit1" });
-    expect(matchesShortcutId(e, "focus-panel-1")).toBe(true);
-  });
-
-  it("matches focus-panel-5 (Ctrl+5)", () => {
-    const e = createKeyboardEvent("5", { ctrlKey: true, code: "Digit5" });
-    expect(matchesShortcutId(e, "focus-panel-5")).toBe(true);
-  });
-
   it("next-session (Tab) removed — returns false", () => {
     const e = createKeyboardEvent("Tab", { code: "Tab" });
     expect(matchesShortcutId(e, "next-session")).toBe(false);
@@ -281,22 +266,17 @@ describe("close-tab shortcut (#133)", () => {
 });
 
 // ============================================================
-// 6. Shortcut definitions — 전체 shortcut 정의 완전성 검증
+// 6. SplitView panel shortcuts removed (#134)
 // ============================================================
 
-describe("shortcut definitions completeness", () => {
-  const requiredIds = [
-    "help",
+describe("SplitView panel shortcuts removed (#134)", () => {
+  const removedIds = [
     "add-panel",
     "focus-left",
     "focus-right",
     "swap-panels",
     "close-panel",
     "reopen-panel",
-    "new-session",
-    "abort-stream",
-    "session-switcher",
-    "agent-browser",
     "focus-panel-1",
     "focus-panel-2",
     "focus-panel-3",
@@ -304,7 +284,49 @@ describe("shortcut definitions completeness", () => {
     "focus-panel-5",
   ];
 
-  it("all 18 shortcuts are defined in DEFAULT_SHORTCUTS", () => {
+  it("panel-related shortcuts are NOT in DEFAULT_SHORTCUTS", () => {
+    const definedIds = DEFAULT_SHORTCUTS.map((s) => s.id);
+    for (const id of removedIds) {
+      expect(definedIds).not.toContain(id);
+    }
+  });
+
+  it("matchesShortcutId returns false for removed panel shortcuts", () => {
+    // Ctrl+\\ was add-panel
+    const e = createKeyboardEvent("\\", { ctrlKey: true, code: "Backslash" });
+    expect(matchesShortcutId(e, "add-panel")).toBe(false);
+
+    // Ctrl+X was close-panel
+    const e2 = createKeyboardEvent("x", { ctrlKey: true });
+    expect(matchesShortcutId(e2, "close-panel")).toBe(false);
+
+    // Ctrl+1 was focus-panel-1
+    const e3 = createKeyboardEvent("1", { ctrlKey: true, code: "Digit1" });
+    expect(matchesShortcutId(e3, "focus-panel-1")).toBe(false);
+  });
+});
+
+// ============================================================
+// 7. Shortcut definitions — 전체 shortcut 정의 완전성 검증
+// ============================================================
+
+describe("shortcut definitions completeness", () => {
+  const requiredIds = [
+    "help",
+    "new-session",
+    "abort-stream",
+    "session-switcher",
+    "agent-browser",
+    "new-tab",
+    "close-tab",
+    "reopen-tab",
+    "prev-session-bracket",
+    "next-session-bracket",
+    "scroll-bottom",
+    "scroll-top",
+  ];
+
+  it("all core shortcuts are defined in DEFAULT_SHORTCUTS", () => {
     const definedIds = DEFAULT_SHORTCUTS.map((s) => s.id);
     for (const id of requiredIds) {
       expect(definedIds).toContain(id);
