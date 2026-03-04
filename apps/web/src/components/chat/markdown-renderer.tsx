@@ -1,5 +1,5 @@
 
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { memo, Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
@@ -12,6 +12,12 @@ import {
 import type { Components } from "react-markdown";
 import { blobDownload, forceDownloadUrl } from "@/lib/utils/download";
 import { platform } from "@/lib/platform";
+import { isExcalidrawLanguage, parseExcalidrawJson, isExcalidrawFilePath } from "@/lib/excalidraw";
+
+const LazyExcalidraw = lazy(async () => {
+  const mod = await import("@excalidraw/excalidraw");
+  return { default: mod.Excalidraw };
+});
 
 function copyText(text: string) {
   if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(text);
@@ -142,6 +148,33 @@ function HtmlPreview({ code }: { code: string }) {
   );
 }
 
+function ExcalidrawBlock({ code, title = "Excalidraw" }: { code: string; title?: string }) {
+  const parsed = useMemo(() => parseExcalidrawJson(code), [code]);
+
+  if (!parsed) {
+    return (
+      <div className="rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs text-zinc-400">
+        Excalidraw JSON 파싱에 실패했습니다. 아래 코드 원문을 확인해주세요.
+      </div>
+    );
+  }
+
+  return (
+    <div className="my-2 overflow-hidden rounded-lg border border-zinc-700">
+      <div className="bg-zinc-800 px-3 py-1.5 text-xs text-zinc-400">{title}</div>
+      <div style={{ height: 420 }} className="bg-zinc-900">
+        <Suspense fallback={<div className="p-3 text-xs text-zinc-500">다이어그램 로딩 중...</div>}>
+          <LazyExcalidraw
+            initialData={parsed}
+            viewModeEnabled
+            UIOptions={{ canvasActions: { loadScene: false, saveToActiveFile: false } }}
+          />
+        </Suspense>
+      </div>
+    </div>
+  );
+}
+
 function CodeBlock({ className, children, rawChildren }: { className?: string; children: React.ReactNode; rawChildren?: React.ReactNode }) {
   const [copied, setCopied] = useState(false);
   const [showPreview, setShowPreview] = useState(true);
@@ -149,6 +182,7 @@ function CodeBlock({ className, children, rawChildren }: { className?: string; c
   const lang = rawLang.split(/\s+/)[0] || "";
   const code = extractText(rawChildren ?? children).replace(/\n$/, "");
   const isHtml = (lang === "html" || lang === "xml" || code.trimStart().startsWith("<!") || code.trimStart().startsWith("<html")) && code.includes("<");
+  const isExcalidraw = isExcalidrawLanguage(lang);
 
   const handleCopy = useCallback(async () => {
     try {
@@ -188,12 +222,16 @@ function CodeBlock({ className, children, rawChildren }: { className?: string; c
           )}
         </button>
       </div>
-      {(!isHtml || !showPreview) && (
-        <pre className="!mt-0 !rounded-t-none">
-          <code className={className}>{children}</code>
-        </pre>
+      {isExcalidraw ? (
+        <ExcalidrawBlock code={code} />
+      ) : (
+        (!isHtml || !showPreview) && (
+          <pre className="!mt-0 !rounded-t-none">
+            <code className={className}>{children}</code>
+          </pre>
+        )
       )}
-      {isHtml && (
+      {isHtml && !isExcalidraw && (
         <>
           <div className="flex border-t border-zinc-700">
             <button
@@ -277,7 +315,7 @@ const components: Partial<Components> = {
 
 // ---- Media file type detection ----
 
-type MediaType = "image" | "video" | "audio" | "pdf" | "code" | "text" | "spreadsheet" | "archive" | "other";
+type MediaType = "image" | "video" | "audio" | "pdf" | "code" | "text" | "spreadsheet" | "archive" | "excalidraw" | "other";
 
 const IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "gif", "webp", "svg", "ico", "bmp", "tiff", "tif"]);
 const VIDEO_EXTS = new Set(["mp4", "webm", "mov", "avi", "mkv"]);
@@ -292,6 +330,7 @@ function getExtension(path: string): string {
 }
 
 function detectMediaType(path: string): MediaType {
+  if (isExcalidrawFilePath(path)) return "excalidraw";
   const ext = getExtension(path);
   if (IMAGE_EXTS.has(ext)) return "image";
   if (VIDEO_EXTS.has(ext)) return "video";
@@ -322,6 +361,7 @@ function renderMediaTypeIcon(type: MediaType, size: number) {
     case "spreadsheet": return <FileSpreadsheet size={size} />;
     case "archive": return <FileArchive size={size} />;
     case "text": return <FileText size={size} />;
+    case "excalidraw": return <FileCode size={size} />;
     default: return <FileIcon size={size} />;
   }
 }
@@ -500,8 +540,35 @@ function getMediaAccent(type: MediaType): string {
     case "spreadsheet": return "bg-emerald-500/20 text-emerald-400";
     case "archive": return "bg-yellow-500/20 text-yellow-400";
     case "code": return "bg-cyan-500/20 text-cyan-400";
+    case "excalidraw": return "bg-orange-500/20 text-orange-400";
     default: return "bg-zinc-500/20 text-zinc-400";
   }
+}
+
+function ExcalidrawFilePreview({ src, fileName }: { src: string; fileName: string }) {
+  const [content, setContent] = useState<string | null>(null);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    fetch(src)
+      .then((r) => (r.ok ? r.text() : Promise.reject(new Error(`${r.status}`))))
+      .then(setContent)
+      .catch(() => setError(true));
+  }, [src]);
+
+  if (error) {
+    return <FileCard url={src} fileName={fileName} type="excalidraw" />;
+  }
+
+  if (content === null) {
+    return (
+      <div className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs text-zinc-500">
+        Excalidraw 파일 로딩 중...
+      </div>
+    );
+  }
+
+  return <ExcalidrawBlock code={content} title={fileName} />;
 }
 
 /** Inline markdown file preview — fetches .md content and renders with MarkdownRenderer */
@@ -609,6 +676,8 @@ function MediaRenderer({ entry }: { entry: MediaEntry }) {
       return <MediaAudio src={entry.url} fileName={entry.fileName} />;
     case "pdf":
       return <MediaPdf src={entry.url} fileName={entry.fileName} />;
+    case "excalidraw":
+      return <ExcalidrawFilePreview src={entry.url} fileName={entry.fileName} />;
     case "text": {
       const ext = getExtension(entry.fileName);
       if (ext === "md" || ext === "mdx") {
