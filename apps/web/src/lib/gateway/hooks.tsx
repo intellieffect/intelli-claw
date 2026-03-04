@@ -1398,7 +1398,22 @@ export function useChat(sessionKey?: string) {
         // Messages from other surfaces/devices (Telegram, other tabs, etc.)
         // Cross-device sync with dedup (#120)
         const text = ((data.text ?? data.content ?? "") as string);
-        const role = (data.role ?? "user") as "user" | "assistant";
+        // Resolve role: inter-session/agent messages may arrive without explicit
+        // role.  When the provenance indicates another agent session or the
+        // surface is "agent", treat the message as an assistant response to
+        // avoid showing agent replies as user bubbles.
+        const rawRole = data.role as string | undefined;
+        const isAgentSource =
+          (data.inputProvenance as Record<string, unknown> | undefined)?.kind === "inter_session" ||
+          data.surface === "agent" ||
+          data.source === "sessions_send";
+        const role: "user" | "assistant" = rawRole === "assistant" || rawRole === "user"
+          ? rawRole
+          : isAgentSource ? "assistant" : "user";
+        // Debug: capture raw inbound data to diagnose agent-to-agent role attribution
+        if (process.env.NODE_ENV !== "production") {
+          console.debug("[AWF:INBOUND]", { rawRole, isAgentSource, role, surface: data.surface, source: data.source, provenance: data.inputProvenance, keys: Object.keys(data) });
+        }
         if (text) {
           const cleanedText = role === "user" ? stripInboundMeta(text) : text;
           const originDeviceId = data.deviceId as string | undefined;
