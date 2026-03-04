@@ -5,13 +5,21 @@ import { GatewayClient } from "@/lib/gateway/client";
 vi.mock("@intelli-claw/shared/gateway/device-identity", () => ({
   signChallenge: vi.fn(async (nonce: string) => ({
     id: "test-device-id",
-    publicKey: '{"kty":"EC","crv":"P-256"}',
-    signature: "dGVzdC1zaWduYXR1cmU=",
+    publicKey: "dGVzdC1wdWJsaWMta2V5",
+    signature: "dGVzdC1zaWduYXR1cmU",
     signedAt: 1700000000000,
     nonce,
   })),
   initCryptoAdapter: vi.fn(),
-  getCryptoAdapter: vi.fn(),
+  getCryptoAdapter: vi.fn(() => ({
+    getOrCreateKeyPair: vi.fn(async () => ({
+      id: "test-device-id",
+      publicKey: "dGVzdC1wdWJsaWMta2V5",
+    })),
+    sign: vi.fn(async () => "dGVzdC1zaWduYXR1cmU"),
+    hasKeyPair: vi.fn(async () => true),
+    deleteKeyPair: vi.fn(async () => {}),
+  })),
   clearDeviceIdentity: vi.fn(),
 }));
 
