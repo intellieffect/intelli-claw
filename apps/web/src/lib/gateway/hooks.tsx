@@ -1527,19 +1527,34 @@ export function useChat(sessionKey?: string) {
       setStreaming(true);
       startStreamingTimeout();
       setAgentStatusDebug({ phase: "thinking" });
-      try {
-        await client.request("chat.send", {
-          message: text,
-          idempotencyKey: `awf-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-          sessionKey,
-        });
-      } catch (err) {
-        console.error("[AWF] chat.send error:", String(err));
-        clearStreamingTimeout();
-        setStreaming(false);
+
+      const idempotencyKey = `awf-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const maxAttempts = 2; // initial + one retry for session bootstrap race (#50)
+
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+          await client.request("chat.send", {
+            message: text,
+            idempotencyKey,
+            // Use the latest session key on retry to avoid new-session race (#50)
+            sessionKey: sessionKeyRef.current || sessionKey,
+          });
+          return;
+        } catch (err) {
+          const isLast = attempt >= maxAttempts;
+          if (isLast) {
+            console.error("[AWF] chat.send error:", String(err));
+            clearStreamingTimeout();
+            setStreaming(false);
+            setAgentStatusDebug({ phase: "idle" });
+            return;
+          }
+          // Short retry window for immediate session-switch/bootstrap timing race.
+          await new Promise((resolve) => setTimeout(resolve, 200));
+        }
       }
     },
-    [client, state, sessionKey]
+    [client, state, sessionKey, startStreamingTimeout, clearStreamingTimeout, setAgentStatusDebug]
   );
 
   const processQueue = useCallback(async () => {
