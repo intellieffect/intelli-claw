@@ -89,9 +89,16 @@ function createChatHandler(sessionKey?: string) {
         state.messages.push(msg);
       }
     } else if (stream === "inbound" && data) {
-      // Handle messages from other surfaces
+      // Handle messages from other surfaces — mirrors hooks.tsx logic
       const text = (data.text ?? data.content ?? "") as string;
-      const role = (data.role ?? "user") as "user" | "assistant";
+      const rawRole = data.role as string | undefined;
+      const isAgentSource =
+        (data.inputProvenance as Record<string, unknown> | undefined)?.kind === "inter_session" ||
+        data.surface === "agent" ||
+        data.source === "sessions_send";
+      const role: "user" | "assistant" = rawRole === "assistant" || rawRole === "user"
+        ? rawRole
+        : isAgentSource ? "assistant" : "user";
       const msgId = `inbound-${Date.now()}-${++idCounter}`;
       const msg: DisplayMessage = {
         id: msgId,
@@ -408,6 +415,92 @@ describe("#53 — messages from other surfaces must appear in real-time", () => 
 
     expect(state.messages).toHaveLength(1);
     expect(state.messages[0].content).toBe("Using content field");
+  });
+
+  // --- Agent-to-agent role attribution (sessions_send) ---
+
+  it("inbound from inter_session provenance defaults to assistant role", () => {
+    const { state, handleEvent } = createChatHandler("agent:alpha:main");
+
+    handleEvent(agentEvent({
+      stream: "inbound",
+      data: {
+        text: "분석 결과입니다",
+        inputProvenance: { kind: "inter_session", sourceSessionKey: "agent:brxce:main" },
+      },
+      sessionKey: "agent:alpha:main",
+    }, 1));
+
+    expect(state.messages).toHaveLength(1);
+    expect(state.messages[0].role).toBe("assistant");
+    expect(state.messages[0].content).toBe("분석 결과입니다");
+  });
+
+  it("inbound from agent surface defaults to assistant role", () => {
+    const { state, handleEvent } = createChatHandler("agent:alpha:main");
+
+    handleEvent(agentEvent({
+      stream: "inbound",
+      data: {
+        text: "Agent reply",
+        surface: "agent",
+      },
+      sessionKey: "agent:alpha:main",
+    }, 1));
+
+    expect(state.messages).toHaveLength(1);
+    expect(state.messages[0].role).toBe("assistant");
+  });
+
+  it("inbound from sessions_send source defaults to assistant role", () => {
+    const { state, handleEvent } = createChatHandler("agent:alpha:main");
+
+    handleEvent(agentEvent({
+      stream: "inbound",
+      data: {
+        text: "Cross-session message",
+        source: "sessions_send",
+      },
+      sessionKey: "agent:alpha:main",
+    }, 1));
+
+    expect(state.messages).toHaveLength(1);
+    expect(state.messages[0].role).toBe("assistant");
+  });
+
+  it("explicit role takes precedence over agent-source heuristic", () => {
+    const { state, handleEvent } = createChatHandler("agent:alpha:main");
+
+    // Even though source is agent, explicit role:"user" must be honored
+    handleEvent(agentEvent({
+      stream: "inbound",
+      data: {
+        text: "User forwarded by agent",
+        role: "user",
+        source: "sessions_send",
+        inputProvenance: { kind: "inter_session" },
+      },
+      sessionKey: "agent:alpha:main",
+    }, 1));
+
+    expect(state.messages).toHaveLength(1);
+    expect(state.messages[0].role).toBe("user");
+  });
+
+  it("non-agent inbound without role still defaults to user", () => {
+    const { state, handleEvent } = createChatHandler("agent:alpha:main");
+
+    handleEvent(agentEvent({
+      stream: "inbound",
+      data: {
+        text: "Message from web tab",
+        surface: "web",
+      },
+      sessionKey: "agent:alpha:main",
+    }, 1));
+
+    expect(state.messages).toHaveLength(1);
+    expect(state.messages[0].role).toBe("user");
   });
 });
 
