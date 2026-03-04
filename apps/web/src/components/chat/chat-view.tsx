@@ -4,10 +4,10 @@ import { useGateway } from "@/lib/gateway/hooks";
 import { useIsMobile } from "@/lib/hooks/use-mobile";
 import { ConnectionStatus } from "./connection-status";
 import { ConnectionSettings } from "@/components/settings/connection-settings";
-import { SplitView } from "./split-view";
+import { ChatPanel } from "./chat-panel";
 import { ShortcutHelpDialog } from "./shortcut-help-dialog";
-import { isShortcutHelp, matchesShortcutId } from "@/lib/shortcuts";
-import { Plus, Keyboard, Menu } from "lucide-react";
+import { isShortcutHelp } from "@/lib/shortcuts";
+import { Keyboard, Menu } from "lucide-react";
 import logoSvg from "@/assets/logo.svg";
 
 export function ChatView() {
@@ -29,11 +29,6 @@ export function ChatView() {
         return;
       }
       if (e.key === "Escape") setShortcutOpen(false);
-
-      if (matchesShortcutId(e, "add-panel")) {
-        e.preventDefault();
-        (window as any).__awfSplitAddPanel?.();
-      }
     }
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
@@ -72,21 +67,11 @@ export function ChatView() {
               <span className="hidden sm:inline">단축키</span>
             </button>
           )}
-          {!isMobile && (
-            <button
-              onClick={() => (window as any).__awfSplitAddPanel?.()}
-              className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground"
-              title="패널 추가 (Cmd+\\)"
-            >
-              <Plus size={14} />
-              <span className="hidden sm:inline">패널 추가</span>
-            </button>
-          )}
         </div>
       </header>
 
       <div className="flex-1 overflow-hidden">
-        <SplitView />
+        <ChatPanel />
       </div>
 
       <ShortcutHelpDialog open={shortcutOpen} onClose={() => setShortcutOpen(false)} />
