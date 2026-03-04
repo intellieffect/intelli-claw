@@ -26,6 +26,7 @@ export const test = base.extend<{
       await page.waitForTimeout(500);
       return page;
     };
+    // eslint-disable-next-line react-hooks/rules-of-hooks
     await use(setup);
   },
 });
