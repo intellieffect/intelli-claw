@@ -40,29 +40,46 @@ ok "Build + package complete"
 VERSION=$(node -e "console.log(require('$ROOT_DIR/package.json').version)")
 
 # ─── Version bump guard ──────────────────────────────────────────────
-# Ensure version was bumped since last deploy (check git tag)
+# Ensure version was bumped since last deploy.
+# Strategy: check git tag first, fallback to last version-bump commit.
 LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+NEEDS_BUMP=false
+
 if [ -n "$LAST_TAG" ]; then
+  # Tag exists — compare tag version with current
   LAST_TAG_VERSION="${LAST_TAG#v}"
   if [ "$VERSION" = "$LAST_TAG_VERSION" ]; then
-    # Check if there are new commits since the tag
     COMMITS_SINCE=$(git rev-list "$LAST_TAG"..HEAD --count 2>/dev/null || echo "0")
     if [ "$COMMITS_SINCE" -gt 0 ]; then
+      NEEDS_BUMP=true
       warn "Version $VERSION has not been bumped since tag $LAST_TAG ($COMMITS_SINCE new commits)"
-      echo ""
-      read -p "  Auto-bump patch version? [Y/n] " REPLY
-      REPLY="${REPLY:-Y}"
-      if [[ "$REPLY" =~ ^[Yy]$ ]]; then
-        bash "$ROOT_DIR/scripts/bump-version.sh" patch
-        VERSION=$(node -e "console.log(require('$ROOT_DIR/package.json').version)")
-        git add "$ROOT_DIR/package.json" "$ROOT_DIR/apps/desktop/package.json"
-        git commit -m "chore: bump version to $VERSION"
-        git tag "v$VERSION"
-        ok "Auto-bumped to v$VERSION"
-      else
-        fail "Deploy aborted. Bump version first: pnpm version:bump"
-      fi
     fi
+  fi
+else
+  # No tags — fallback: check commits since last version bump commit
+  LAST_BUMP_HASH=$(git log --oneline --grep="bump version" --format="%H" -1 2>/dev/null || echo "")
+  if [ -n "$LAST_BUMP_HASH" ]; then
+    COMMITS_SINCE=$(git rev-list "$LAST_BUMP_HASH"..HEAD --count 2>/dev/null || echo "0")
+    if [ "$COMMITS_SINCE" -gt 0 ]; then
+      NEEDS_BUMP=true
+      warn "No git tags found. $COMMITS_SINCE commits since last version bump (v$VERSION)"
+    fi
+  fi
+fi
+
+if [ "$NEEDS_BUMP" = true ]; then
+  echo ""
+  read -p "  Auto-bump patch version? [Y/n] " REPLY
+  REPLY="${REPLY:-Y}"
+  if [[ "$REPLY" =~ ^[Yy]$ ]]; then
+    bash "$ROOT_DIR/scripts/bump-version.sh" patch
+    VERSION=$(node -e "console.log(require('$ROOT_DIR/package.json').version)")
+    git add "$ROOT_DIR/package.json" "$ROOT_DIR/apps/desktop/package.json"
+    git commit -m "chore: bump version to $VERSION"
+    git tag "v$VERSION"
+    ok "Auto-bumped to v$VERSION"
+  else
+    fail "Deploy aborted. Bump version first: pnpm version:bump"
   fi
 fi
 
@@ -184,6 +201,15 @@ case "$TARGET" in
     fail "Unknown target: $TARGET (use: local, macbook, all)"
     ;;
 esac
+
+# ─── Cleanup build artifacts ─────────────────────────────────────────
+# Remove release/ to avoid duplicate .app in Spotlight
+RELEASE_DIR="$ROOT_DIR/apps/desktop/release"
+if [ -d "$RELEASE_DIR" ]; then
+  info "Cleaning up build artifacts ($RELEASE_DIR)..."
+  rm -rf "$RELEASE_DIR"
+  ok "Build artifacts removed"
+fi
 
 echo "═══════════════════════════════════════════"
 echo "  ✅ Deploy complete! (v$VERSION → $TARGET)"

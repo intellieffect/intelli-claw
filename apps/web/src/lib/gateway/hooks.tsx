@@ -408,7 +408,7 @@ export function shouldSuppressStreamingPreview(text: string): boolean {
   const t = text.trim();
   if (!t) return false;
   if (HIDDEN_REPLY_RE.test(t)) return true;
-  return /^(N|NO|NO_|NO_R|NO_RE|NO_REP|NO_REPL|NO_REPLY|H|HE|HEA|HEAR|HEART|HEARTB|HEARTBE|HEARTBEA|HEARTBEAT|HEARTBEAT_|HEARTBEAT_O|HEARTBEAT_OK)$/i.test(t);
+  return /^(N|NO|NO_|NO_R|NO_RE|NO_REP|NO_REPL|NO_REPLY|H|HE|HEA|HEAR|HEART|HEARTB|HEARTBE|HEARTBEA|HEARTBEAT|HEARTBEAT_|HEARTBEAT_O|HEARTBEAT_OK|R|RE|REP|REPL|REPLY|REPLY_|REPLY_S|REPLY_SK|REPLY_SKI|REPLY_SKIP)$/i.test(t);
 }
 
 const PENDING_STREAM_SESSION_KEY_PREFIX = "awf:pending-stream:";
@@ -472,7 +472,7 @@ export type AgentStatus =
  * Patterns for messages that should be hidden from the chat UI.
  * Used in both streaming completion, history load, and display-layer filtering.
  */
-export const HIDDEN_REPLY_RE = /^(NO_REPLY|HEARTBEAT_OK|NO_?)\s*$|Pre-compaction memory flush|^Read HEARTBEAT\.md|reply with NO_REPLY|Store durable memories now|(?:\[System\]|\(System\)|System:)\s*이전 세션이 컨텍스트 한도로 갱신|^이전 세션이 컨텍스트 한도로 갱신되었습니다\.\s*아래는 최근 대화 요약입니다\.|\[이전 세션 맥락\]/;
+export const HIDDEN_REPLY_RE = /^(NO_REPLY|REPLY_SKIP|HEARTBEAT_OK|NO_?)\s*$|Pre-compaction memory flush|^Read HEARTBEAT\.md|reply with NO_REPLY|Store durable memories now|(?:\[System\]|\(System\)|System:)\s*이전 세션이 컨텍스트 한도로 갱신|^이전 세션이 컨텍스트 한도로 갱신되었습니다\.\s*아래는 최근 대화 요약입니다\.|\[이전 세션 맥락\]/;
 
 // --- Reply/Quote Helpers ---
 
@@ -1398,7 +1398,22 @@ export function useChat(sessionKey?: string) {
         // Messages from other surfaces/devices (Telegram, other tabs, etc.)
         // Cross-device sync with dedup (#120)
         const text = ((data.text ?? data.content ?? "") as string);
-        const role = (data.role ?? "user") as "user" | "assistant";
+        // Resolve role: inter-session/agent messages may arrive without explicit
+        // role.  When the provenance indicates another agent session or the
+        // surface is "agent", treat the message as an assistant response to
+        // avoid showing agent replies as user bubbles.
+        const rawRole = data.role as string | undefined;
+        const isAgentSource =
+          (data.inputProvenance as Record<string, unknown> | undefined)?.kind === "inter_session" ||
+          data.surface === "agent" ||
+          data.source === "sessions_send";
+        const role: "user" | "assistant" = rawRole === "assistant" || rawRole === "user"
+          ? rawRole
+          : isAgentSource ? "assistant" : "user";
+        // Debug: capture raw inbound data to diagnose agent-to-agent role attribution
+        if (process.env.NODE_ENV !== "production") {
+          console.debug("[AWF:INBOUND]", { rawRole, isAgentSource, role, surface: data.surface, source: data.source, provenance: data.inputProvenance, keys: Object.keys(data) });
+        }
         if (text) {
           const cleanedText = role === "user" ? stripInboundMeta(text) : text;
           const originDeviceId = data.deviceId as string | undefined;
