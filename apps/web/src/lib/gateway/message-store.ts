@@ -140,6 +140,7 @@ const MIGRATION_VERSION = 2; // bump to force re-migration (v2: #121 dedup fix)
  * and is always loaded fresh on each session.
  */
 export function runMessageStoreMigration(): void {
+  if (typeof localStorage === "undefined") return;
   try {
     const done = localStorage.getItem(MIGRATION_KEY);
     if (done && parseInt(done, 10) >= MIGRATION_VERSION) return;
@@ -153,9 +154,11 @@ export function runMessageStoreMigration(): void {
         tx.objectStore(STORE_NAME).clear();
         tx.oncomplete = () => {
           db.close();
-          localStorage.setItem(MIGRATION_KEY, String(MIGRATION_VERSION));
-          // Also clear backfill markers so sessions get re-backfilled
-          localStorage.removeItem("intelli-claw-backfill-done");
+          if (typeof localStorage !== "undefined") {
+            localStorage.setItem(MIGRATION_KEY, String(MIGRATION_VERSION));
+            // Also clear backfill markers so sessions get re-backfilled
+            localStorage.removeItem("intelli-claw-backfill-done");
+          }
           console.log("[AWF] Message store migration complete — cleared corrupted data (#5536-v2)");
         };
         tx.onerror = () => db.close();
