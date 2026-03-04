@@ -202,6 +202,15 @@ case "$TARGET" in
     ;;
 esac
 
+# ─── Cleanup build artifacts ─────────────────────────────────────────
+# Remove release/ to avoid duplicate .app in Spotlight
+RELEASE_DIR="$ROOT_DIR/apps/desktop/release"
+if [ -d "$RELEASE_DIR" ]; then
+  info "Cleaning up build artifacts ($RELEASE_DIR)..."
+  rm -rf "$RELEASE_DIR"
+  ok "Build artifacts removed"
+fi
+
 echo "═══════════════════════════════════════════"
 echo "  ✅ Deploy complete! (v$VERSION → $TARGET)"
 echo "═══════════════════════════════════════════"
