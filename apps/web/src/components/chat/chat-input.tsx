@@ -3,7 +3,7 @@ import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowUp, Paperclip, Square, X, Reply } from "lucide-react";
 
-import { cn } from "@/lib/utils";
+import { cn, windowStoragePrefix } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useAutosizeTextArea } from "@/hooks/use-autosize-textarea";
 import {
@@ -74,7 +74,7 @@ export function ChatInput({
     </div>
   ) : null;
   const agentSlot = agentSlotProp || agentSlotFromAvatar;
-  const storageKey = panelId ? `awf:draft:${panelId}` : null;
+  const storageKey = panelId ? `awf:${windowStoragePrefix()}draft:${panelId}` : null;
   const [text, setText] = useState(() => {
     if (storageKey && typeof window !== "undefined") {
       return localStorage.getItem(storageKey) || "";
@@ -273,6 +273,13 @@ export function ChatInput({
   // Focus on mount
   useEffect(() => {
     textareaRef.current?.focus();
+  }, []);
+
+  // Focus textarea when window gains focus (Electron multi-window)
+  useEffect(() => {
+    const handler = () => textareaRef.current?.focus();
+    window.addEventListener("focus", handler);
+    return () => window.removeEventListener("focus", handler);
   }, []);
 
   // Listen for vim normal-mode "i" → focus input (enter insert mode)
