@@ -20,9 +20,18 @@ importers:
       '@playwright/test':
         specifier: ^1.58.2
         version: 1.58.2
+      eslint-plugin-react-hooks:
+        specifier: ^5.2.0
+        version: 5.2.0(eslint@9.39.2(jiti@2.6.1))
+      eslint-plugin-react-refresh:
+        specifier: ^0.4.20
+        version: 0.4.26(eslint@9.39.2(jiti@2.6.1))
       turbo:
         specifier: ^2.5.0
         version: 2.8.10
+      typescript-eslint:
+        specifier: ^8.33.0
+        version: 8.56.0(eslint@9.39.2(jiti@2.6.1))(typescript@5.9.3)
 
   apps/desktop:
     dependencies:
@@ -125,7 +134,7 @@ importers:
         version: 8.0.11(expo@54.0.33)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
       expo-router:
         specifier: ~6.0.23
-        version: 6.0.23(3e4e2dd8aafadb4e44f11e670c0ecab4)
+        version: 6.0.23(vic2gjw2l4x6fitzpirsdenwhm)
       expo-secure-store:
         specifier: ~15.0.8
         version: 15.0.8(expo@54.0.33)
@@ -8834,7 +8843,7 @@ snapshots:
       wrap-ansi: 7.0.0
       ws: 8.19.0
     optionalDependencies:
-      expo-router: 6.0.23(3e4e2dd8aafadb4e44f11e670c0ecab4)
+      expo-router: 6.0.23(vic2gjw2l4x6fitzpirsdenwhm)
       react-native: 0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0)
     transitivePeerDependencies:
       - bufferutil
@@ -10643,7 +10652,7 @@ snapshots:
   '@ts-morph/common@0.27.0':
     dependencies:
       fast-glob: 3.3.3
-      minimatch: 10.2.1
+      minimatch: 10.2.4
       path-browserify: 1.0.1
 
   '@types/aria-query@5.0.4': {}
@@ -12354,7 +12363,7 @@ snapshots:
       react: 19.1.0
       react-native: 0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0)
 
-  expo-router@6.0.23(3e4e2dd8aafadb4e44f11e670c0ecab4):
+  expo-router@6.0.23(vic2gjw2l4x6fitzpirsdenwhm):
     dependencies:
       '@expo/metro-runtime': 5.0.5(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))
       '@expo/schema-utils': 0.1.8
