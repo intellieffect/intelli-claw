@@ -103,6 +103,13 @@ export const MessageBubble = React.memo(function MessageBubble({ msg, previousMs
   const time = showTime ? formatTime(msg.timestamp) : null;
   const dateLabel = shouldShowDateSeparator(msg.timestamp, previousMsg?.timestamp);
 
+  const handleCopy = useCallback(async () => {
+    if (!msg.content) return;
+    await Clipboard.setStringAsync(msg.content);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }, [msg.content]);
+
   useEffect(() => {
     Animated.parallel([
       Animated.timing(fadeAnim, { toValue: 1, duration: 280, useNativeDriver: true }),
@@ -128,12 +135,6 @@ export const MessageBubble = React.memo(function MessageBubble({ msg, previousMs
     ? { text: msg.content, media: [] as MediaItem[] }
     : extractMedia(msg.content || "");
 
-  const handleCopy = useCallback(async () => {
-    if (!text) return;
-    await Clipboard.setStringAsync(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  }, [text]);
 
   return (
     <>
