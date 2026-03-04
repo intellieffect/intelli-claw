@@ -17,10 +17,9 @@ describe("device-identity", () => {
     expect(device.id).toBeTruthy();
     expect(typeof device.id).toBe("string");
     expect(device.publicKey).toBeTruthy();
-    // publicKey is a JSON-stringified JWK
-    const jwk = JSON.parse(device.publicKey);
-    expect(jwk.kty).toBe("EC");
-    expect(jwk.crv).toBe("P-256");
+    // publicKey is base64url-encoded raw Ed25519 key (32 bytes → 43 chars)
+    expect(typeof device.publicKey).toBe("string");
+    expect(device.publicKey.length).toBeGreaterThanOrEqual(40);
   });
 
   it("returns the same device on subsequent calls", async () => {
@@ -42,10 +41,9 @@ describe("device-identity", () => {
     expect(identity.signedAt).toBeGreaterThan(0);
     expect(identity.signature).toBeTruthy();
     expect(typeof identity.signature).toBe("string");
-    // publicKey should be a JSON-stringified JWK
-    const jwk = JSON.parse(identity.publicKey);
-    expect(jwk.kty).toBe("EC");
-    expect(jwk.crv).toBe("P-256");
+    // publicKey is base64url-encoded raw Ed25519 key
+    expect(typeof identity.publicKey).toBe("string");
+    expect(identity.publicKey.length).toBeGreaterThanOrEqual(40);
   });
 
   it("signChallenge produces different signatures for different nonces", async () => {
