@@ -18,6 +18,7 @@ import {
   View,
   Modal,
   Pressable,
+  Text,
   type ViewProps,
   type PressableProps,
   KeyboardAvoidingView,
@@ -241,7 +242,6 @@ function ActionsheetItemText({
   className,
   ...props
 }: React.ComponentProps<typeof import("react-native").Text>) {
-  const { Text } = require("react-native");
   return (
     <Text
       className={cn("text-foreground text-base", className)}
