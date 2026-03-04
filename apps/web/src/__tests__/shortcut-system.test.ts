@@ -246,7 +246,42 @@ describe("custom bindings", () => {
 });
 
 // ============================================================
-// 5. Shortcut definitions — 전체 shortcut 정의 완전성 검증
+// 5. close-tab → Opt+W / Alt+W (#133: Cmd+W should close window, not tab)
+// ============================================================
+
+describe("close-tab shortcut (#133)", () => {
+  it("close-tab is mapped to Opt+W (Mac) or Alt+W (non-Mac), NOT Cmd+W/Ctrl+W", () => {
+    const closeTab = DEFAULT_SHORTCUTS.find((s) => s.id === "close-tab");
+    expect(closeTab).toBeDefined();
+    // In jsdom (non-Mac): should be Alt+W
+    // On Mac: should be Opt+W
+    if (isMacEnv) {
+      expect(closeTab!.keys).toBe("Opt+W");
+    } else {
+      expect(closeTab!.keys).toBe("Alt+W");
+    }
+  });
+
+  it("Alt+W matches close-tab (non-Mac env)", () => {
+    if (isMacEnv) return; // skip on Mac
+    const e = createKeyboardEvent("w", { altKey: true });
+    expect(matchesShortcutId(e, "close-tab")).toBe(true);
+  });
+
+  it("Ctrl+W does NOT match close-tab (non-Mac env)", () => {
+    if (isMacEnv) return;
+    const e = createKeyboardEvent("w", { ctrlKey: true });
+    expect(matchesShortcutId(e, "close-tab")).toBe(false);
+  });
+
+  it("Cmd+W does NOT match close-tab on any platform", () => {
+    const e = createKeyboardEvent("w", { metaKey: true });
+    expect(matchesShortcutId(e, "close-tab")).toBe(false);
+  });
+});
+
+// ============================================================
+// 6. Shortcut definitions — 전체 shortcut 정의 완전성 검증
 // ============================================================
 
 describe("shortcut definitions completeness", () => {
