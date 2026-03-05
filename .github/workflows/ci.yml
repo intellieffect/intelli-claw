@@ -5,6 +5,11 @@ on:
   push:
     branches: [main]
 
+permissions:
+  issues: read
+  pull-requests: read
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -19,3 +24,50 @@ jobs:
       - run: pnpm lint
       - run: pnpm test
       - run: pnpm build
+
+  # Block merge if linked issues have no assignee
+  issue-check:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check linked issues have assignee
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          ISSUES=""
+
+          # From branch name
+          if [[ "$PR_BRANCH" =~ ^(fix|feat|refactor|chore|docs)/([0-9]+) ]]; then
+            ISSUES="${BASH_REMATCH[2]}"
+          fi
+
+          # From PR body
+          BODY=$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json body -q '.body')
+          BODY_ISSUES=$(echo "$BODY" | grep -oiE '(close[sd]?|fix(e[sd])?|resolve[sd]?)\s+#([0-9]+)' | grep -oE '[0-9]+' || true)
+          for i in $BODY_ISSUES; do
+            if [[ ! " $ISSUES " =~ " $i " ]]; then
+              ISSUES="$ISSUES $i"
+            fi
+          done
+
+          if [ -z "$ISSUES" ]; then
+            echo "::warning::No linked issue found. Consider linking an issue."
+            exit 0
+          fi
+
+          FAILED=false
+          for ISSUE in $ISSUES; do
+            ASSIGNEES=$(gh issue view "$ISSUE" --repo "$GITHUB_REPOSITORY" --json assignees -q '.assignees | length')
+            if [ "$ASSIGNEES" -eq 0 ]; then
+              echo "::error::Issue #$ISSUE has no assignee. Assign someone before merging."
+              FAILED=true
+            else
+              echo "Issue #$ISSUE has assignee(s) — OK"
+            fi
+          done
+
+          if [ "$FAILED" = true ]; then
+            exit 1
+          fi
