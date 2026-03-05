@@ -798,12 +798,18 @@ export function useChat(sessionKey?: string) {
                 }
                 textContent += p.text;
               } else if (p.type === 'image_url' || p.type === 'image') {
-                const url = typeof p.image_url === 'object' && p.image_url
-                  ? (p.image_url as Record<string, string>).url
-                  : typeof p.url === 'string' ? p.url
-                  : typeof p.source === 'object' && p.source
-                    ? `data:${(p.source as Record<string, string>).media_type};base64,${(p.source as Record<string, string>).data}`
-                    : undefined;
+                let url: string | undefined;
+                if (typeof p.image_url === 'object' && p.image_url) {
+                  url = (p.image_url as Record<string, string>).url;
+                } else if (typeof p.url === 'string' && p.url) {
+                  url = p.url;
+                } else if (typeof p.source === 'object' && p.source) {
+                  // Guard against empty source from Gateway compaction (#110)
+                  const src = p.source as Record<string, string>;
+                  if (src.media_type && src.data) {
+                    url = `data:${src.media_type};base64,${src.data}`;
+                  }
+                }
                 if (url) {
                   imgAttachments.push({ fileName: 'image', mimeType: 'image/png', dataUrl: url });
                 }
