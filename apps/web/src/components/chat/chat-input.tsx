@@ -275,6 +275,13 @@ export function ChatInput({
     textareaRef.current?.focus();
   }, []);
 
+  // Focus textarea when window gains focus (Electron multi-window)
+  useEffect(() => {
+    const handler = () => textareaRef.current?.focus();
+    window.addEventListener("focus", handler);
+    return () => window.removeEventListener("focus", handler);
+  }, []);
+
   // Listen for vim normal-mode "i" → focus input (enter insert mode)
   useEffect(() => {
     const handler = () => textareaRef.current?.focus();
@@ -426,7 +433,6 @@ export function ChatInput({
               value={text}
               onChange={(e) => setText(e.target.value)}
               onKeyDown={handleKeyDown}
-              onFocus={() => document.dispatchEvent(new CustomEvent("focus-chat-input"))}
               onPaste={handlePaste}
               onCompositionStart={() => {
                 composingRef.current = true;

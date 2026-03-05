@@ -195,6 +195,48 @@ describe("useChat integration", () => {
     expect(result.current.agentStatus.phase).toBe("idle");
   });
 
+  it("retries chat.send once and uses latest sessionKey during session switch (Issue #50)", async () => {
+    let sessionKey = "test:agent-1";
+    const { result, rerender } = renderHook(() => useChat(sessionKey));
+    await act(async () => { vi.advanceTimersByTime(200); });
+
+    let sendAttempt = 0;
+    mockClient!.request.mockImplementation(async (method: string, params?: Record<string, unknown>) => {
+      if (method === "chat.history") return { messages: [] };
+      if (method === "chat.send") {
+        sendAttempt++;
+        if (sendAttempt === 1) {
+          throw new Error("Session bootstrap in progress");
+        }
+        return { ok: true, params };
+      }
+      return {};
+    });
+
+    // Send while old session is active
+    act(() => { result.current.sendMessage("send-through-switch"); });
+
+    // Simulate immediate new-session switch right after user send
+    sessionKey = "test:agent-2";
+    rerender();
+
+    // Run retry timer + pending microtasks
+    await act(async () => {
+      await Promise.resolve();
+      vi.advanceTimersByTime(300);
+      await Promise.resolve();
+      vi.advanceTimersByTime(300);
+      await Promise.resolve();
+    });
+
+    const sendCalls = mockClient!.request.mock.calls.filter((c) => c[0] === "chat.send");
+    expect(sendCalls.length).toBe(2);
+
+    // First send used old key, retry should follow latest session key
+    expect(sendCalls[0][1]).toMatchObject({ sessionKey: "test:agent-1" });
+    expect(sendCalls[1][1]).toMatchObject({ sessionKey: "test:agent-2" });
+  });
+
   it("subsequent loadHistory does NOT show loading (Bug #1 regression)", async () => {
     mockClient!.request.mockResolvedValue({
       messages: [

@@ -23,4 +23,17 @@ export const webPlatform: PlatformAPI = {
   showcaseUrl(relativePath) {
     return `/api/showcase/${encodeURIComponent(relativePath)}`;
   },
+
+  async mediaUpload(data, mimeType, fileName) {
+    const res = await fetch("/api/media/upload", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ data, mimeType, fileName }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: "Upload failed" }));
+      throw new Error(err.error || "Upload failed");
+    }
+    return res.json();
+  },
 };

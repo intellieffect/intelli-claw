@@ -10,9 +10,9 @@
  */
 import http from "node:http";
 import { readFile, stat, open, readdir, mkdir, writeFile } from "node:fs/promises";
-import { randomUUID } from "node:crypto";
 import { extname, basename, join, resolve, relative, isAbsolute } from "node:path";
 import { homedir } from "node:os";
+import { randomUUID } from "node:crypto";
 
 // ---- MIME helpers ----
 
@@ -87,7 +87,6 @@ function validatePath(p: string | null): string | null {
   return resolved;
 }
 
-
 // ---- Media upload handler (#110) ----
 
 const UPLOAD_DIR = join(homedir(), ".openclaw", "media", "uploads");
@@ -99,7 +98,6 @@ const MIME_TO_EXT: Record<string, string> = {
 };
 
 async function handleMediaUpload(req: http.IncomingMessage, res: http.ServerResponse) {
-  // Collect body
   const chunks: Buffer[] = [];
   for await (const chunk of req) chunks.push(chunk as Buffer);
   const raw = Buffer.concat(chunks).toString("utf-8");
@@ -155,7 +153,7 @@ async function handleMediaUpload(req: http.IncomingMessage, res: http.ServerResp
 
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ path: outPath }));
-  } catch (err) {
+  } catch {
     res.writeHead(500, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ error: "Failed to save file" }));
   }
