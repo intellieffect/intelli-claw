@@ -544,7 +544,7 @@ export function useChat(sessionKey?: string) {
   const pendingStreamUpdate = useRef<(() => void) | null>(null);
   const sendContextBridgeRef = useRef<(() => Promise<void>) | null>(null);
   const buildContextSummaryRef = useRef<(() => string | null) | null>(null);
-  const contextBridgeSentRef = useRef<string | null>(null);
+
   // Stable per-tab device identifier for cross-device message dedup (#120)
   const deviceIdRef = useRef<string>(
     (() => {
@@ -736,7 +736,7 @@ export function useChat(sessionKey?: string) {
         setAgentStatusDebug({ phase: "idle" });
         streamBuf.current = null;
         finalizedEventKeysRef.current.clear();
-        contextBridgeSentRef.current = null; // 새 채팅 전환 시 dedup 리셋
+
       }
       // Clear the OLD session's pending stream, not the new one's.
       // This prevents wiping a snapshot that beforeunload saved for the new session.
