@@ -10677,7 +10677,7 @@ snapshots:
   '@ts-morph/common@0.27.0':
     dependencies:
       fast-glob: 3.3.3
-      minimatch: 10.2.1
+      minimatch: 10.2.4
       path-browserify: 1.0.1
 
   '@types/aria-query@5.0.4': {}
