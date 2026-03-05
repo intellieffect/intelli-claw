@@ -44,13 +44,12 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
     if (typeof window === "undefined") return;
     const initial = resolveInitialSessionState({
       windowPrefix: windowStoragePrefix(),
-      panelId,
       defaultAgentId: import.meta.env.VITE_DEFAULT_AGENT || "default",
       getItem: (k) => localStorage.getItem(k),
     });
     setSessionKeyRaw(initial.sessionKey);
     setAgentId(initial.agentId);
-  }, [panelId]);
+  }, []);
 
   const setSessionKey = useCallback((key: string | undefined) => {
     setSessionKeyRaw(key);
