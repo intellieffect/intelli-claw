@@ -18,6 +18,7 @@ import { ExpoCryptoAdapter } from "../src/adapters/crypto";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { mmkvStorage } from "../src/adapters/storage";
 import { SessionContext } from "../src/stores/sessionStore";
+import { ChatStateProvider } from "../src/stores/ChatStateProvider";
 
 // Initialize crypto adapter (must be called once before gateway connects)
 initCryptoAdapter(new ExpoCryptoAdapter());
@@ -84,8 +85,10 @@ export default function RootLayout() {
             token={config.token}
             onConfigChange={saveConfig}
           >
-            <StatusBar style="auto" />
-            <Slot />
+            <ChatStateProvider>
+              <StatusBar style="auto" />
+              <Slot />
+            </ChatStateProvider>
           </GatewayProvider>
         </SessionContext.Provider>
       </SafeAreaProvider>
