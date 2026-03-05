@@ -544,7 +544,7 @@ export function useChat(sessionKey?: string) {
   const pendingStreamUpdate = useRef<(() => void) | null>(null);
   const sendContextBridgeRef = useRef<(() => Promise<void>) | null>(null);
   const buildContextSummaryRef = useRef<(() => string | null) | null>(null);
-  const contextBridgeSentRef = useRef<string | null>(null);
+
   // Stable per-tab device identifier for cross-device message dedup (#120)
   const deviceIdRef = useRef<string>(
     (() => {
@@ -736,7 +736,7 @@ export function useChat(sessionKey?: string) {
         setAgentStatusDebug({ phase: "idle" });
         streamBuf.current = null;
         finalizedEventKeysRef.current.clear();
-        contextBridgeSentRef.current = null; // 새 채팅 전환 시 dedup 리셋
+
       }
       // Clear the OLD session's pending stream, not the new one's.
       // This prevents wiping a snapshot that beforeunload saved for the new session.
@@ -1776,24 +1776,11 @@ export function useChat(sessionKey?: string) {
         newSessionId: event.newSessionId,
       }]).catch(() => {});
 
-      // Auto context bridge: 500ms 후 자동 전송 (새 sessionId 안착 대기)
-      if (contextBridgeSentRef.current === event.newSessionId) return; // 중복 방지
-      setTimeout(async () => {
-        try {
-          // IndexedDB에 요약 저장
-          const summary = buildContextSummaryRef.current?.();
-          if (summary) {
-            markSessionEnded(event.key, event.oldSessionId, { summary }).catch(() => {});
-          }
-          // 자동 전송
-          await sendContextBridgeRef.current?.();
-          contextBridgeSentRef.current = event.newSessionId;
-          console.log("[AWF] Auto context bridge sent successfully");
-        } catch (err) {
-          console.error("[AWF] Auto context bridge failed:", err);
-          contextBridgeSentRef.current = null; // 실패 시 리셋 → 수동 재시도 가능
-        }
-      }, 500);
+      // IndexedDB에 이전 세션 요약만 저장 (auto bridge 제거 — Gateway의 session reset prompt와 중복 방지)
+      const summary = buildContextSummaryRef.current?.();
+      if (summary) {
+        markSessionEnded(event.key, event.oldSessionId, { summary }).catch(() => {});
+      }
     });
     return unsub;
   }, []);
