@@ -6,3 +6,5 @@ export { AgentStatusBar } from "./AgentStatusBar";
 export { InputBar } from "./InputBar";
 export { ScrollToBottomButton } from "./ScrollToBottom";
 export { AppBar } from "./AppBar";
+export { AgentChatPage } from "./AgentChatPage";
+export type { AgentChatPageProps } from "./AgentChatPage";
