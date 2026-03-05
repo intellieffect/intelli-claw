@@ -11,13 +11,15 @@ export function buildSessionContinuityKeys(params: {
   panelId: string;
   agentId: string;
 }): SessionContinuityKeys {
-  const { windowPrefix, panelId, agentId } = params;
-  const scopedPrefix = `awf:${windowPrefix}panel:${panelId}:`;
+  const { windowPrefix, agentId } = params;
+  // Post SplitView removal: scoped prefix matches chat-panel's `awf:${windowStoragePrefix()}`
+  const scopedPrefix = `awf:${windowPrefix}`;
   return {
     scopedSessionKey: `${scopedPrefix}sessionKey`,
     scopedAgentKey: `${scopedPrefix}agentId`,
     agentRememberedSessionKey: `awf:lastSessionKey:${agentId}`,
-    legacyPanelSessionKey: `awf:panel:${panelId}:sessionKey`,
+    // Legacy keys for backward-compat with pre-refactor data
+    legacyPanelSessionKey: `awf:panel:panel-1:sessionKey`,
     legacyGlobalSessionKey: "awf:sessionKey",
   };
 }
@@ -30,7 +32,8 @@ export function resolveInitialSessionState(params: {
 }): { agentId: string; sessionKey?: string } {
   const { windowPrefix, panelId, defaultAgentId, getItem } = params;
 
-  const scopedPrefix = `awf:${windowPrefix}panel:${panelId}:`;
+  // Post SplitView removal: scoped prefix matches chat-panel's storagePrefix
+  const scopedPrefix = `awf:${windowPrefix}`;
   const scopedAgent = getItem(`${scopedPrefix}agentId`);
   const agentId = scopedAgent || defaultAgentId;
 
