@@ -21,6 +21,7 @@ import { useSwipeGesture, getNextAgentIndex } from "@/lib/hooks/use-swipe-gestur
 import { NewSessionPicker, AgentManager } from "@/components/settings/agent-manager";
 import { SessionManagerPanel } from "./session-manager-panel";
 import { TopicHistory } from "./topic-history";
+import { resolveInitialSessionState, getRememberedSessionForAgent } from "@/lib/session-continuity";
 
 export interface ChatPanelProps {
   /** Show header controls (agent selector, session switcher) */
@@ -37,20 +38,31 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
   const [sessionKey, setSessionKeyRaw] = useState<string | undefined>(undefined);
   const [agentId, setAgentId] = useState<string>(import.meta.env.VITE_DEFAULT_AGENT || "default");
 
-  // Load persisted panel state on mount (client only)
+  // Load persisted state on mount (client only)
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const savedSession = localStorage.getItem(`${storagePrefix}sessionKey`) || undefined;
-    const savedAgent = localStorage.getItem(`${storagePrefix}agentId`) || import.meta.env.VITE_DEFAULT_AGENT || "default";
-    setSessionKeyRaw(savedSession);
-    setAgentId(savedAgent);
-  }, [storagePrefix]);
+    const initial = resolveInitialSessionState({
+      windowPrefix: windowStoragePrefix(),
+      panelId,
+      defaultAgentId: import.meta.env.VITE_DEFAULT_AGENT || "default",
+      getItem: (k) => localStorage.getItem(k),
+    });
+    setSessionKeyRaw(initial.sessionKey);
+    setAgentId(initial.agentId);
+  }, [panelId]);
 
   const setSessionKey = useCallback((key: string | undefined) => {
     setSessionKeyRaw(key);
     if (typeof window !== "undefined") {
-      if (key) localStorage.setItem(`${storagePrefix}sessionKey`, key);
-      else localStorage.removeItem(`${storagePrefix}sessionKey`);
+      if (key) {
+        localStorage.setItem(`${storagePrefix}sessionKey`, key);
+        const parsed = parseSessionKey(key);
+        if (parsed.agentId && parsed.agentId !== "unknown") {
+          localStorage.setItem(`awf:lastSessionKey:${parsed.agentId}`, key);
+        }
+      } else {
+        localStorage.removeItem(`${storagePrefix}sessionKey`);
+      }
     }
     // Sync agentId from session key
     if (key) {
@@ -542,6 +554,12 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
     setAgentId(newId);
     if (typeof window !== "undefined") {
       localStorage.setItem(`${storagePrefix}agentId`, newId);
+      const remembered = getRememberedSessionForAgent({
+        agentId: newId,
+        getItem: (k) => localStorage.getItem(k),
+      });
+      setSessionKey(remembered || undefined);
+      return;
     }
     setSessionKey(undefined);
   };
