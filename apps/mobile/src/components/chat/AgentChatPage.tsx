@@ -29,11 +29,13 @@ export interface AgentChatPageProps {
   agentId: string | undefined;
   /** Whether this page is currently visible (scroll/keyboard optimization) */
   isActive: boolean;
+  /** Total height of fixed headers above PagerView (safe area + AppBar + TabBar) */
+  headerHeight?: number;
 }
 
 // ─── AgentChatPage ───
 
-export function AgentChatPage({ sessionKey, agentId, isActive }: AgentChatPageProps) {
+export function AgentChatPage({ sessionKey, agentId, isActive, headerHeight = 0 }: AgentChatPageProps) {
   const insets = useSafeAreaInsets();
   const { state } = useGateway();
 
@@ -128,7 +130,7 @@ export function AgentChatPage({ sessionKey, agentId, isActive }: AgentChatPagePr
     <KeyboardAvoidingView
       style={s.flex1}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
-      keyboardVerticalOffset={8}
+      keyboardVerticalOffset={headerHeight}
     >
 
       {/* Message area */}
