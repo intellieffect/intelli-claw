@@ -7,10 +7,26 @@
 //   pm2 restart all                         # 전체 재시작
 //   pm2 stop all && pm2 delete all          # 전체 종료
 
-const PROJECT_ROOT = "/Volumes/BIGNO-FC2T/Projects/intelli-claw";
+// Load .env.local (no external deps)
+const fs = require("fs");
+const path = require("path");
+const envPath = path.join(__dirname, ".env.local");
+if (fs.existsSync(envPath)) {
+  for (const line of fs.readFileSync(envPath, "utf8").split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const eq = trimmed.indexOf("=");
+    if (eq < 0) continue;
+    const key = trimmed.slice(0, eq).trim();
+    const val = trimmed.slice(eq + 1).trim();
+    if (!process.env[key]) process.env[key] = val;
+  }
+}
+
+const PROJECT_ROOT = process.env.PROJECT_ROOT || __dirname;
 const MOBILE_ROOT = `${PROJECT_ROOT}/apps/mobile`;
 
-const TAILSCALE_FQDN = "bignos-mac-studio.tail7d5991.ts.net";
+const TAILSCALE_FQDN = process.env.TAILSCALE_FQDN || "localhost";
 
 module.exports = {
   apps: [
@@ -81,7 +97,7 @@ module.exports = {
       interpreter: "none",
       env: {
         GATEWAY_URL: `wss://${TAILSCALE_FQDN}`,
-        GATEWAY_TOKEN: "REDACTED_TOKEN",
+        GATEWAY_TOKEN: process.env.VITE_GATEWAY_TOKEN || "",
         GATEWAY_HTTP_URL: `https://${TAILSCALE_FQDN}`,
       },
       autorestart: true,
