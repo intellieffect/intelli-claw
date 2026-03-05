@@ -403,15 +403,17 @@ export class GatewayClient {
         }
       }
     };
-    if (typeof window !== "undefined") {
+    const hasWindowEvents = typeof window !== "undefined" && typeof window.addEventListener === "function";
+    const hasDocumentEvents = typeof document !== "undefined" && typeof document.addEventListener === "function";
+    if (hasWindowEvents) {
       window.addEventListener("online", handleOnline);
     }
-    if (typeof document !== "undefined") {
+    if (hasDocumentEvents) {
       document.addEventListener("visibilitychange", handleVisibility);
     }
     this.networkCleanup = () => {
-      if (typeof window !== "undefined") window.removeEventListener("online", handleOnline);
-      if (typeof document !== "undefined") document.removeEventListener("visibilitychange", handleVisibility);
+      if (hasWindowEvents) window.removeEventListener("online", handleOnline);
+      if (hasDocumentEvents) document.removeEventListener("visibilitychange", handleVisibility);
     };
   }
 
@@ -448,11 +450,11 @@ export class GatewayClient {
 
   private addBrowserListeners(): void {
     if (this.browserListenersAdded) return;
-    if (typeof window !== "undefined") {
+    if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
       window.addEventListener("online", this.handleOnline);
       window.addEventListener("offline", () => {}); // reserved for future offline handling
     }
-    if (typeof document !== "undefined") {
+    if (typeof document !== "undefined" && typeof document.addEventListener === "function") {
       document.addEventListener("visibilitychange", this.handleVisibilityChange);
     }
     this.browserListenersAdded = true;
@@ -460,10 +462,10 @@ export class GatewayClient {
 
   private removeBrowserListeners(): void {
     if (!this.browserListenersAdded) return;
-    if (typeof window !== "undefined") {
+    if (typeof window !== "undefined" && typeof window.removeEventListener === "function") {
       window.removeEventListener("online", this.handleOnline);
     }
-    if (typeof document !== "undefined") {
+    if (typeof document !== "undefined" && typeof document.removeEventListener === "function") {
       document.removeEventListener("visibilitychange", this.handleVisibilityChange);
     }
     this.browserListenersAdded = false;
