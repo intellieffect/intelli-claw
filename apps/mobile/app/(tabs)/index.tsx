@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, useEffect } from "react";
+import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import {
   View,
   Text,
@@ -44,8 +44,30 @@ export default function ChatScreen() {
   const [agentSelectorOpen, setAgentSelectorOpen] = useState(false);
   const [skillPickerOpen, setSkillPickerOpen] = useState(false);
 
+  // ─── Sort agents by most recent session activity ───
+  const sortedAgents = useMemo(() => {
+    if (agents.length === 0 || sessions.length === 0) return agents;
+
+    // Build a map: agentId → latest updatedAt timestamp
+    const latestByAgent = new Map<string, number>();
+    for (const session of sessions) {
+      const parsed = parseSessionKey(session.key);
+      const aid = parsed.agentId;
+      if (!aid || aid === "unknown") continue;
+      const ts = session.updatedAt ? new Date(session.updatedAt).getTime() : 0;
+      const prev = latestByAgent.get(aid) ?? 0;
+      if (ts > prev) latestByAgent.set(aid, ts);
+    }
+
+    return [...agents].sort((a, b) => {
+      const ta = latestByAgent.get(a.id) ?? 0;
+      const tb = latestByAgent.get(b.id) ?? 0;
+      return tb - ta; // descending — most recent first
+    });
+  }, [agents, sessions]);
+
   // ─── Derived state ───
-  const activeAgent = agents[activePageIndex];
+  const activeAgent = sortedAgents[activePageIndex];
   const activeAgentId = activeAgent?.id;
 
   const getSessionKeyForAgent = useCallback(
@@ -80,20 +102,63 @@ export default function ChatScreen() {
           : "#EF4444";
   const isConnected = state === "connected";
 
+  // ─── Infinite swipe: clone first/last pages ───
+  const n = sortedAgents.length;
+  const useInfinite = n >= 2;
+
+  // Header height for KeyboardAvoidingView offset
+  // AppBar (h-16 = 64) + AgentTabBar (44 when ≥2 agents) + safe area top
+  const headerHeight = insets.top + 64 + (useInfinite ? 44 : 0);
+
+  // Pages: [clone-last, ...real, clone-first]  (offsets by +1)
+  const pagerPages = useMemo(() => {
+    if (!useInfinite) return sortedAgents;
+    return [sortedAgents[n - 1], ...sortedAgents, sortedAgents[0]];
+  }, [sortedAgents, n, useInfinite]);
+
+  // Real index → pager index (offset by 1 when infinite)
+  const toPagerIndex = useCallback(
+    (realIndex: number) => (useInfinite ? realIndex + 1 : realIndex),
+    [useInfinite],
+  );
+
   // ─── Tab / Page navigation ───
   const goToPage = useCallback(
     (index: number) => {
-      pagerRef.current?.setPage(index);
+      const pagerIdx = toPagerIndex(index);
+      pagerRef.current?.setPage(pagerIdx);
       setActivePageIndex(index);
     },
-    [],
+    [toPagerIndex],
   );
 
   const handlePageSelected = useCallback(
     (e: { nativeEvent: { position: number } }) => {
-      setActivePageIndex(e.nativeEvent.position);
+      const pos = e.nativeEvent.position;
+      if (!useInfinite) {
+        setActivePageIndex(pos);
+        return;
+      }
+      // Landed on clone-last (pos 0) → jump to real last
+      if (pos === 0) {
+        setActivePageIndex(n - 1);
+        requestAnimationFrame(() => {
+          pagerRef.current?.setPageWithoutAnimation(n);
+        });
+        return;
+      }
+      // Landed on clone-first (pos n+1) → jump to real first
+      if (pos === n + 1) {
+        setActivePageIndex(0);
+        requestAnimationFrame(() => {
+          pagerRef.current?.setPageWithoutAnimation(1);
+        });
+        return;
+      }
+      // Normal page: pager pos → real index (pos - 1)
+      setActivePageIndex(pos - 1);
     },
-    [],
+    [useInfinite, n],
   );
 
   // ─── SessionSwitcher handler ───
@@ -123,13 +188,13 @@ export default function ChatScreen() {
         });
 
         // If the selected session belongs to a different agent, navigate to its page
-        const targetIndex = agents.findIndex((a) => a.id === targetAgentId);
+        const targetIndex = sortedAgents.findIndex((a) => a.id === targetAgentId);
         if (targetIndex >= 0 && targetIndex !== activePageIndex) {
           goToPage(targetIndex);
         }
       }
     },
-    [activeAgentId, agents, activePageIndex, goToPage],
+    [activeAgentId, sortedAgents, activePageIndex, goToPage],
   );
 
   // ─── Fallback: no agents ───
@@ -214,28 +279,39 @@ export default function ChatScreen() {
 
         {/* Agent tab bar (hidden when only 1 agent) */}
         <AgentTabBar
-          agents={agents}
+          agents={sortedAgents}
           activeIndex={activePageIndex}
           onTabPress={goToPage}
         />
       </View>
 
-      {/* PagerView — native swipe between agent chats */}
+      {/* PagerView — native swipe between agent chats (infinite) */}
       <PagerView
         ref={pagerRef}
         style={s.flex1}
-        initialPage={0}
+        initialPage={useInfinite ? 1 : 0}
         onPageSelected={handlePageSelected}
       >
-        {agents.map((agent, index) => (
-          <View key={agent.id} style={s.flex1}>
-            <AgentChatPage
-              sessionKey={getSessionKeyForAgent(agent.id)}
-              agentId={agent.id}
-              isActive={index === activePageIndex}
-            />
-          </View>
-        ))}
+        {pagerPages.map((agent, pagerIdx) => {
+          const isClone = useInfinite && (pagerIdx === 0 || pagerIdx === n + 1);
+          const realIndex = useInfinite
+            ? (pagerIdx === 0 ? n - 1 : pagerIdx === n + 1 ? 0 : pagerIdx - 1)
+            : pagerIdx;
+          return (
+            <View key={`${agent.id}-${pagerIdx}`} style={s.flex1}>
+              {isClone ? (
+                <View style={s.flex1} />
+              ) : (
+                <AgentChatPage
+                  sessionKey={getSessionKeyForAgent(agent.id)}
+                  agentId={agent.id}
+                  isActive={realIndex === activePageIndex}
+                  headerHeight={headerHeight}
+                />
+              )}
+            </View>
+          );
+        })}
       </PagerView>
 
       {/* ─── Modals ─── */}
@@ -259,7 +335,7 @@ export default function ChatScreen() {
         selectedId={activeAgentId}
         onSelect={(id) => {
           if (!id) return;
-          const idx = agents.findIndex((a) => a.id === id);
+          const idx = sortedAgents.findIndex((a) => a.id === id);
           if (idx >= 0) {
             goToPage(idx);
           }
