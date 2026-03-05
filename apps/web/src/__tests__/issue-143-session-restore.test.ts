@@ -42,7 +42,6 @@ describe("Issue #143: session restore key consistency", () => {
 
       const result = resolveInitialSessionState({
         windowPrefix: "",
-        panelId: "main",
         defaultAgentId: DEFAULT_AGENT,
         getItem: storage,
       });
@@ -61,7 +60,6 @@ describe("Issue #143: session restore key consistency", () => {
 
       const result = resolveInitialSessionState({
         windowPrefix: "w1:",
-        panelId: "main",
         defaultAgentId: DEFAULT_AGENT,
         getItem: storage,
       });
@@ -79,7 +77,6 @@ describe("Issue #143: session restore key consistency", () => {
 
       const result = resolveInitialSessionState({
         windowPrefix: "",
-        panelId: "main",
         defaultAgentId: DEFAULT_AGENT,
         getItem: storage,
       });
@@ -94,7 +91,6 @@ describe("Issue #143: session restore key consistency", () => {
 
       const result = resolveInitialSessionState({
         windowPrefix: "",
-        panelId: "main",
         defaultAgentId: DEFAULT_AGENT,
         getItem: storage,
       });
@@ -109,7 +105,6 @@ describe("Issue #143: session restore key consistency", () => {
 
       const result = resolveInitialSessionState({
         windowPrefix: "",
-        panelId: "main",
         defaultAgentId: DEFAULT_AGENT,
         getItem: storage,
       });
@@ -128,7 +123,6 @@ describe("Issue #143: session restore key consistency", () => {
 
       const result = resolveInitialSessionState({
         windowPrefix: "w1:",
-        panelId: "main",
         defaultAgentId: DEFAULT_AGENT,
         getItem: storage,
       });
@@ -143,7 +137,6 @@ describe("Issue #143: session restore key consistency", () => {
 
       const result = resolveInitialSessionState({
         windowPrefix: "",
-        panelId: "main",
         defaultAgentId: DEFAULT_AGENT,
         getItem: storage,
       });
@@ -157,7 +150,6 @@ describe("Issue #143: session restore key consistency", () => {
     it("should produce keys matching chat-panel storage prefix (no panel: segment)", () => {
       const keys = buildSessionContinuityKeys({
         windowPrefix: "",
-        panelId: "main",
         agentId: "mybot",
       });
 
@@ -169,7 +161,6 @@ describe("Issue #143: session restore key consistency", () => {
     it("should produce keys with window prefix matching chat-panel", () => {
       const keys = buildSessionContinuityKeys({
         windowPrefix: "w2:",
-        panelId: "main",
         agentId: "mybot",
       });
 

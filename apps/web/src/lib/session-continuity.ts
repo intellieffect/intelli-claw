@@ -8,7 +8,6 @@ export interface SessionContinuityKeys {
 
 export function buildSessionContinuityKeys(params: {
   windowPrefix: string;
-  panelId: string;
   agentId: string;
 }): SessionContinuityKeys {
   const { windowPrefix, agentId } = params;
@@ -26,18 +25,17 @@ export function buildSessionContinuityKeys(params: {
 
 export function resolveInitialSessionState(params: {
   windowPrefix: string;
-  panelId: string;
   defaultAgentId: string;
   getItem: (key: string) => string | null;
 }): { agentId: string; sessionKey?: string } {
-  const { windowPrefix, panelId, defaultAgentId, getItem } = params;
+  const { windowPrefix, defaultAgentId, getItem } = params;
 
   // Post SplitView removal: scoped prefix matches chat-panel's storagePrefix
   const scopedPrefix = `awf:${windowPrefix}`;
   const scopedAgent = getItem(`${scopedPrefix}agentId`);
   const agentId = scopedAgent || defaultAgentId;
 
-  const keys = buildSessionContinuityKeys({ windowPrefix, panelId, agentId });
+  const keys = buildSessionContinuityKeys({ windowPrefix, agentId });
 
   const sessionKey =
     getItem(keys.scopedSessionKey) ||

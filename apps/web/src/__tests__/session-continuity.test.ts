@@ -9,7 +9,6 @@ describe("session continuity (#49, #143)", () => {
   it("builds scoped + fallback keys (post SplitView removal)", () => {
     const keys = buildSessionContinuityKeys({
       windowPrefix: "w2:",
-      panelId: "main",
       agentId: "iclaw",
     });
 
@@ -30,7 +29,6 @@ describe("session continuity (#49, #143)", () => {
 
     const state = resolveInitialSessionState({
       windowPrefix: "w1:",
-      panelId: "main",
       defaultAgentId: "iclaw",
       getItem: (k) => store.get(k) ?? null,
     });
@@ -47,7 +45,6 @@ describe("session continuity (#49, #143)", () => {
 
     const state = resolveInitialSessionState({
       windowPrefix: "w1:",
-      panelId: "main",
       defaultAgentId: "default",
       getItem: (k) => store.get(k) ?? null,
     });
@@ -63,7 +60,6 @@ describe("session continuity (#49, #143)", () => {
 
     const state = resolveInitialSessionState({
       windowPrefix: "w9:",
-      panelId: "main",
       defaultAgentId: "iclaw",
       getItem: (k) => store.get(k) ?? null,
     });
