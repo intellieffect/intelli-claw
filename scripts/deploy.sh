@@ -19,8 +19,8 @@ BUILD_APP="$ROOT_DIR/apps/desktop/release/mac-arm64/${APP_NAME}.app"
 INSTALL_DIR="$HOME/Applications"
 INSTALL_PATH="$INSTALL_DIR/iclaw.app"
 
-REMOTE_HOST="brucechoes-macbook-pro"
-REMOTE_INSTALL_DIR="~/Applications"
+REMOTE_HOST="${ICLAW_REMOTE_HOST:-brucechoes-macbook-pro}"
+REMOTE_INSTALL_DIR="${ICLAW_REMOTE_INSTALL_DIR:-~/Applications}"
 REMOTE_INSTALL_PATH="$REMOTE_INSTALL_DIR/iclaw.app"
 
 TARGET="${1:-all}"
