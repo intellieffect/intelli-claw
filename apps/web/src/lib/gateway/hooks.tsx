@@ -1776,24 +1776,11 @@ export function useChat(sessionKey?: string) {
         newSessionId: event.newSessionId,
       }]).catch(() => {});
 
-      // Auto context bridge: 500ms 후 자동 전송 (새 sessionId 안착 대기)
-      if (contextBridgeSentRef.current === event.newSessionId) return; // 중복 방지
-      setTimeout(async () => {
-        try {
-          // IndexedDB에 요약 저장
-          const summary = buildContextSummaryRef.current?.();
-          if (summary) {
-            markSessionEnded(event.key, event.oldSessionId, { summary }).catch(() => {});
-          }
-          // 자동 전송
-          await sendContextBridgeRef.current?.();
-          contextBridgeSentRef.current = event.newSessionId;
-          console.log("[AWF] Auto context bridge sent successfully");
-        } catch (err) {
-          console.error("[AWF] Auto context bridge failed:", err);
-          contextBridgeSentRef.current = null; // 실패 시 리셋 → 수동 재시도 가능
-        }
-      }, 500);
+      // IndexedDB에 이전 세션 요약만 저장 (auto bridge 제거 — Gateway의 session reset prompt와 중복 방지)
+      const summary = buildContextSummaryRef.current?.();
+      if (summary) {
+        markSessionEnded(event.key, event.oldSessionId, { summary }).catch(() => {});
+      }
     });
     return unsub;
   }, []);

@@ -127,7 +127,7 @@ export function MessageList({
   onCancelQueued?: (id: string) => void;
   agentId?: string;
   agentStatus?: AgentStatus;
-  onLoadPreviousContext?: () => void;
+  onLoadPreviousContext?: () => void | Promise<void>;
   onOpenTopicHistory?: () => void;
   onReply?: (msg: DisplayMessage) => void;
 }) {
@@ -545,9 +545,25 @@ function SessionBoundary({
   onLoadContext,
   onViewHistory,
 }: {
-  onLoadContext?: () => void;
+  onLoadContext?: () => void | Promise<void>;
   onViewHistory?: () => void;
 }) {
+  const [bridgeSent, setBridgeSent] = useState(false);
+  const [sending, setSending] = useState(false);
+
+  const handleLoadContext = useCallback(async () => {
+    if (bridgeSent || sending || !onLoadContext) return;
+    setSending(true);
+    try {
+      await onLoadContext();
+      setBridgeSent(true);
+    } catch {
+      // 실패 시 재시도 가능하도록 상태 유지
+    } finally {
+      setSending(false);
+    }
+  }, [onLoadContext, bridgeSent, sending]);
+
   return (
     <div className="flex items-center gap-3 py-3">
       <div className="flex-1 border-t border-dashed border-amber-600/40" />
@@ -559,11 +575,32 @@ function SessionBoundary({
         <div className="flex items-center gap-2">
           {onLoadContext && (
             <button
-              onClick={onLoadContext}
-              className="flex items-center gap-1 rounded-md border border-amber-600/30 bg-amber-900/20 px-2.5 py-1 text-[10px] text-amber-400 transition hover:bg-amber-900/40 hover:border-amber-500/50"
+              onClick={handleLoadContext}
+              disabled={bridgeSent || sending}
+              className={`flex items-center gap-1 rounded-md border px-2.5 py-1 text-[10px] transition ${
+                bridgeSent
+                  ? "border-emerald-600/30 bg-emerald-900/20 text-emerald-400 cursor-default"
+                  : sending
+                    ? "border-amber-600/30 bg-amber-900/20 text-amber-400/60 cursor-wait"
+                    : "border-amber-600/30 bg-amber-900/20 text-amber-400 hover:bg-amber-900/40 hover:border-amber-500/50"
+              }`}
             >
-              <RefreshCw size={10} />
-              이전 맥락 불러오기
+              {bridgeSent ? (
+                <>
+                  <Check size={10} />
+                  맥락 전송됨
+                </>
+              ) : sending ? (
+                <>
+                  <Loader2 size={10} className="animate-spin" />
+                  전송 중...
+                </>
+              ) : (
+                <>
+                  <RefreshCw size={10} />
+                  이전 맥락 불러오기
+                </>
+              )}
             </button>
           )}
           {onViewHistory && (
