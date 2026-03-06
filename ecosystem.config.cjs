@@ -27,6 +27,7 @@ const PROJECT_ROOT = process.env.PROJECT_ROOT || __dirname;
 const MOBILE_ROOT = `${PROJECT_ROOT}/apps/mobile`;
 
 const TAILSCALE_FQDN = process.env.TAILSCALE_FQDN || "localhost";
+const ALLOWED_HOSTS = process.env.ALLOWED_HOSTS || TAILSCALE_FQDN;
 
 module.exports = {
   apps: [
@@ -51,7 +52,7 @@ module.exports = {
       interpreter: "none",
       env: {
         API_PORT: "4001",
-        ALLOWED_HOSTS: `bignos-mac-studio,${TAILSCALE_FQDN}`,
+        ALLOWED_HOSTS,
       },
       autorestart: true,
       max_restarts: 10,
@@ -81,7 +82,7 @@ module.exports = {
       interpreter: "none",
       env: {
         API_PORT: "4003",
-        ALLOWED_HOSTS: `bignos-mac-studio,${TAILSCALE_FQDN}`,
+        ALLOWED_HOSTS,
       },
       autorestart: true,
       max_restarts: 10,
