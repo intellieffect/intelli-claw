@@ -25,4 +25,8 @@ export const electronPlatform: PlatformAPI = {
     // Showcase files served via custom protocol
     return `intelli-claw://showcase/${encodeURIComponent(relativePath)}`;
   },
+
+  async mediaUpload(data, mimeType, fileName) {
+    return window.electronAPI.platform.mediaUpload(data, mimeType, fileName);
+  },
 };

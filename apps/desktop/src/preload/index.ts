@@ -12,6 +12,8 @@ const electronAPI = {
     mediaServe: (filePath: string) => ipcRenderer.invoke("media:serve", filePath),
     mediaRange: (filePath: string, start: number, end: number) =>
       ipcRenderer.invoke("media:range", filePath, start, end),
+    mediaUpload: (data: string, mimeType: string, fileName?: string) =>
+      ipcRenderer.invoke("media:upload", data, mimeType, fileName) as Promise<{ path: string }>,
     showcaseList: () => ipcRenderer.invoke("showcase:list"),
     showcaseServe: (relPath: string) => ipcRenderer.invoke("showcase:serve", relPath),
   },

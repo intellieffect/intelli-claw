@@ -108,13 +108,23 @@ describe("POST /api/media/upload", () => {
     expect(getRes.contentType).toContain("image/jpeg");
   });
 
-  it("rejects non-image mime types", async () => {
+  it("rejects disallowed mime types (legacy test — updated for #157)", async () => {
     const { status, data } = await postJson(`${baseUrl}/api/media/upload`, {
       data: btoa("hello world"),
-      mimeType: "application/pdf",
+      mimeType: "application/x-executable",
     });
     expect(status).toBe(400);
-    expect(data.error).toContain("image");
+    expect(data.error).toBeDefined();
+  });
+
+  it("accepts application/pdf uploads (#157)", async () => {
+    const { status, data } = await postJson(`${baseUrl}/api/media/upload`, {
+      data: btoa("%PDF-1.4 fake"),
+      mimeType: "application/pdf",
+      fileName: "doc.pdf",
+    });
+    expect(status).toBe(200);
+    expect((data.path as string)).toMatch(/\.pdf$/);
   });
 
   it("rejects missing data", async () => {
@@ -161,6 +171,118 @@ describe("POST /api/media/upload", () => {
     });
     expect(status).toBe(200);
     expect((data.path as string)).toMatch(/\.webp$/);
+  });
+
+  // ---- #157: Text file upload support ----
+
+  it("accepts text/csv uploads", async () => {
+    const csvContent = Buffer.from("name,age\nAlice,30\nBob,25").toString("base64");
+    const { status, data } = await postJson(`${baseUrl}/api/media/upload`, {
+      data: csvContent,
+      mimeType: "text/csv",
+      fileName: "data.csv",
+    });
+    expect(status).toBe(200);
+    expect(data.path).toBeDefined();
+    expect((data.path as string)).toMatch(/\.csv$/);
+    // Verify file content is correct
+    const saved = await readFile(data.path as string, "utf-8");
+    expect(saved).toBe("name,age\nAlice,30\nBob,25");
+  });
+
+  it("accepts text/plain uploads", async () => {
+    const txtContent = Buffer.from("Hello, world!").toString("base64");
+    const { status, data } = await postJson(`${baseUrl}/api/media/upload`, {
+      data: txtContent,
+      mimeType: "text/plain",
+      fileName: "notes.txt",
+    });
+    expect(status).toBe(200);
+    expect((data.path as string)).toMatch(/\.txt$/);
+  });
+
+  it("accepts application/json uploads", async () => {
+    const jsonContent = Buffer.from(JSON.stringify({ key: "value" })).toString("base64");
+    const { status, data } = await postJson(`${baseUrl}/api/media/upload`, {
+      data: jsonContent,
+      mimeType: "application/json",
+      fileName: "config.json",
+    });
+    expect(status).toBe(200);
+    expect((data.path as string)).toMatch(/\.json$/);
+  });
+
+  it("accepts text/markdown uploads", async () => {
+    const mdContent = Buffer.from("# Title\n\nParagraph").toString("base64");
+    const { status, data } = await postJson(`${baseUrl}/api/media/upload`, {
+      data: mdContent,
+      mimeType: "text/markdown",
+      fileName: "readme.md",
+    });
+    expect(status).toBe(200);
+    expect((data.path as string)).toMatch(/\.md$/);
+  });
+
+  it("accepts text/xml uploads", async () => {
+    const xmlContent = Buffer.from("<root><item>1</item></root>").toString("base64");
+    const { status, data } = await postJson(`${baseUrl}/api/media/upload`, {
+      data: xmlContent,
+      mimeType: "text/xml",
+      fileName: "data.xml",
+    });
+    expect(status).toBe(200);
+    expect((data.path as string)).toMatch(/\.xml$/);
+  });
+
+  it("accepts text/yaml uploads", async () => {
+    const yamlContent = Buffer.from("key: value\nlist:\n  - a\n  - b").toString("base64");
+    const { status, data } = await postJson(`${baseUrl}/api/media/upload`, {
+      data: yamlContent,
+      mimeType: "text/yaml",
+      fileName: "config.yaml",
+    });
+    expect(status).toBe(200);
+    expect((data.path as string)).toMatch(/\.yaml$/);
+  });
+
+  it("accepts text/tab-separated-values uploads", async () => {
+    const tsvContent = Buffer.from("name\tage\nAlice\t30").toString("base64");
+    const { status, data } = await postJson(`${baseUrl}/api/media/upload`, {
+      data: tsvContent,
+      mimeType: "text/tab-separated-values",
+      fileName: "data.tsv",
+    });
+    expect(status).toBe(200);
+    expect((data.path as string)).toMatch(/\.tsv$/);
+  });
+
+  it("rejects disallowed mime types (e.g. application/x-executable)", async () => {
+    const { status, data } = await postJson(`${baseUrl}/api/media/upload`, {
+      data: Buffer.from("MZ").toString("base64"),
+      mimeType: "application/x-executable",
+    });
+    expect(status).toBe(400);
+    expect(data.error).toBeDefined();
+  });
+
+  it("serves uploaded text file via GET /api/media", async () => {
+    const csvContent = Buffer.from("col1,col2\n1,2").toString("base64");
+    const { data } = await postJson(`${baseUrl}/api/media/upload`, {
+      data: csvContent,
+      mimeType: "text/csv",
+      fileName: "serve-test.csv",
+    });
+    const filePath = data.path as string;
+
+    const getRes = await new Promise<{ status: number; body: string }>((resolve, reject) => {
+      http.get(`${baseUrl}/api/media?path=${encodeURIComponent(filePath)}`, (res) => {
+        let body = "";
+        res.on("data", (c) => (body += c));
+        res.on("end", () => resolve({ status: res.statusCode!, body }));
+      }).on("error", reject);
+    });
+    expect(getRes.status).toBe(200);
+    expect(getRes.body).toBe("col1,col2\n1,2");
   });
 
   it("handles CORS preflight for upload endpoint", async () => {

@@ -98,6 +98,22 @@ export async function readTextContent(file: File): Promise<string | undefined> {
   return undefined;
 }
 
+// ---- #157: Text file support ----
+
+/** Extensions recognised as text files whose content can be inlined for agents. */
+const TEXT_EXTS = new Set([
+  "csv", "txt", "json", "md", "mdx", "log", "xml", "yaml", "yml", "tsv",
+]);
+
+/** Maximum characters to inline into the message (50 KB). Larger files are truncated. */
+export const TEXT_INLINE_LIMIT = 50_000;
+
+/** Check whether a file name represents a text file eligible for inline extraction. */
+export function isTextFile(name: string): boolean {
+  const ext = name.split(".").pop()?.toLowerCase();
+  return !!ext && TEXT_EXTS.has(ext);
+}
+
 // ---- Attachment preview bar ----
 
 export function AttachmentPreview({
@@ -424,6 +440,27 @@ export async function attachmentToPayload(
     const target = Math.min(MAX_BASE64_BYTES, IMAGE_COMPRESS_TARGET);
     const { base64, mimeType } = await compressImage(att.file, target);
     return { payloads: [{ fileName: att.file.name, mimeType, content: base64 }] };
+  }
+
+  // --- #157: Text files — extract content inline + keep payload for upload ---
+  if (isTextFile(att.file.name)) {
+    const payload = await rawPayload(att);
+    let prependText: string | undefined;
+
+    try {
+      const rawText = await att.file.text();
+      if (rawText.length > 0) {
+        const truncated = rawText.length > TEXT_INLINE_LIMIT
+          ? rawText.slice(0, TEXT_INLINE_LIMIT) + "\n…truncated"
+          : rawText;
+        const pathHint = att.filePath ? ` ${att.filePath}` : "";
+        prependText = `📎 [${att.file.name}]${pathHint}\n\`\`\`\n${truncated}\n\`\`\``;
+      }
+    } catch {
+      // If text extraction fails, fall through with just the payload
+    }
+
+    return { prependText, payloads: [payload] };
   }
 
   // --- Other files: as-is ---
