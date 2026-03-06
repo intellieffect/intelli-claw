@@ -555,7 +555,11 @@ export function useChat(sessionKey?: string) {
     })()
   );
 
-  const STREAMING_TIMEOUT_MS = 120_000;
+  // Tiered streaming timeouts (#154):
+  // - Thinking phase (no content yet): 45s — stale connections are detected faster
+  // - Writing phase (content streaming): 90s — allows long responses to complete
+  const THINKING_TIMEOUT_MS = 45_000;
+  const WRITING_TIMEOUT_MS = 90_000;
   const queueStorageKey = sessionKey ? `awf:queue:${sessionKey}` : null;
   const pendingStreamStorageKey = sessionKey ? `${PENDING_STREAM_SESSION_KEY_PREFIX}${sessionKey}` : null;
 
@@ -592,10 +596,12 @@ export function useChat(sessionKey?: string) {
     }
   }, []);
 
-  const startStreamingTimeout = useCallback(() => {
+  const startStreamingTimeout = useCallback((phase?: "thinking" | "writing") => {
     clearStreamingTimeout();
+    // Use shorter timeout for thinking phase, longer for writing (#154)
+    const timeoutMs = phase === "writing" ? WRITING_TIMEOUT_MS : THINKING_TIMEOUT_MS;
     streamingTimeoutRef.current = setTimeout(() => {
-      console.warn("[AWF] streaming timeout — force reset");
+      console.warn(`[AWF] streaming timeout (${phase || "thinking"}, ${timeoutMs}ms) — force reset`);
       if (streamBuf.current) {
         const id = streamBuf.current.id;
         setMessages((prev) =>
@@ -607,7 +613,7 @@ export function useChat(sessionKey?: string) {
       clearPersistedPendingStream();
       setStreaming(false);
       setAgentStatusDebug({ phase: "idle" });
-    }, STREAMING_TIMEOUT_MS);
+    }, timeoutMs);
   }, [clearStreamingTimeout, clearPersistedPendingStream]);
 
   useEffect(() => {
@@ -703,7 +709,7 @@ export function useChat(sessionKey?: string) {
         });
       }
       restoredFromSnapshotRef.current = true;
-      startStreamingTimeout();
+      startStreamingTimeout(parsed.content ? "writing" : "thinking");
       console.log("[AWF] Restored pending stream from sessionStorage", {
         runId: parsed.runId?.slice(0, 8),
         streamId: parsed.streamId,
@@ -1081,9 +1087,11 @@ export function useChat(sessionKey?: string) {
   const flushDeferredHistoryReload = useCallback(() => {
     if (!pendingHistoryReloadRef.current) return;
     pendingHistoryReloadRef.current = false;
-    if (Date.now() - lastLoadAtRef.current >= 800) {
-      loadHistory();
-    }
+    // Always reload after a run completes (#154).
+    // The previous 800ms throttle could skip the reload when loadHistory was
+    // called recently (e.g., during reconnect), leaving the final response
+    // invisible until the next user interaction.
+    loadHistory();
   }, [loadHistory]);
 
   useEffect(() => { loadHistory(); }, [loadHistory]);
@@ -1305,12 +1313,22 @@ export function useChat(sessionKey?: string) {
 
       // Strict session isolation (#5536-v2):
       // 1) If event has a sessionKey, it MUST match our bound session key
-      // 2) If event has NO sessionKey, reject it when we have a session
-      // 3) Double-check against both the closure value AND the ref to catch
-      //    any edge case where one drifts from the other
+      // 2) If event has NO sessionKey, reject it when we have a session —
+      //    UNLESS it's a lifecycle event whose runId matches our active run (#154).
+      //    Gateway may omit sessionKey on lifecycle.end while including it on
+      //    lifecycle.start, causing the end event to be silently dropped.
       if (evSessionKey && evSessionKey !== boundSessionKey) return;
       if (evSessionKey && evSessionKey !== sessionKeyRef.current) return;
-      if (!evSessionKey && (boundSessionKey || sessionKeyRef.current)) return;
+      if (!evSessionKey && (boundSessionKey || sessionKeyRef.current)) {
+        // Allow lifecycle events through if they carry a runId matching our active run
+        const eventRunId = (raw.runId ?? data?.runId) as string | undefined;
+        const isMatchingLifecycle =
+          stream === "lifecycle" &&
+          eventRunId &&
+          runIdRef.current &&
+          eventRunId === runIdRef.current;
+        if (!isMatchingLifecycle) return;
+      }
 
 
       // Ignore events after abort until next lifecycle start
@@ -1321,7 +1339,7 @@ export function useChat(sessionKey?: string) {
         // Cancel reconnect safety timer — events are flowing again
         if (reconnectSafetyRef.current) { clearTimeout(reconnectSafetyRef.current); reconnectSafetyRef.current = null; }
         setStreaming(true);
-        startStreamingTimeout();
+        startStreamingTimeout("writing");
         setAgentStatusDebug({ phase: "writing" });
         if (!streamBuf.current) {
           streamBuf.current = { id: `stream-${Date.now()}-${++streamIdCounter.current}`, content: "", toolCalls: new Map() };
@@ -1466,7 +1484,7 @@ export function useChat(sessionKey?: string) {
         if (reconnectSafetyRef.current) { clearTimeout(reconnectSafetyRef.current); reconnectSafetyRef.current = null; }
         setStreaming(true);
         abortedRef.current = false;
-        startStreamingTimeout();
+        startStreamingTimeout("thinking");
         runIdRef.current = resolveRunId(raw, data);
         const runKey = finalEventKey(runIdRef.current);
         if (runKey) {
@@ -1547,7 +1565,7 @@ export function useChat(sessionKey?: string) {
       if (!client || state !== "connected") return;
       setMessages((prev) => prev.map((m) => (m.id === msgId ? { ...m, queued: false } : m)));
       setStreaming(true);
-      startStreamingTimeout();
+      startStreamingTimeout("thinking");
       setAgentStatusDebug({ phase: "thinking" });
 
       const idempotencyKey = `awf-${Date.now()}-${Math.random().toString(36).slice(2)}`;
