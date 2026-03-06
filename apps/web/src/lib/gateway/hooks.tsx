@@ -7,6 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import { getMimeType } from "@/lib/mime-types";
+import { windowStoragePrefix } from "@/lib/utils";
 import { validateMediaPath, sanitizeAttachmentPath } from "@/lib/platform/media-path";
 import { platform } from "@/lib/platform";
 import type {
@@ -580,7 +581,8 @@ export function useChat(sessionKey?: string) {
   // - Writing phase (content streaming): 90s — allows long responses to complete
   const THINKING_TIMEOUT_MS = 45_000;
   const WRITING_TIMEOUT_MS = 90_000;
-  const queueStorageKey = sessionKey ? `awf:queue:${sessionKey}` : null;
+  // #142: Scope queue key per browser tab to prevent cross-tab queue collision
+  const queueStorageKey = sessionKey ? `awf:${windowStoragePrefix()}queue:${sessionKey}` : null;
   const pendingStreamStorageKey = sessionKey ? `${PENDING_STREAM_SESSION_KEY_PREFIX}${sessionKey}` : null;
 
   const clearPersistedPendingStream = useCallback(() => {

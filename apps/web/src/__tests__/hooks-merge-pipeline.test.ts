@@ -273,7 +273,9 @@ describe("Merge pipeline", () => {
   });
 
   it("queue dedup: stale queue items matching history are removed from localStorage", async () => {
-    const queueKey = "awf:queue:test:agent";
+    // #142: queueStorageKey now includes windowStoragePrefix()
+    const { windowStoragePrefix } = await import("@/lib/utils");
+    const queueKey = `awf:${windowStoragePrefix()}queue:test:agent`;
     mockLocal.setItem(
       queueKey,
       JSON.stringify([

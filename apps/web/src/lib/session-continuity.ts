@@ -33,7 +33,9 @@ export function resolveInitialSessionState(params: {
   // Post SplitView removal: scoped prefix matches chat-panel's storagePrefix
   const scopedPrefix = `awf:${windowPrefix}`;
   const scopedAgent = getItem(`${scopedPrefix}agentId`);
-  const agentId = scopedAgent || defaultAgentId;
+  // #142: Fall back to legacy no-prefix key for users upgrading from single-tab era
+  const legacyAgent = windowPrefix ? getItem("awf:agentId") : null;
+  const agentId = scopedAgent || legacyAgent || defaultAgentId;
 
   const keys = buildSessionContinuityKeys({ windowPrefix, agentId });
 
