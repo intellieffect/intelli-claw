@@ -1088,9 +1088,14 @@ export function useChat(sessionKey?: string) {
 
   useEffect(() => { loadHistory(); }, [loadHistory]);
 
-  // Backfill previous session messages from API server logs
+  // Backfill previous session messages from API server logs.
+  // Skip backfill for thread sessions (Cmd+T new topics) — they start fresh
+  // and should never inherit messages from other sessions (#149).
   useEffect(() => {
     if (!sessionKey || state !== "connected") return;
+    // Thread sessions (agent:{id}:main:thread:{threadId}) are isolated new chats;
+    // backfilling agent-level history into them causes #149.
+    if (sessionKey.includes(":thread:")) return;
     const agentId = sessionKey.split(":")[1] || sessionKey;
     const apiBase = import.meta.env.VITE_API_URL || "";  // Use same origin (Vite proxies /api to :4001)
 
