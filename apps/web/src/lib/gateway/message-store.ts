@@ -21,6 +21,8 @@ export interface StoredMessage {
   attachments?: unknown[];
   oldSessionId?: string;
   newSessionId?: string;
+  /** #156: Why the session was reset */
+  resetReason?: string;
 }
 
 // --- IndexedDB helpers ---

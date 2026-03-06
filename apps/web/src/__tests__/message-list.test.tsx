@@ -305,7 +305,8 @@ describe("MessageList — display filtering", () => {
       makeAssistantMessage("After"),
     ];
     render(<MessageList messages={messages} loading={false} streaming={false} />);
-    expect(screen.getByText("세션 갱신됨 (컨텍스트 한도 도달)")).toBeInTheDocument();
+    // #156: reason이 없으면 'unknown' → "세션 갱신됨"
+    expect(screen.getByText("세션 갱신됨")).toBeInTheDocument();
   });
 
   it("hides HEARTBEAT_OK messages", () => {
@@ -468,10 +469,34 @@ describe("MessageBubble — system messages", () => {
 // ===================================================================
 
 describe("SessionBoundary", () => {
-  it("renders with correct text", () => {
+  it("renders with correct text (unknown reason → fallback)", () => {
     const messages = [makeBoundaryMessage()];
     render(<MessageList messages={messages} loading={false} streaming={false} />);
+    expect(screen.getByText("세션 갱신됨")).toBeInTheDocument();
+  });
+
+  it("renders context_overflow reason (#156)", () => {
+    const messages = [makeBoundaryMessage({ resetReason: "context_overflow" })];
+    render(<MessageList messages={messages} loading={false} streaming={false} />);
     expect(screen.getByText("세션 갱신됨 (컨텍스트 한도 도달)")).toBeInTheDocument();
+  });
+
+  it("renders daily reason (#156)", () => {
+    const messages = [makeBoundaryMessage({ resetReason: "daily" })];
+    render(<MessageList messages={messages} loading={false} streaming={false} />);
+    expect(screen.getByText("새로운 하루, 새 세션이 시작되었습니다")).toBeInTheDocument();
+  });
+
+  it("renders idle reason (#156)", () => {
+    const messages = [makeBoundaryMessage({ resetReason: "idle" })];
+    render(<MessageList messages={messages} loading={false} streaming={false} />);
+    expect(screen.getByText("장시간 미활동으로 세션이 초기화되었습니다")).toBeInTheDocument();
+  });
+
+  it("renders manual reason (#156)", () => {
+    const messages = [makeBoundaryMessage({ resetReason: "manual" })];
+    render(<MessageList messages={messages} loading={false} streaming={false} />);
+    expect(screen.getByText("새 세션이 시작되었습니다")).toBeInTheDocument();
   });
 
   it("shows 이전 맥락 불러오기 button when onLoadPreviousContext is provided", () => {

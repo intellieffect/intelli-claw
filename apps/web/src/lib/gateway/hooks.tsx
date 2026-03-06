@@ -39,6 +39,7 @@ import {
   type GatewayConfig,
 } from "@intelli-claw/shared";
 
+import { inferResetReason } from "./reset-reason";
 import {
   trackSessionId,
   markSessionEnded,
@@ -133,9 +134,22 @@ export function useSessions() {
           console.log(`[AWF] Session reset detected: ${key} ${oldSessionId.slice(0, 8)} → ${newSessionId.slice(0, 8)}`);
           const label = s.label ? String(s.label) : undefined;
           const totalTokens = typeof s.totalTokens === "number" ? s.totalTokens : undefined;
+          const contextTokens = typeof s.contextTokens === "number" ? s.contextTokens : undefined;
+          const percentUsed = typeof s.percentUsed === "number" ? s.percentUsed : undefined;
+          const gatewayReason = typeof s.resetReason === "string" ? s.resetReason : undefined;
+          const lastActiveAt = typeof s.updatedAt === "number" ? s.updatedAt : undefined;
+
+          const reason = inferResetReason({
+            totalTokens,
+            contextTokens,
+            percentUsed,
+            gatewayReason: gatewayReason as any,
+            lastActiveAt,
+          });
+
           markSessionEnded(key, oldSessionId, { totalTokens }).catch(() => {});
           trackSessionId(key, newSessionId, { label }).catch(() => {});
-          emitSessionReset({ key, oldSessionId, newSessionId });
+          emitSessionReset({ key, oldSessionId, newSessionId, reason });
         } else if (!oldSessionId) {
           const existing = await getCurrentSessionId(key);
           if (!existing || existing !== newSessionId) {
@@ -352,6 +366,8 @@ export interface DisplayMessage {
   attachments?: DisplayAttachment[];
   oldSessionId?: string;
   newSessionId?: string;
+  /** #156: Why the session was reset */
+  resetReason?: string;
   replyTo?: ReplyTo;
 }
 
@@ -905,6 +921,7 @@ export function useChat(sessionKey?: string) {
             attachments: lm.attachments as DisplayAttachment[] | undefined,
             oldSessionId: lm.oldSessionId,
             newSessionId: lm.newSessionId,
+            resetReason: lm.resetReason,
           });
 
           // Local messages not in gateway — split into older (prepend) and newer (append)
@@ -1745,11 +1762,12 @@ export function useChat(sessionKey?: string) {
       if (event.key !== sessionKeyRef.current) return;
       console.log(`[AWF] Session reset for current chat: ${event.key}`);
 
-      // Boundary UI message (기존 동작 유지)
+      // Boundary UI message with reason (#156)
       const boundaryMsg: DisplayMessage = {
         id: `boundary-${event.oldSessionId.slice(0, 8)}-${Date.now()}`,
         role: "session-boundary", content: "", timestamp: new Date().toISOString(),
         toolCalls: [], oldSessionId: event.oldSessionId, newSessionId: event.newSessionId,
+        resetReason: event.reason,
       };
       setMessages((prev) => [...prev, boundaryMsg]);
       // Persist boundary to local store
@@ -1761,6 +1779,7 @@ export function useChat(sessionKey?: string) {
         timestamp: boundaryMsg.timestamp,
         oldSessionId: event.oldSessionId,
         newSessionId: event.newSessionId,
+        resetReason: event.reason,
       }]).catch(() => {});
 
       // IndexedDB에 이전 세션 요약만 저장 (auto bridge 제거 — Gateway의 session reset prompt와 중복 방지 #148)
