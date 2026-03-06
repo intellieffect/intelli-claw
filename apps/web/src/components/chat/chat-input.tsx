@@ -14,6 +14,7 @@ import { SkillPicker, BUILTIN_COMMANDS } from "./skill-picker";
 import { useSkills } from "@/lib/gateway/use-skills";
 import { useKeyboardHeight } from "@/lib/hooks/use-keyboard-height";
 import { useIsMobile } from "@/lib/hooks/use-mobile";
+import { useInputHistory } from "@/hooks/use-input-history";
 import type { ReplyTo, AgentStatus } from "@/lib/gateway/hooks";
 
 /** Format agent status for display */
@@ -55,6 +56,7 @@ export function ChatInput({
   agentStatus,
   onOpenTopicHistory,
   onClearMessages,
+  sessionKey,
 }: {
   onSend: (text: string) => void;
   onAbort: () => void;
@@ -90,9 +92,12 @@ export function ChatInput({
   onOpenTopicHistory?: () => void;
   /** Callback to clear messages */
   onClearMessages?: () => void;
+  /** Session key for input history (#161) */
+  sessionKey?: string;
 }) {
   const keyboardHeight = useKeyboardHeight();
   const isMobile = useIsMobile();
+  const inputHistory = useInputHistory(sessionKey);
 
   const agentSlotFromAvatar = agentAvatar ? (
     <div
@@ -178,10 +183,13 @@ export function ChatInput({
 
   const handleSend = useCallback(() => {
     if (!canSend || disabled) return;
-    onSend(text.trim());
+    const trimmed = text.trim();
+    inputHistory.push(trimmed);
+    inputHistory.reset();
+    onSend(trimmed);
     setText("");
     if (storageKey) localStorage.removeItem(storageKey);
-  }, [text, disabled, onSend, canSend, storageKey]);
+  }, [text, disabled, onSend, canSend, storageKey, inputHistory]);
 
   const handleSkillSelect = useCallback((command: string) => {
     setText(command);
@@ -237,6 +245,48 @@ export function ChatInput({
         }
       }
 
+      // Input history navigation (#161): ArrowUp/Down when skill picker is closed
+      if (e.key === "ArrowUp" && !skillPickerOpen) {
+        const ta = e.target as HTMLTextAreaElement;
+        const beforeCursor = ta.value.substring(0, ta.selectionStart);
+        // Only navigate history when cursor is on the first line
+        if (!beforeCursor.includes("\n")) {
+          const prev = inputHistory.navigateUp(ta.value);
+          if (prev !== null) {
+            e.preventDefault();
+            setText(prev);
+            // Move cursor to end after state update
+            requestAnimationFrame(() => {
+              if (textareaRef.current) {
+                textareaRef.current.selectionStart = prev.length;
+                textareaRef.current.selectionEnd = prev.length;
+              }
+            });
+          }
+          return;
+        }
+      }
+
+      if (e.key === "ArrowDown" && !skillPickerOpen) {
+        const ta = e.target as HTMLTextAreaElement;
+        const afterCursor = ta.value.substring(ta.selectionStart);
+        // Only navigate history when cursor is on the last line
+        if (!afterCursor.includes("\n")) {
+          const next = inputHistory.navigateDown();
+          if (next !== null) {
+            e.preventDefault();
+            setText(next);
+            requestAnimationFrame(() => {
+              if (textareaRef.current) {
+                textareaRef.current.selectionStart = next.length;
+                textareaRef.current.selectionEnd = next.length;
+              }
+            });
+          }
+          return;
+        }
+      }
+
       if (e.key === "Escape") {
         e.preventDefault();
         (e.target as HTMLTextAreaElement).blur();
@@ -250,7 +300,7 @@ export function ChatInput({
         handleSend();
       }
     },
-    [handleSend, skillPickerOpen, filteredSkills, filteredBuiltins, totalPickerItems, skillSelectedIndex, handleSkillSelect, onSend, storageKey]
+    [handleSend, skillPickerOpen, filteredSkills, filteredBuiltins, totalPickerItems, skillSelectedIndex, handleSkillSelect, onSend, storageKey, inputHistory]
   );
 
   // Paste files
