@@ -46,10 +46,21 @@ describe("normalizeContentForDedup", () => {
     expect(normalizeContentForDedup("")).toBe("(image)");
   });
 
-  it("truncates to 200 characters", () => {
+  it("produces a compact fingerprint for long content (>200 chars) (#155)", () => {
     const long = "a".repeat(300);
     const result = normalizeContentForDedup(long);
-    expect(result.length).toBe(200);
+    // Should be shorter than original but contain hash for uniqueness
+    expect(result.length).toBeLessThan(300);
+    expect(result.length).toBeGreaterThan(0);
+    // Same input → same output (deterministic)
+    expect(normalizeContentForDedup(long)).toBe(result);
+  });
+
+  it("distinguishes long content that differs after char 200 (#155)", () => {
+    const base = "x".repeat(250);
+    const a = normalizeContentForDedup(base + "AAA");
+    const b = normalizeContentForDedup(base + "BBB");
+    expect(a).not.toBe(b);
   });
 });
 
