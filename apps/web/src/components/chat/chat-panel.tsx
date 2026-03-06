@@ -494,22 +494,28 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
         const pdfTexts = results.map((r) => r.prependText).filter(Boolean).join("\n\n");
         const pathHintText = pdfPathHints.join("\n");
 
-        // Upload images to server for permanent storage (#110)
+        // Upload files to server for permanent storage (#110, #157)
         const mediaLines: string[] = [];
+        const filePathLines: string[] = [];
         if (platform.mediaUpload) {
           for (const p of payloads) {
-            if (p.mimeType?.startsWith("image/") && p.content) {
+            if (p.content) {
               try {
                 const { path: savedPath } = await platform.mediaUpload(p.content, p.mimeType, p.fileName);
-                mediaLines.push(`MEDIA:${savedPath}`);
+                if (p.mimeType?.startsWith("image/")) {
+                  mediaLines.push(`MEDIA:${savedPath}`);
+                } else {
+                  // Non-image files: provide path so agent can read via `read` tool
+                  filePathLines.push(`📎 [${p.fileName}] ${savedPath}`);
+                }
               } catch (err) {
-                console.warn("[AWF] Image upload failed, sending inline:", err);
+                console.warn("[AWF] File upload failed, sending inline:", err);
               }
             }
           }
         }
 
-        const userMsg = [text, pathHintText, pdfTexts, ...mediaLines].filter(Boolean).join("\n\n") || (payloads.length > 0 ? "(image)" : "");
+        const userMsg = [text, pathHintText, pdfTexts, ...mediaLines, ...filePathLines].filter(Boolean).join("\n\n") || (payloads.length > 0 ? "(첨부 파일)" : "");
 
         const displayAtts = await Promise.all(
           attachments.map(async (att) => {
