@@ -145,6 +145,8 @@ export interface SessionResetEvent {
   key: string;
   oldSessionId: string;
   newSessionId: string;
+  /** Why the session was reset (inferred or gateway-provided) */
+  reason?: string;
 }
 
 type SessionResetListener = (event: SessionResetEvent) => void;
