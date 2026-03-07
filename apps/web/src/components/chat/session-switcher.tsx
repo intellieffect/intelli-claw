@@ -374,7 +374,7 @@ export function SessionSwitcher({
             <>
               <strong className="font-semibold">{currentParsed.agentId}</strong>
               {currentParsed.type === "thread" && (
-                <span className="text-muted-foreground"> / 새 세션</span>
+                <span className="text-muted-foreground"> / 새 토픽</span>
               )}
             </>
           ) : "세션 선택"}

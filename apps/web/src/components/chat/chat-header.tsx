@@ -80,7 +80,7 @@ function sessionTabLabel(session: SessionEntry): string {
   };
   const chanTag = parsed.channel ? `${CHAN[parsed.channel] || parsed.channel} · ` : "";
   if (parsed.type === "main") return `${chanTag}메인`;
-  if (parsed.type === "thread") return `${chanTag}스레드 #${(parsed.detail || "").slice(0, 6)}`;
+  if (parsed.type === "thread") return `${chanTag}토픽 #${(parsed.detail || "").slice(0, 6)}`;
   if (parsed.type === "subagent") return `서브 #${(parsed.detail || "").slice(0, 6)}`;
   if (parsed.type === "cron") return `크론 ${parsed.detail || ""}`;
   return parsed.type;
