@@ -278,8 +278,11 @@ export class GatewayClient {
       this.lastError = null;
       this.wasConnected = true;
       this.setState("connected");
-      // Ping disabled — gateway doesn't support app-level ping frames
-      // this.startPing();
+      // Enable heartbeat to detect stale connections (#154).
+      // Even if the gateway ignores the ping frame, sending data over a stale
+      // WebSocket triggers the browser's TCP stack to detect the broken pipe.
+      // If no data arrives within PONG_TIMEOUT after a ping, we close and reconnect.
+      this.startPing();
 
       // Emit synthetic reconnect event so UI can reload history
       if (isReconnect) {
