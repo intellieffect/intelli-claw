@@ -312,6 +312,40 @@ export function deduplicateMessages<T extends { id: string; role: string; conten
 }
 
 /**
+ * Merge consecutive assistant messages into a single message per turn (#189).
+ *
+ * Gateway chat.history returns a single agent turn as multiple assistant messages
+ * (text segments between tool_use blocks), but streaming produces one merged message.
+ * This ensures history matches streaming behavior, preventing duplicate display.
+ */
+export function mergeConsecutiveAssistant(msgs: DisplayMessage[]): DisplayMessage[] {
+  if (msgs.length === 0) return [];
+  const result: DisplayMessage[] = [];
+  let accumulator: DisplayMessage | null = null;
+
+  for (const m of msgs) {
+    if (m.role === "assistant" && accumulator && accumulator.role === "assistant") {
+      // Merge into accumulator
+      const parts = [accumulator.content, m.content].filter((s) => s.length > 0);
+      accumulator = {
+        ...accumulator,
+        content: parts.join("\n\n"),
+        toolCalls: [...accumulator.toolCalls, ...m.toolCalls],
+        attachments:
+          accumulator.attachments || m.attachments
+            ? [...(accumulator.attachments || []), ...(m.attachments || [])]
+            : undefined,
+      };
+    } else {
+      if (accumulator) result.push(accumulator);
+      accumulator = { ...m };
+    }
+  }
+  if (accumulator) result.push(accumulator);
+  return result;
+}
+
+/**
  * Check if an inbound user message duplicates an existing optimistic message.
  * Used to prevent echoes when the gateway broadcasts a user's own message back (#120).
  */
@@ -923,10 +957,13 @@ export function useChat(sessionKey?: string) {
         })
         .filter((m) => !isHiddenMessage(m.role, m.content));
 
+      // Merge consecutive assistant messages from split tool-call turns (#189)
+      const mergedHistMsgs = mergeConsecutiveAssistant(histMsgs);
+
       // Dedup gateway messages in case the API returns duplicates (#121)
-      const dedupedHistMsgs = deduplicateMessages(histMsgs);
-      if (dedupedHistMsgs.length !== histMsgs.length) {
-        console.warn(`[AWF] Removed ${histMsgs.length - dedupedHistMsgs.length} duplicate gateway messages`);
+      const dedupedHistMsgs = deduplicateMessages(mergedHistMsgs);
+      if (dedupedHistMsgs.length !== mergedHistMsgs.length) {
+        console.warn(`[AWF] Removed ${mergedHistMsgs.length - dedupedHistMsgs.length} duplicate gateway messages`);
       }
 
       // Final stale check before writing state
