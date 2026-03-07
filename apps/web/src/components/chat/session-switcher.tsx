@@ -35,6 +35,7 @@ import {
   unhideSession,
   getHiddenSessions,
 } from "@/lib/gateway/hidden-sessions";
+import { getTopicHistory, type TopicEntry } from "@/lib/gateway/topic-store";
 import type { Session } from "@/lib/gateway/protocol";
 
 // ---- Type icon per session type ----
@@ -150,6 +151,7 @@ export function SessionSwitcher({
   const [editLabel, setEditLabel] = useState("");
   const [actionBusy, setActionBusy] = useState(false);
   const [visibleCount, setVisibleCount] = useState(40);
+  const [topicSummaries, setTopicSummaries] = useState<Record<string, string>>({});
 
   const searchRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -251,8 +253,25 @@ export function SessionSwitcher({
       setTimeout(() => searchRef.current?.focus(), 16);
       // warm up list after first paint
       setTimeout(() => setVisibleCount(120), 60);
+
+      // Load topic summaries for closed topics
+      (async () => {
+        const summaryMap: Record<string, string> = {};
+        for (const s of closedTopics) {
+          try {
+            const entries = await getTopicHistory(s.key);
+            const withSummary = entries.find((e: TopicEntry) => e.summary);
+            if (withSummary?.summary) {
+              summaryMap[s.key] = withSummary.summary;
+            }
+          } catch { /* ignore */ }
+        }
+        if (Object.keys(summaryMap).length > 0) {
+          setTopicSummaries(summaryMap);
+        }
+      })();
     }
-  }, [open]);
+  }, [open, closedTopics]);
 
   // Global Escape key listener (works even when palette div has no focus)
   useEffect(() => {
@@ -718,6 +737,7 @@ export function SessionSwitcher({
                   {closedTopics.map((session) => {
                     const parsed = parseSessionKey(session.key);
                     const cleanLabel = getCleanLabel(session) || sessionDisplayName(session);
+                    const summary = topicSummaries[session.key];
                     return (
                       <div
                         key={`closed-${session.key}`}
@@ -731,6 +751,11 @@ export function SessionSwitcher({
                               닫힘
                             </span>
                           </div>
+                          {summary && (
+                            <div className="mt-0.5 truncate text-xs text-muted-foreground/70 italic">
+                              {summary}
+                            </div>
+                          )}
                           {session.updatedAt && (
                             <div className="mt-0.5 text-xs text-muted-foreground flex items-center gap-0.5">
                               <Clock size={10} />
