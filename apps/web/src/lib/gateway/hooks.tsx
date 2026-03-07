@@ -914,6 +914,7 @@ export function useChat(sessionKey?: string) {
             attachments: lm.attachments as DisplayAttachment[] | undefined,
             oldSessionId: lm.oldSessionId,
             newSessionId: lm.newSessionId,
+            replyTo: lm.replyTo as ReplyTo | undefined,
           });
 
           // Local messages not in gateway — split into older (prepend) and newer (append)
@@ -935,6 +936,17 @@ export function useChat(sessionKey?: string) {
           const appendMsgs = localMsgs
             .filter((lm) => lm.role !== "session-boundary" && isNotInGateway(lm) && !isHiddenMessage(lm.role, lm.content) && new Date(lm.timestamp).getTime() >= newestGatewayTs)
             .map(toDisplayMsg);
+
+          // Restore replyTo from local store (gateway doesn't persist it)
+          for (const hm of dedupedHistMsgs) {
+            if (hm.replyTo) continue;
+            const local = localMsgs.find(
+              (lm) => lm.role === hm.role && lm.replyTo && normalizeContentForDedup(lm.content) === normalizeContentForDedup(hm.content)
+            );
+            if (local?.replyTo) {
+              hm.replyTo = local.replyTo as ReplyTo;
+            }
+          }
 
           // Restore attachments stripped by compaction (e.g. images)
           const localWithAtts = localMsgs.filter(
@@ -997,6 +1009,7 @@ export function useChat(sessionKey?: string) {
               attachments: lm.attachments as DisplayAttachment[] | undefined,
               oldSessionId: lm.oldSessionId,
               newSessionId: lm.newSessionId,
+              replyTo: lm.replyTo as ReplyTo | undefined,
             }));
         }
       } catch (e) {
@@ -1019,6 +1032,7 @@ export function useChat(sessionKey?: string) {
           attachments: m.attachments,
           oldSessionId: m.oldSessionId,
           newSessionId: m.newSessionId,
+          replyTo: m.replyTo,
         }));
       saveLocalMessages(sessionKey, toStore).catch(() => {});
 
@@ -1627,7 +1641,7 @@ export function useChat(sessionKey?: string) {
         replyTo,
       };
       setMessages((prev) => [...prev, userMsg]);
-      // Persist user message to local store
+      // Persist user message to local store (including replyTo for quote persistence)
       saveLocalMessages(sessionKey, [{
         sessionKey,
         id: msgId,
@@ -1635,6 +1649,7 @@ export function useChat(sessionKey?: string) {
         content: text,
         timestamp: userMsg.timestamp,
         attachments: userMsg.attachments,
+        replyTo: replyTo,
       }]).catch(() => {});
       // Clear replyingTo after send
       if (replyingTo) setReplyingToState(null);

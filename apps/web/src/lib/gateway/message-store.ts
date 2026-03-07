@@ -10,6 +10,12 @@ const DB_NAME = "intelli-claw-messages";
 const DB_VERSION = 1;
 const STORE_NAME = "messages";
 
+export interface ReplyToData {
+  id: string;
+  content: string;
+  role: string;
+}
+
 export interface StoredMessage {
   /** Composite key: sessionKey + id */
   sessionKey: string;
@@ -21,6 +27,7 @@ export interface StoredMessage {
   attachments?: unknown[];
   oldSessionId?: string;
   newSessionId?: string;
+  replyTo?: ReplyToData;
 }
 
 // --- IndexedDB helpers ---
