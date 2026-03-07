@@ -1,6 +1,7 @@
-import { useEffect, useCallback, useRef } from "react";
+import { useEffect, useCallback, useRef, useState } from "react";
 
 export type SwipeDirection = "left" | "right";
+export type SwipeMode = "agent" | "topic";
 
 /**
  * 스와이프 방향 감지 (순수 함수)
@@ -39,6 +40,62 @@ export function getNextAgentIndex(
   if (total <= 1) return 0;
   const delta = direction === "right" ? 1 : -1;
   return (current + delta + total) % total;
+}
+
+/**
+ * 토픽(세션) 순환 인덱스 계산 (순수 함수)
+ */
+export function getNextTopicIndex(
+  current: number,
+  total: number,
+  direction: SwipeDirection,
+): number {
+  if (total <= 1) return 0;
+  const delta = direction === "left" ? 1 : -1;
+  return (current + delta + total) % total;
+}
+
+const SWIPE_MODE_KEY = "awf:swipe-mode";
+
+/**
+ * 스와이프 모드 저장/로드 (localStorage)
+ */
+export function getSwipeMode(): SwipeMode {
+  if (typeof window === "undefined") return "agent";
+  return (localStorage.getItem(SWIPE_MODE_KEY) as SwipeMode) || "agent";
+}
+
+export function setSwipeMode(mode: SwipeMode): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(SWIPE_MODE_KEY, mode);
+}
+
+/**
+ * 스와이프 모드 React 훅
+ * - localStorage에 저장/로드
+ * - 단일 에이전트 환경에서는 자동으로 토픽 모드 기본값
+ */
+export function useSwipeMode(agentCount: number): [SwipeMode, (mode: SwipeMode) => void] {
+  const [mode, setModeState] = useState<SwipeMode>(() => {
+    const stored = getSwipeMode();
+    // 단일 에이전트 환경에서는 토픽 모드 기본값
+    if (agentCount <= 1 && stored === "agent") return "topic";
+    return stored;
+  });
+
+  // agentCount 변경 시 자동 전환
+  useEffect(() => {
+    if (agentCount <= 1 && mode === "agent") {
+      setModeState("topic");
+    }
+  }, [agentCount, mode]);
+
+  const updateMode = useCallback((newMode: SwipeMode) => {
+    setSwipeMode(newMode);
+    setModeState(newMode);
+  }, []);
+
+  return [mode, updateMode];
 }
 
 /**

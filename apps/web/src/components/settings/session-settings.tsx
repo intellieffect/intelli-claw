@@ -8,8 +8,10 @@ import {
   Monitor,
   Zap,
   ChevronDown,
+  Hand,
 } from "lucide-react";
 import { useSessionSettings } from "@/lib/gateway/use-session-settings";
+import type { SwipeMode } from "@/lib/hooks/use-swipe-gesture";
 
 const THINKING_LEVELS = ["off", "low", "medium", "high"] as const;
 type ThinkingLevel = (typeof THINKING_LEVELS)[number];
@@ -25,9 +27,12 @@ interface SessionSettingsProps {
   sessionKey?: string;
   onDelete?: () => void;
   onReset?: () => void;
+  swipeMode?: SwipeMode;
+  onSwipeModeChange?: (mode: SwipeMode) => void;
+  isMobile?: boolean;
 }
 
-export function SessionSettings({ sessionKey, onDelete, onReset }: SessionSettingsProps) {
+export function SessionSettings({ sessionKey, onDelete, onReset, swipeMode, onSwipeModeChange, isMobile }: SessionSettingsProps) {
   const { session, models, loading, patchSession, setThinking, setVerbose, resetSession, deleteSession, refresh } =
     useSessionSettings(sessionKey);
 
@@ -171,6 +176,30 @@ export function SessionSettings({ sessionKey, onDelete, onReset }: SessionSettin
               }`} />
             </button>
           </div>
+
+          {/* Swipe Mode (mobile only) */}
+          {isMobile && onSwipeModeChange && (
+            <div className="border-b border-zinc-800 px-3 py-2">
+              <div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-medium text-zinc-500">
+                <Hand size={10} /> Swipe Mode
+              </div>
+              <div className="flex gap-1">
+                {(["topic", "agent"] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    onClick={() => onSwipeModeChange(mode)}
+                    className={`flex-1 rounded-md py-1 text-[11px] font-medium transition-colors ${
+                      swipeMode === mode
+                        ? "bg-amber-600/80 text-white"
+                        : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-300"
+                    }`}
+                  >
+                    {mode === "topic" ? "토픽" : "에이전트"}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Actions */}
           <div className="flex gap-2 px-3 py-2">
