@@ -104,11 +104,6 @@ function AssistantImage({ src, fileName }: { src: string; fileName: string }) {
   );
 }
 
-/** Strip task-memo HTML comments from display text */
-const TASK_MEMO_STRIP_RE = /\s*<!--\s*task-memo:\s*\{[\s\S]*?\}\s*-->\s*/g;
-export function stripTaskMemo(text: string): string {
-  return text.replace(TASK_MEMO_STRIP_RE, "").trimEnd();
-}
 
 export function MessageList({
   messages,
@@ -407,7 +402,7 @@ export function MessageList({
           const msg = visibleMessages[i];
           if (!msg?.content) return "";
           const prefix = msg.role === "user" ? "You" : "Agent";
-          return prefix + ": " + stripTaskMemo(msg.content);
+          return prefix + ": " + msg.content;
         }).filter(Boolean).join("\n\n");
         if (text) copyToClipboard(text);
         return;
@@ -899,15 +894,14 @@ const MessageBubble = React.memo(React.forwardRef<HTMLDivElement, { message: Dis
               </div>
             )}
             {message.content && (() => {
-              const cleaned = stripTaskMemo(message.content);
-              return cleaned ? <MarkdownRenderer content={cleaned} /> : null;
+              return message.content ? <MarkdownRenderer content={message.content} /> : null;
             })()}
             {message.streaming && (
               <span className="inline-block h-4 w-1.5 animate-pulse rounded-sm bg-primary" />
             )}
             {!message.streaming && message.content && (
               <div className="mt-1 flex items-center gap-2">
-                <CopyButton text={stripTaskMemo(message.content)} />
+                <CopyButton text={message.content} />
                 {onReply && canBeReplyTarget(message) && (
                   <ReplyButton onClick={() => onReply(message)} />
                 )}
