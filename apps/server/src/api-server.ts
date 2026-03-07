@@ -92,10 +92,20 @@ function validatePath(p: string | null): string | null {
 const UPLOAD_DIR = join(homedir(), ".openclaw", "media", "uploads");
 const MAX_UPLOAD_B64 = 10 * 1024 * 1024; // 10 MB base64 limit
 const MIME_TO_EXT: Record<string, string> = {
+  // Images
   "image/jpeg": "jpg", "image/png": "png", "image/gif": "gif",
   "image/webp": "webp", "image/svg+xml": "svg", "image/bmp": "bmp",
   "image/tiff": "tiff",
+  // Text / structured data (#157)
+  "text/plain": "txt", "text/csv": "csv", "text/markdown": "md",
+  "text/xml": "xml", "text/yaml": "yaml", "text/html": "html",
+  "text/tab-separated-values": "tsv",
+  "application/json": "json", "application/xml": "xml",
+  "application/pdf": "pdf",
 };
+
+/** MIME prefixes / exact types allowed for upload. Rejects executables, archives, etc. */
+const ALLOWED_MIME_PREFIXES = ["image/", "text/", "application/json", "application/xml", "application/pdf"];
 
 async function handleMediaUpload(req: http.IncomingMessage, res: http.ServerResponse) {
   const chunks: Buffer[] = [];
@@ -127,9 +137,9 @@ async function handleMediaUpload(req: http.IncomingMessage, res: http.ServerResp
     return;
   }
 
-  if (!mimeType.startsWith("image/")) {
+  if (!ALLOWED_MIME_PREFIXES.some((p) => mimeType.startsWith(p))) {
     res.writeHead(400, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ error: "Only image types are accepted" }));
+    res.end(JSON.stringify({ error: `MIME type '${mimeType}' is not allowed. Accepted: image/*, text/*, application/json, application/xml, application/pdf` }));
     return;
   }
 
