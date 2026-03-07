@@ -10,7 +10,7 @@ import { AgentBrowser } from "./agent-browser";
 import { DropZone, useFileAttachments, attachmentToPayload } from "./file-attachments";
 import { parseSessionKey, sessionDisplayName, type GatewaySession, isTopicClosed, isTopicSession, CLOSED_PREFIX, getCleanLabel } from "@/lib/gateway/session-utils";
 import { isSessionHidden, hideSession, unhideSession, getHiddenSessions } from "@/lib/gateway/hidden-sessions";
-import { TaskMemo } from "./task-memo";
+
 import { SessionSettings } from "@/components/settings/session-settings";
 import { ChatHeader } from "./chat-header";
 import { matchesShortcutId } from "@/lib/shortcuts";
@@ -769,11 +769,6 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
             }
           }}
         />
-      )}
-
-      {/* Task Memo */}
-      {effectiveSessionKey && (
-        <TaskMemo key={effectiveSessionKey} sessionKey={effectiveSessionKey} messages={messages as unknown as Array<Record<string, unknown>>} />
       )}
 
       {/* Messages */}
