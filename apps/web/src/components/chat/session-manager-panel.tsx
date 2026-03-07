@@ -2,13 +2,14 @@
 import { useState, useMemo, useCallback } from "react";
 import {
   Bot, Pin, MessageCircle, Settings, Zap, Clock,
-  Trash2, RotateCcw, X, ChevronDown, ChevronRight,
+  Trash2, RotateCcw, X, ChevronDown, ChevronRight, Hand,
 } from "lucide-react";
 import { parseSessionKey, type GatewaySession } from "@/lib/gateway/session-utils";
 import { getHiddenSessions, unhideSession } from "@/lib/gateway/hidden-sessions";
 import type { Agent } from "@/lib/gateway/protocol";
 import { AgentAvatar } from "@/components/ui/agent-avatar";
 import { cn } from "@/lib/utils";
+import type { SwipeMode } from "@/lib/hooks/use-swipe-gesture";
 
 interface SessionManagerPanelProps {
   open: boolean;
@@ -19,6 +20,9 @@ interface SessionManagerPanelProps {
   onSelectSession: (key: string) => void;
   onDeleteSession: (key: string) => Promise<void>;
   onResetSession: (key: string) => Promise<void>;
+  swipeMode?: SwipeMode;
+  onSwipeModeChange?: (mode: SwipeMode) => void;
+  isMobile?: boolean;
 }
 
 const TYPE_ICONS: Record<string, React.ReactNode> = {
@@ -70,6 +74,9 @@ export function SessionManagerPanel({
   onSelectSession,
   onDeleteSession,
   onResetSession,
+  swipeMode,
+  onSwipeModeChange,
+  isMobile,
 }: SessionManagerPanelProps) {
   const [expandedAgents, setExpandedAgents] = useState<Set<string>>(new Set());
   const [confirmAction, setConfirmAction] = useState<{ key: string; action: "delete" | "reset" } | null>(null);
@@ -173,6 +180,31 @@ export function SessionManagerPanel({
           <span>{groups.length}개 에이전트</span>
           <span>{sessions.length}개 세션</span>
         </div>
+
+        {/* Swipe Mode Toggle (mobile) */}
+        {isMobile && onSwipeModeChange && (
+          <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-2.5">
+            <div className="flex items-center gap-1.5 text-[11px] font-medium text-zinc-400">
+              <Hand size={12} /> 스와이프 전환
+            </div>
+            <div className="flex gap-1">
+              {(["topic", "agent"] as const).map((mode) => (
+                <button
+                  key={mode}
+                  onClick={() => onSwipeModeChange(mode)}
+                  className={cn(
+                    "rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors",
+                    swipeMode === mode
+                      ? "bg-amber-600/80 text-white"
+                      : "bg-zinc-800 text-zinc-500 hover:bg-zinc-700 hover:text-zinc-300"
+                  )}
+                >
+                  {mode === "topic" ? "토픽" : "에이전트"}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Agent groups */}
         <div className="flex-1 overflow-y-auto">
