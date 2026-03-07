@@ -8,7 +8,7 @@ import { AgentSelector } from "./agent-selector";
 import { SessionSwitcher } from "./session-switcher";
 import { AgentBrowser } from "./agent-browser";
 import { DropZone, useFileAttachments, attachmentToPayload } from "./file-attachments";
-import { parseSessionKey, sessionDisplayName, isSessionClosed, type GatewaySession } from "@/lib/gateway/session-utils";
+import { parseSessionKey, sessionDisplayName, type GatewaySession } from "@/lib/gateway/session-utils";
 import { isSessionHidden, hideSession, unhideSession, getHiddenSessions } from "@/lib/gateway/hidden-sessions";
 import { TaskMemo } from "./task-memo";
 import { SessionSettings } from "@/components/settings/session-settings";
@@ -135,8 +135,6 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
         if (p.type !== "main" && p.type !== "thread") return false;
         // Hide hidden sessions (main always visible)
         if (p.type !== "main" && isSessionHidden(s.key)) return false;
-        // Hide closed sessions from tab bar
-        if (isSessionClosed(s)) return false;
         return true;
       })
       .sort((a, b) => {
@@ -173,43 +171,6 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
       }
     },
     [client, isConnected, sessionKey, setSessionKey, refreshSessions, refocusPanel]
-  );
-
-  const handleCloseTopic = useCallback(
-    async (key: string) => {
-      if (!client || !isConnected) return;
-      try {
-        await client.request("sessions.patch", { key, status: "closed" });
-        patchSession(key, { status: "closed" });
-        // Switch to previous tab
-        const currentIdx = agentSessions.findIndex((s) => s.key === key);
-        const nextIdx = currentIdx > 0 ? currentIdx - 1 : 0;
-        if (agentSessions[nextIdx] && agentSessions[nextIdx].key !== key) {
-          setSessionKey(agentSessions[nextIdx].key);
-        } else {
-          setSessionKey(undefined);
-        }
-        await refreshSessions();
-      } catch (err) {
-        console.error("[AWF] close topic error:", err);
-      }
-    },
-    [client, isConnected, agentSessions, setSessionKey, patchSession, refreshSessions],
-  );
-
-  const handleReopenTopic = useCallback(
-    async (key: string) => {
-      if (!client || !isConnected) return;
-      try {
-        await client.request("sessions.patch", { key, status: "open" });
-        patchSession(key, { status: "open" });
-        setSessionKey(key);
-        await refreshSessions();
-      } catch (err) {
-        console.error("[AWF] reopen topic error:", err);
-      }
-    },
-    [client, isConnected, setSessionKey, patchSession, refreshSessions],
   );
 
   // Shortcuts (active panel only)
@@ -279,36 +240,15 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
         // Don't preventDefault for main — let Electron close the window
         return;
       }
-      // Cmd+D: close topic (set status to "closed")
-      if (matchesShortcutId(e, "close-topic")) {
-        e.preventDefault();
-        if (effectiveSessionKey) {
-          const p = parseSessionKey(effectiveSessionKey);
-          if (p.type === "thread") {
-            handleCloseTopic(effectiveSessionKey);
-          }
-        }
-        return;
-      }
-      // Cmd+Shift+T: reopen last closed topic (gateway status) or last hidden session (legacy)
+      // Cmd+Shift+T: reopen last hidden session
       if (matchesShortcutId(e, "reopen-tab")) {
         e.preventDefault();
-        // First try to reopen a closed topic from gateway sessions
-        const closedForAgent = (sessions as GatewaySession[])
-          .filter((s) => {
-            const p = parseSessionKey(s.key);
-            return p.agentId === agentId && isSessionClosed(s);
-          })
-          .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-        if (closedForAgent.length > 0) {
-          handleReopenTopic(closedForAgent[0].key);
-          return;
-        }
-        // Legacy: reopen from localStorage hidden sessions
         const hidden = getHiddenSessions();
+        // Find most recently hidden session for this agent
         const hiddenForAgent = agentSessions.length > 0
           ? Array.from(hidden).filter((k) => parseSessionKey(k).agentId === agentId)
           : Array.from(hidden);
+        // Unhide the last one (most recently added)
         const lastHidden = hiddenForAgent[hiddenForAgent.length - 1];
         if (lastHidden) {
           unhideSession(lastHidden);
@@ -335,7 +275,7 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [agentId, setSessionKey, refreshSessions, agentSessions, effectiveSessionKey, streaming, abort, sessions, handleDelete, handleCloseTopic, handleReopenTopic]);
+  }, [agentId, setSessionKey, refreshSessions, agentSessions, effectiveSessionKey, streaming, abort, sessions, handleDelete]);
 
   // Focus textarea on mount
   useEffect(() => {
@@ -791,7 +731,7 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
         onSend={handleSend}
         onAbort={abort}
         streaming={streaming}
-        disabled={!isConnected || (currentSession ? isSessionClosed(currentSession as GatewaySession) : false)}
+        disabled={!isConnected}
         attachments={attachments}
         onAttachFiles={addFiles}
         onRemoveAttachment={removeAttachment}
@@ -851,8 +791,6 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
           onDelete={handleDelete}
           onReset={handleReset}
           onHide={handleHide}
-          onCloseTopic={handleCloseTopic}
-          onReopenTopic={handleReopenTopic}
           open={sessionSwitcherOpen}
           onOpenChange={setSessionSwitcherOpen}
           portalContainer={panelRef.current}

@@ -140,13 +140,6 @@ export interface GatewaySession {
   modelProvider?: string;
   /** Internal session UUID from gateway — changes on session reset */
   sessionId?: string;
-  /** Session status: "open" (default) or "closed" (read-only, hidden from tabs) */
-  status?: string;
-}
-
-/** Check if a session has status "closed" */
-export function isSessionClosed(session: GatewaySession | null | undefined): boolean {
-  return session?.status === "closed";
 }
 
 /**
