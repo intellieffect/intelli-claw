@@ -1093,9 +1093,9 @@ export function useChat(sessionKey?: string) {
   // and should never inherit messages from other sessions (#149).
   useEffect(() => {
     if (!sessionKey || state !== "connected") return;
-    // Thread sessions (agent:{id}:main:thread:{threadId}) are isolated new chats;
+    // Thread/topic sessions (agent:{id}:main:thread:{id} or :topic:{id}) are isolated new chats;
     // backfilling agent-level history into them causes #149.
-    if (sessionKey.includes(":thread:")) return;
+    if (sessionKey.includes(":thread:") || sessionKey.includes(":topic:")) return;
     const agentId = sessionKey.split(":")[1] || sessionKey;
     const apiBase = import.meta.env.VITE_API_URL || "";  // Use same origin (Vite proxies /api to :4001)
 

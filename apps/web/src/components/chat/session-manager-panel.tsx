@@ -32,7 +32,7 @@ const TYPE_ICONS: Record<string, React.ReactNode> = {
 
 const TYPE_LABELS: Record<string, string> = {
   main: "메인",
-  thread: "스레드",
+  thread: "토픽",
   subagent: "서브에이전트",
   cron: "크론",
   a2a: "A2A",
