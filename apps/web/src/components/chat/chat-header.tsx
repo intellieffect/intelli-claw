@@ -4,7 +4,7 @@ import {
   MessageSquare, Plus, X, Pin, Zap,
   MessageCircle, Bot, Settings, History, Trash2,
 } from "lucide-react";
-import { parseSessionKey } from "@/lib/gateway/session-utils";
+import { parseSessionKey, isSessionClosed, type GatewaySession } from "@/lib/gateway/session-utils";
 import { isSessionHidden, hideSession } from "@/lib/gateway/hidden-sessions";
 import type { Agent, Session } from "@/lib/gateway/protocol";
 import type { AgentStatus } from "@/lib/gateway/hooks";
@@ -192,6 +192,8 @@ export function ChatHeader({
         if (p.type !== "main" && p.type !== "thread") return false;
         // Hide hidden sessions from tabs (main is always visible)
         if (p.type !== "main" && isSessionHidden(s.key as string)) return false;
+        // Hide closed sessions from tab bar
+        if (isSessionClosed(s as unknown as GatewaySession)) return false;
         return true;
       })
       .sort((a, b) => {
@@ -365,6 +367,11 @@ export function ChatHeader({
         <span className="rounded-md bg-zinc-800 px-2 py-0.5 text-[10px] font-medium text-zinc-500 uppercase tracking-wide">
           {sessionType}
         </span>
+        {session && isSessionClosed(session as unknown as GatewaySession) && (
+          <span className="rounded-md bg-red-900/30 border border-red-700/30 px-2 py-0.5 text-[10px] font-medium text-red-400" data-testid="closed-badge">
+            닫힘
+          </span>
+        )}
         {topicCount > 1 && onOpenTopicHistory && (
           <button
             onClick={onOpenTopicHistory}
