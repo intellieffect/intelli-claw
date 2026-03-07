@@ -30,7 +30,6 @@ export interface MockSession {
   updatedAt?: number;
   model?: string;
   totalTokens?: number;
-  status?: string;
 }
 
 /**
@@ -203,28 +202,6 @@ export async function setupMockGateway(page: Page, options: MockGatewayOptions =
                 });
               }, evt._delay || (seq * 50));
             }
-            return;
-          }
-
-          // Sessions patch — update local mock state
-          if (frame.method === 'sessions.patch') {
-            const params = frame.params || {};
-            const key = params.key;
-            if (key) {
-              const sessions = window.__mockGatewaySessions;
-              const idx = sessions.findIndex(s => s.key === key);
-              if (idx >= 0) {
-                Object.assign(sessions[idx], params);
-              } else {
-                sessions.push(params);
-              }
-            }
-            this._deliver({
-              type: 'res',
-              id: frame.id,
-              ok: true,
-              payload: {}
-            });
             return;
           }
 
