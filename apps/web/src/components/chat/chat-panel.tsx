@@ -51,6 +51,7 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
       windowPrefix: windowStoragePrefix(),
       defaultAgentId: import.meta.env.VITE_DEFAULT_AGENT || "default",
       getItem: (k) => localStorage.getItem(k),
+      urlSearch: window.location.search,
     });
     setSessionKeyRaw(initial.sessionKey);
     setAgentId(initial.agentId);
@@ -83,6 +84,15 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
 
   const effectiveSessionKey =
     sessionKey || (agentId ? `agent:${agentId}:main` : mainSessionKey) || undefined;
+
+  // Report active session to Electron main process for Cmd+N duplication (#170)
+  useEffect(() => {
+    if (typeof window === "undefined" || !effectiveSessionKey) return;
+    const api = (window as Record<string, unknown>).electronAPI as
+      | { updateSessionKey?: (key: string) => void }
+      | undefined;
+    api?.updateSessionKey?.(effectiveSessionKey);
+  }, [effectiveSessionKey]);
 
   const { messages, streaming, loading, agentStatus, sendMessage, sendCommand, addUserMessage, addLocalMessage, clearMessages, cancelQueued, abort, sendContextBridge, replyingTo, setReplyTo, clearReplyTo } = useChat(effectiveSessionKey);
   const { agents } = useAgents();

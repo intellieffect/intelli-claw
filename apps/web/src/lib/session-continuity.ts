@@ -27,8 +27,22 @@ export function resolveInitialSessionState(params: {
   windowPrefix: string;
   defaultAgentId: string;
   getItem: (key: string) => string | null;
+  /** URL search string (e.g. window.location.search) for ?session= override (#170) */
+  urlSearch?: string;
 }): { agentId: string; sessionKey?: string } {
-  const { windowPrefix, defaultAgentId, getItem } = params;
+  const { windowPrefix, defaultAgentId, getItem, urlSearch } = params;
+
+  // #170: URL query param takes highest priority (Cmd+N session duplication)
+  let urlSessionKey: string | undefined;
+  if (urlSearch) {
+    try {
+      const qp = new URLSearchParams(urlSearch);
+      const s = qp.get("session");
+      if (s) urlSessionKey = s;
+    } catch {
+      // ignore malformed search string
+    }
+  }
 
   // Post SplitView removal: scoped prefix matches chat-panel's storagePrefix
   const scopedPrefix = `awf:${windowPrefix}`;
@@ -40,6 +54,7 @@ export function resolveInitialSessionState(params: {
   const keys = buildSessionContinuityKeys({ windowPrefix, agentId });
 
   const sessionKey =
+    urlSessionKey ||
     getItem(keys.scopedSessionKey) ||
     getItem(keys.agentRememberedSessionKey) ||
     getItem(keys.legacyPanelSessionKey) ||
