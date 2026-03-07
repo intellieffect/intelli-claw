@@ -408,6 +408,30 @@ export interface ReplyTo {
   role: string;
 }
 
+/** Type of system-injected message detected from user-role content */
+export type SystemInjectedType = "compaction" | "memory-flush" | "generic";
+
+/**
+ * Detect whether a message with the given role/content is a system-injected
+ * message masquerading as a user message.
+ * Returns null for normal messages, or the detected type.
+ */
+export function detectSystemInjectedType(role: string, content: string): SystemInjectedType | null {
+  if (role !== "user" || !content) return null;
+
+  // Compaction summary patterns
+  if (/^The conversation history.*compacted/.test(content)) return "compaction";
+  if (/^<summary>/.test(content)) return "compaction";
+
+  // Pre-compaction memory flush
+  if (/^Pre-compaction memory flush/.test(content)) return "memory-flush";
+
+  // Existing generic system-injected patterns
+  if (/^\[System Message\]|^\[sessionId:|^System:\s*\[/.test(content)) return "generic";
+
+  return null;
+}
+
 export interface DisplayMessage {
   id: string;
   role: "user" | "assistant" | "system" | "session-boundary";
@@ -422,6 +446,8 @@ export interface DisplayMessage {
   /** #156: Why the session was reset */
   resetReason?: string;
   replyTo?: ReplyTo;
+  /** #187: Type of system-injected message (for distinct rendering) */
+  systemType?: SystemInjectedType;
 }
 
 /**
@@ -939,23 +965,27 @@ export function useChat(sessionKey?: string) {
           const allAttachments = [...imgAttachments, ...mediaAttachments];
           if (m.role === 'assistant') textContent = stripTemplateVars(textContent);
 
-          // Check ORIGINAL content for system-injected markers (before stripping) (#55)
-          // Use ^ anchors to avoid false positives on user text containing these substrings mid-text
+          // Check ORIGINAL content for system-injected markers (before stripping) (#55, #187)
           const rawContentStr = typeof m.content === 'string' ? m.content : textContent;
-          const isSystemInjected = m.role === 'user' && /^\[System Message\]|^\[sessionId:|^System:\s*\[/.test(rawContentStr);
+          const systemType = detectSystemInjectedType(m.role, rawContentStr);
 
           return {
             id: `hist-${i}`,
-            role: (m.role === 'system' || isSystemInjected)
+            role: (m.role === 'system' || systemType)
               ? 'system' as const
               : m.role as "user" | "assistant",
             content: textContent,
             timestamp: m.timestamp || new Date().toISOString(),
             toolCalls: m.toolCalls || [],
             attachments: allAttachments.length > 0 ? allAttachments : undefined,
+            systemType: systemType ?? undefined,
           };
         })
-        .filter((m) => !isHiddenMessage(m.role, m.content));
+        .filter((m) => {
+          // Show compaction/memory-flush messages with distinct styling (#187)
+          if (m.systemType === 'compaction' || m.systemType === 'memory-flush') return true;
+          return !isHiddenMessage(m.role, m.content);
+        });
 
       // Merge consecutive assistant messages from split tool-call turns (#189)
       const mergedHistMsgs = mergeConsecutiveAssistant(histMsgs);

@@ -4,11 +4,11 @@ import {
   User, Bot, Clock, X, Copy, Check, ArrowDown, Download,
   FileText, Music, Video, File, Image as ImageIcon,
   FileSpreadsheet, FileCode, FileArchive, FileAudio, FileVideo,
-  RefreshCw, History, Loader2, Reply,
+  RefreshCw, History, Loader2, Reply, ChevronDown,
 } from "lucide-react";
 import { MarkdownRenderer, MarkdownFilePreview } from "./markdown-renderer";
 import { ToolCallCard } from "./tool-call-card";
-import { HIDDEN_REPLY_RE, canBeReplyTarget, stripTrailingControlTokens, type DisplayMessage, type DisplayAttachment, type AgentStatus } from "@/lib/gateway/hooks";
+import { HIDDEN_REPLY_RE, canBeReplyTarget, stripTrailingControlTokens, type DisplayMessage, type DisplayAttachment, type AgentStatus, type SystemInjectedType } from "@/lib/gateway/hooks";
 import { AgentAvatar } from "@/components/ui/agent-avatar";
 
 import { blobDownload, forceDownloadUrl } from "@/lib/utils/download";
@@ -538,6 +538,32 @@ export function MessageList({
   );
 }
 
+/** Collapsible system message for compaction summaries and memory flush (#187) */
+function CollapsibleSystemMessage({ content, systemType }: { content: string; systemType: SystemInjectedType }) {
+  const [expanded, setExpanded] = useState(false);
+  const label = systemType === "compaction" ? "Compaction Summary" : "Memory Flush";
+
+  return (
+    <div className="max-w-[90%] rounded-lg border border-zinc-700/50 bg-zinc-800/30 text-xs text-muted-foreground">
+      <button
+        onClick={() => setExpanded((v) => !v)}
+        className="flex w-full items-center gap-2 px-3 py-2 text-left transition hover:bg-zinc-700/30"
+      >
+        <ChevronDown
+          size={12}
+          className={`shrink-0 transition-transform ${expanded ? "" : "-rotate-90"}`}
+        />
+        <span className="font-medium text-zinc-400">{label}</span>
+      </button>
+      {expanded && (
+        <div className="border-t border-zinc-700/40 px-3 py-2 prose prose-sm prose-invert max-w-none">
+          <MarkdownRenderer content={content} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SessionBoundary({
   reason,
   onLoadContext,
@@ -728,13 +754,17 @@ const MessageBubble = React.memo(React.forwardRef<HTMLDivElement, { message: Dis
   const isQueued = message.queued;
   const time = formatTime(message.timestamp);
 
-  // System messages: centered, muted style
+  // System messages: centered, muted style — collapsible for compaction/memory-flush (#187)
   if (isSystem) {
     return (
       <div ref={ref} className="flex justify-center py-1">
-        <div className="max-w-[90%] rounded-lg border border-border/50 bg-muted/30 px-4 py-2 text-center text-xs text-muted-foreground">
-          <MarkdownRenderer content={message.content} />
-        </div>
+        {message.systemType === "compaction" || message.systemType === "memory-flush" ? (
+          <CollapsibleSystemMessage content={message.content} systemType={message.systemType} />
+        ) : (
+          <div className="max-w-[90%] rounded-lg border border-border/50 bg-muted/30 px-4 py-2 text-center text-xs text-muted-foreground">
+            <MarkdownRenderer content={message.content} />
+          </div>
+        )}
       </div>
     );
   }
