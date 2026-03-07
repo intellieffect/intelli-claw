@@ -245,6 +245,19 @@ export function ChatInput({
         }
       }
 
+      // macOS Ctrl+C: clear input (#166)
+      if (e.ctrlKey && e.key === "c") {
+        const ta = e.target as HTMLTextAreaElement;
+        // Only clear if no text is selected (preserve Cmd+C copy)
+        if (ta.selectionStart === ta.selectionEnd) {
+          e.preventDefault();
+          setText("");
+          inputHistory.reset();
+          if (storageKey) localStorage.removeItem(storageKey);
+          return;
+        }
+      }
+
       // Input history navigation (#161): ArrowUp/Down when skill picker is closed
       if (e.key === "ArrowUp" && !skillPickerOpen) {
         const ta = e.target as HTMLTextAreaElement;
