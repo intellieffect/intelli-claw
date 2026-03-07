@@ -9,6 +9,7 @@ import { SessionSwitcher } from "./session-switcher";
 import { AgentBrowser } from "./agent-browser";
 import { DropZone, useFileAttachments, attachmentToPayload } from "./file-attachments";
 import { parseSessionKey, sessionDisplayName, type GatewaySession, isTopicClosed, isTopicSession, CLOSED_PREFIX, getCleanLabel } from "@/lib/gateway/session-utils";
+import { getTopicCount } from "@/lib/gateway/topic-store";
 import { isSessionHidden, hideSession, unhideSession, getHiddenSessions } from "@/lib/gateway/hidden-sessions";
 
 import { SessionSettings } from "@/components/settings/session-settings";
@@ -740,6 +741,16 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
         : `${tokenCount}`
     : null;
 
+  // Session type label for input bar meta
+  const sessionType = !parsedSession ? "" : parsedSession.type === "main" ? "Main" : parsedSession.type === "thread" ? "Thread" : parsedSession.type === "subagent" ? "Sub-agent" : parsedSession.type === "cron" ? "Cron" : parsedSession.type === "a2a" ? "A2A" : "";
+
+  // Topic count for input bar meta
+  const [topicCount, setTopicCount] = useState(0);
+  useEffect(() => {
+    if (!effectiveSessionKey) { setTopicCount(0); return; }
+    getTopicCount(effectiveSessionKey).then(setTopicCount).catch(() => setTopicCount(0));
+  }, [effectiveSessionKey]);
+
   return (
     <div
       ref={panelRef}
@@ -762,12 +773,6 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
           onHideSession={handleHide}
           onRenameSession={(key, label) => handleRename(key, label)}
           onOpenSessionManager={() => setSessionManagerOpen(true)}
-          onOpenTopicHistory={() => setTopicHistoryOpen(true)}
-          onClearMessages={() => {
-            if (window.confirm("채팅 내용을 모두 비우시겠습니까?")) {
-              clearMessages();
-            }
-          }}
         />
       )}
 
@@ -807,6 +812,15 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
         tokenPercent={(currentSession as any)?.percentUsed as number | undefined}
         replyingTo={replyingTo}
         onClearReply={clearReplyTo}
+        sessionType={sessionType || undefined}
+        topicCount={topicCount}
+        agentStatus={agentStatus}
+        onOpenTopicHistory={() => setTopicHistoryOpen(true)}
+        onClearMessages={() => {
+          if (window.confirm("채팅 내용을 모두 비우시겠습니까?")) {
+            clearMessages();
+          }
+        }}
       />
 
       {/* Topic Name Dialog */}
