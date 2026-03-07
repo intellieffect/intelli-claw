@@ -13,6 +13,7 @@ import { AgentAvatar } from "@/components/ui/agent-avatar";
 
 import { blobDownload, forceDownloadUrl } from "@/lib/utils/download";
 import { formatTime } from "@/lib/utils/format-time";
+import { resetReasonLabel, type ResetReason } from "@/lib/gateway/reset-reason";
 
 /** Get file extension from filename */
 export function getExt(name: string): string {
@@ -492,6 +493,7 @@ export function MessageList({
               return (
                 <SessionBoundary
                   key={msg.id}
+                  reason={msg.resetReason}
                   onLoadContext={onLoadPreviousContext}
                   onViewHistory={onOpenTopicHistory}
                 />
@@ -537,12 +539,15 @@ export function MessageList({
 }
 
 function SessionBoundary({
+  reason,
   onLoadContext,
   onViewHistory,
 }: {
+  reason?: string;
   onLoadContext?: () => void | Promise<void>;
   onViewHistory?: () => void;
 }) {
+  const label = resetReasonLabel((reason || "unknown") as ResetReason);
   const [bridgeSent, setBridgeSent] = useState(false);
   const [sending, setSending] = useState(false);
 
@@ -564,8 +569,8 @@ function SessionBoundary({
       <div className="flex-1 border-t border-dashed border-amber-600/40" />
       <div className="flex flex-col items-center gap-2">
         <div className="flex items-center gap-1.5 text-[11px] font-medium text-amber-500/80">
-          <RefreshCw size={12} />
-          <span>세션 갱신됨 (컨텍스트 한도 도달)</span>
+          <span>{label.icon}</span>
+          <span>{label.text}</span>
         </div>
         <div className="flex items-center gap-2">
           {onLoadContext && (
