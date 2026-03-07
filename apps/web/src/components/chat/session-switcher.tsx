@@ -25,6 +25,9 @@ import {
   parseSessionKey,
   sessionDisplayName,
   type GatewaySession,
+  isTopicClosed,
+  getCleanLabel,
+  isTopicSession,
 } from "@/lib/gateway/session-utils";
 import {
   isSessionHidden,
@@ -102,6 +105,8 @@ export interface SessionSwitcherProps {
   onDelete?: (key: string) => Promise<void>;
   onReset?: (key: string) => Promise<void>;
   onHide?: (key: string) => void;
+  onCloseTopic?: (key: string) => Promise<void>;
+  onReopenTopic?: (key: string) => Promise<void>;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   /** Portal target — palette centers inside this element instead of viewport */
@@ -117,6 +122,8 @@ export function SessionSwitcher({
   onDelete,
   onReset,
   onHide,
+  onCloseTopic,
+  onReopenTopic,
   open: controlledOpen,
   onOpenChange,
   portalContainer,
@@ -192,6 +199,11 @@ export function SessionSwitcher({
     return sorted.filter((s) => hiddenSet.has(s.key)).length;
   }, [sorted, hiddenSet]);
 
+  // Separate closed topics
+  const closedTopics = useMemo(() => {
+    return sorted.filter((s) => isTopicClosed(s));
+  }, [sorted]);
+
   const filtered = useMemo(() => {
     // Hide cron and subagent sessions from the list (unless explicitly searched)
     const isSystemSearch = search.toLowerCase().includes("cron") || search.toLowerCase().includes("subagent");
@@ -200,6 +212,8 @@ export function SessionSwitcher({
       if (!isSystemSearch && (parsed.type === "cron" || parsed.type === "subagent")) return false;
       // Hide hidden sessions unless showHidden is on
       if (!showHidden && hiddenSet.has(s.key)) return false;
+      // Hide closed topics from the main list
+      if (isTopicClosed(s)) return false;
       return true;
     });
     if (!search.trim()) return visible;
@@ -558,8 +572,21 @@ export function SessionSwitcher({
                           isSelected ? "flex" : "hidden group-hover:flex"
                         }`}
                       >
-                        {/* Hide / Unhide button (not for main sessions) */}
-                        {!isMain && onHide && (
+                        {/* Close topic button (for topic sessions only) */}
+                        {!isMain && onCloseTopic && isTopicSession(session.key) && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onCloseTopic(session.key);
+                            }}
+                            className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+                            title="토픽 닫기"
+                          >
+                            <EyeOff size={12} />
+                          </button>
+                        )}
+                        {/* Hide / Unhide button (not for main sessions, not for topics with close) */}
+                        {!isMain && onHide && !(onCloseTopic && isTopicSession(session.key)) && (
                           isHidden ? (
                             <button
                               onClick={(e) => {
@@ -680,6 +707,51 @@ export function SessionSwitcher({
                   ↵
                 </kbd>
               </div>
+
+              {/* Closed topics section */}
+              {closedTopics.length > 0 && onReopenTopic && (
+                <>
+                  <div className="mx-4 mt-3 mb-1 flex items-center gap-2 text-xs text-muted-foreground">
+                    <EyeOff size={12} />
+                    <span>닫힌 토픽 ({closedTopics.length})</span>
+                  </div>
+                  {closedTopics.map((session) => {
+                    const parsed = parseSessionKey(session.key);
+                    const cleanLabel = getCleanLabel(session) || sessionDisplayName(session);
+                    return (
+                      <div
+                        key={`closed-${session.key}`}
+                        className="group mx-1 flex items-center gap-3 rounded-lg px-3 py-2 opacity-60 hover:opacity-100 transition-opacity"
+                      >
+                        <SessionTypeIcon type={parsed.type} />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="truncate text-sm text-foreground">{cleanLabel}</span>
+                            <span className="rounded-md bg-red-900/30 border border-red-700/40 px-1.5 py-0.5 text-[9px] font-medium text-red-400">
+                              닫힘
+                            </span>
+                          </div>
+                          {session.updatedAt && (
+                            <div className="mt-0.5 text-xs text-muted-foreground flex items-center gap-0.5">
+                              <Clock size={10} />
+                              {relativeTime(session.updatedAt)}
+                            </div>
+                          )}
+                        </div>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onReopenTopic(session.key);
+                          }}
+                          className="shrink-0 rounded-md bg-zinc-800 px-2 py-1 text-[11px] text-zinc-300 hover:bg-zinc-700 hover:text-white transition opacity-0 group-hover:opacity-100"
+                        >
+                          다시 열기
+                        </button>
+                      </div>
+                    );
+                  })}
+                </>
+              )}
             </div>
 
             {/* Footer hint (desktop only) */}
