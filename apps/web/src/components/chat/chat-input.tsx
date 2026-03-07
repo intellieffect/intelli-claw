@@ -1,7 +1,7 @@
 
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowUp, Paperclip, Square, X, Reply } from "lucide-react";
+import { ArrowUp, Paperclip, Square, X, Reply, History, Trash2 } from "lucide-react";
 
 import { cn, windowStoragePrefix } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -14,7 +14,24 @@ import { SkillPicker, BUILTIN_COMMANDS } from "./skill-picker";
 import { useSkills } from "@/lib/gateway/use-skills";
 import { useKeyboardHeight } from "@/lib/hooks/use-keyboard-height";
 import { useIsMobile } from "@/lib/hooks/use-mobile";
-import type { ReplyTo } from "@/lib/gateway/hooks";
+import type { ReplyTo, AgentStatus } from "@/lib/gateway/hooks";
+
+/** Format agent status for display */
+function formatAgentStatus(status?: AgentStatus): { text: string; dotColor: string } | null {
+  if (!status || status.phase === "idle") return null;
+  switch (status.phase) {
+    case "thinking":
+      return { text: "생각 중…", dotColor: "bg-yellow-400" };
+    case "writing":
+      return { text: "작성 중…", dotColor: "bg-green-400" };
+    case "tool":
+      return { text: `${status.toolName}`, dotColor: "bg-blue-400" };
+    case "waiting":
+      return { text: "응답 대기 중", dotColor: "bg-zinc-500" };
+    default:
+      return null;
+  }
+}
 
 export function ChatInput({
   onSend,
@@ -33,6 +50,11 @@ export function ChatInput({
   tokenPercent,
   replyingTo,
   onClearReply,
+  sessionType,
+  topicCount,
+  agentStatus,
+  onOpenTopicHistory,
+  onClearMessages,
 }: {
   onSend: (text: string) => void;
   onAbort: () => void;
@@ -58,6 +80,16 @@ export function ChatInput({
   replyingTo?: ReplyTo | null;
   /** Clear reply target */
   onClearReply?: () => void;
+  /** Session type label (e.g. "Main", "Thread") */
+  sessionType?: string;
+  /** Number of topics for topic history button */
+  topicCount?: number;
+  /** Agent status for writing/thinking indicator */
+  agentStatus?: AgentStatus;
+  /** Callback to open topic history */
+  onOpenTopicHistory?: () => void;
+  /** Callback to clear messages */
+  onClearMessages?: () => void;
 }) {
   const keyboardHeight = useKeyboardHeight();
   const isMobile = useIsMobile();
@@ -347,13 +379,14 @@ export function ChatInput({
             </div>
           )}
 
-          {/* Model & token info bar */}
-          {(model || tokenStr) && (() => {
+          {/* Model & token info bar + session meta */}
+          {(model || tokenStr || sessionType || topicCount || agentStatus) && (() => {
             const isCritical = tokenPercent != null && tokenPercent >= 90;
             const isWarning = tokenPercent != null && tokenPercent >= 70;
+            const statusInfo = formatAgentStatus(agentStatus);
             return (
               <div className={cn(
-                "flex items-center gap-2.5 px-3 pt-2 pb-0.5 text-xs tabular-nums tracking-tight",
+                "flex flex-wrap items-center gap-x-2.5 gap-y-1 px-3 pt-2 pb-0.5 text-xs tabular-nums tracking-tight",
                 isCritical
                   ? "text-red-400"
                   : isWarning
@@ -384,6 +417,60 @@ export function ChatInput({
                   <span className="ml-1 text-[11px] font-medium text-amber-400/80">
                     ⚡ 토큰 사용량 높음
                   </span>
+                )}
+
+                {/* Session meta — moved from header */}
+                {(sessionType || (topicCount && topicCount > 1) || onClearMessages || statusInfo) && (
+                  <>
+                    <span className="text-zinc-700">|</span>
+
+                    {sessionType && (
+                      <span className="rounded-md bg-zinc-800 px-1.5 py-0.5 text-[10px] font-medium text-zinc-500 uppercase tracking-wide">
+                        {sessionType}
+                      </span>
+                    )}
+
+                    {topicCount != null && topicCount > 1 && onOpenTopicHistory && (
+                      <button
+                        onClick={onOpenTopicHistory}
+                        className="flex items-center gap-1 rounded-md bg-amber-900/20 border border-amber-600/20 px-1.5 py-0.5 text-[10px] font-medium text-amber-500 hover:bg-amber-900/40 hover:border-amber-500/40 transition"
+                        title="대화 이력 보기 (리셋 기록)"
+                      >
+                        <History size={10} />
+                        <span>대화 {topicCount}</span>
+                      </button>
+                    )}
+
+                    {onClearMessages && (
+                      <button
+                        onClick={onClearMessages}
+                        className="flex items-center gap-1 rounded-md bg-zinc-800/50 border border-zinc-700/30 px-1 py-0.5 text-[10px] font-medium text-zinc-400 hover:bg-red-900/30 hover:border-red-500/30 hover:text-red-400 transition"
+                        title="채팅 비우기"
+                      >
+                        <Trash2 size={10} />
+                      </button>
+                    )}
+
+                    {statusInfo && (() => {
+                      const isAnimating = agentStatus?.phase !== "waiting";
+                      return (
+                        <span className="flex items-center gap-1.5">
+                          <span className="relative flex h-2 w-2">
+                            {isAnimating && (
+                              <span className={cn("absolute inline-flex h-full w-full animate-ping rounded-full opacity-75", statusInfo.dotColor)} />
+                            )}
+                            <span className={cn("relative inline-flex h-2 w-2 rounded-full", statusInfo.dotColor)} />
+                          </span>
+                          <span className={cn(
+                            "text-[11px] font-medium",
+                            agentStatus?.phase === "waiting" ? "text-zinc-500" : "text-zinc-300"
+                          )}>
+                            {statusInfo.text}
+                          </span>
+                        </span>
+                      );
+                    })()}
+                  </>
                 )}
               </div>
             );
