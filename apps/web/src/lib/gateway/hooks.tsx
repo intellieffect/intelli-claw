@@ -1410,14 +1410,22 @@ export function useChat(sessionKey?: string) {
       // nest the key inside data depending on event type (#48)
       const evSessionKey = (raw.sessionKey ?? data?.sessionKey) as string | undefined;
 
-      // Strict session isolation (#5536-v2):
+      // Strict session isolation (#5536-v2, #169):
       // 1) If event has a sessionKey, it MUST match our bound session key
       // 2) If event has NO sessionKey, reject it when we have a session —
       //    UNLESS it's a lifecycle event whose runId matches our active run (#154).
       //    Gateway may omit sessionKey on lifecycle.end while including it on
       //    lifecycle.start, causing the end event to be silently dropped.
+      // 3) (#169) Also check sessionKeyRef.current — if it has changed since this
+      //    handler was registered, the handler is stale and should reject everything.
+      if (boundSessionKey !== sessionKeyRef.current) {
+        // Handler is stale — sessionKey changed since this effect was registered.
+        // Reject all events to prevent cross-session leaks during the gap
+        // before React re-runs the effect with the new key.
+        console.warn(`[AWF] #169 stale handler: bound="${boundSessionKey}" current="${sessionKeyRef.current}" — dropping event`);
+        return;
+      }
       if (evSessionKey && evSessionKey !== boundSessionKey) return;
-      if (evSessionKey && evSessionKey !== sessionKeyRef.current) return;
       if (!evSessionKey && (boundSessionKey || sessionKeyRef.current)) {
         // Allow lifecycle events through if they carry a runId matching our active run
         const eventRunId = (raw.runId ?? data?.runId) as string | undefined;

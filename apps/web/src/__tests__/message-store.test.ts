@@ -180,13 +180,13 @@ describe("runMessageStoreMigration", () => {
     runMessageStoreMigration();
     await new Promise((r) => setTimeout(r, 100));
 
-    expect(localStorage.getItem("intelli-claw-msg-migration")).toBe("2");
+    expect(localStorage.getItem("intelli-claw-msg-migration")).toBe("3");
     const result = await getLocalMessages("agent-a");
     expect(result).toEqual([]);
   });
 
   it("is a no-op on subsequent runs (marker already set)", async () => {
-    localStorage.setItem("intelli-claw-msg-migration", "2");
+    localStorage.setItem("intelli-claw-msg-migration", "3");
     await saveMessages("agent-a", [makeMsg({ id: "m1" })]);
 
     runMessageStoreMigration();
@@ -212,7 +212,7 @@ describe("runMessageStoreMigration", () => {
 // ──────────────────────────────────────────────
 describe("migration version", () => {
   it("skips migration if stored version >= MIGRATION_VERSION", async () => {
-    localStorage.setItem("intelli-claw-msg-migration", "3");
+    localStorage.setItem("intelli-claw-msg-migration", "4");
     await saveMessages("agent-a", [makeMsg({ id: "m1" })]);
 
     runMessageStoreMigration();
@@ -231,7 +231,7 @@ describe("migration version", () => {
 
     const result = await getLocalMessages("agent-a");
     expect(result).toEqual([]);
-    expect(localStorage.getItem("intelli-claw-msg-migration")).toBe("2");
+    expect(localStorage.getItem("intelli-claw-msg-migration")).toBe("3");
   });
 });
 

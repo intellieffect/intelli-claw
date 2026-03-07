@@ -62,11 +62,23 @@ export async function saveMessages(
   messages: StoredMessage[],
 ): Promise<void> {
   if (!sessionKey || messages.length === 0) return;
+  // #169: Validate sessionKey on every message to prevent cross-session contamination.
+  // Messages whose sessionKey doesn't match the target are silently dropped with a warning.
+  const validated = messages.filter((msg) => {
+    if (msg.sessionKey && msg.sessionKey !== sessionKey) {
+      console.warn(
+        `[message-store] session mismatch: dropping msg ${msg.id} (msg.sessionKey="${msg.sessionKey}" != target="${sessionKey}")`,
+      );
+      return false;
+    }
+    return true;
+  });
+  if (validated.length === 0) return;
   const db = await openDB();
   return new Promise<void>((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, "readwrite");
     const store = tx.objectStore(STORE_NAME);
-    for (const msg of messages) {
+    for (const msg of validated) {
       store.put({ ...msg, sessionKey });
     }
     tx.oncomplete = () => {
@@ -136,7 +148,7 @@ export async function clearMessages(sessionKey: string): Promise<void> {
 // --- One-time migration: clear corrupted data (#5536-v2) ---
 
 const MIGRATION_KEY = "intelli-claw-msg-migration";
-const MIGRATION_VERSION = 2; // bump to force re-migration (v2: #121 dedup fix)
+const MIGRATION_VERSION = 3; // bump to force re-migration (v3: #169 session isolation fix)
 
 /**
  * One-time migration to purge potentially corrupted IndexedDB message data.
@@ -168,7 +180,7 @@ export function runMessageStoreMigration(): void {
             // Also clear backfill markers so sessions get re-backfilled
             localStorage.removeItem("intelli-claw-backfill-done");
           }
-          console.log("[AWF] Message store migration complete — cleared corrupted data (#5536-v2)");
+          console.log("[AWF] Message store migration complete — cleared corrupted data (#169-v3)");
         };
         tx.onerror = () => db.close();
       } catch {
