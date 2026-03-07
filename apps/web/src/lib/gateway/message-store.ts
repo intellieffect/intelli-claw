@@ -28,6 +28,8 @@ export interface StoredMessage {
   oldSessionId?: string;
   newSessionId?: string;
   replyTo?: ReplyToData;
+  /** #156: Why the session was reset */
+  resetReason?: string;
 }
 
 // --- IndexedDB helpers ---
