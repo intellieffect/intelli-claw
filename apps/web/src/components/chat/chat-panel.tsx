@@ -21,6 +21,7 @@ import { useSwipeGesture, getNextAgentIndex } from "@/lib/hooks/use-swipe-gestur
 import { NewSessionPicker, AgentManager } from "@/components/settings/agent-manager";
 import { SessionManagerPanel } from "./session-manager-panel";
 import { TopicHistory } from "./topic-history";
+import { TopicNameDialog } from "./topic-name-dialog";
 import { resolveInitialSessionState, getRememberedSessionForAgent } from "@/lib/session-continuity";
 import { platform } from "@/lib/platform";
 
@@ -91,6 +92,7 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
   const [agentManagerOpen, setAgentManagerOpen] = useState(false);
   const [sessionManagerOpen, setSessionManagerOpen] = useState(false);
   const [topicHistoryOpen, setTopicHistoryOpen] = useState(false);
+  const [topicNameDialogOpen, setTopicNameDialogOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
 
   // Swipe gesture for mobile agent switching
@@ -193,10 +195,10 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
         e.preventDefault();
         abort();
       }
-      // Cmd+T: create new session tab
+      // Cmd+T: open topic name dialog
       if (matchesShortcutId(e, "new-tab")) {
         e.preventDefault();
-        createSessionForAgent(agentId);
+        setTopicNameDialogOpen(true);
         return;
       }
       // Cmd+1~9: switch to specific tab (9 = last tab)
@@ -459,8 +461,12 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
       // Use sendCommand instead of sendMessage to avoid force-setting streaming=true.
       // If gateway starts an agent run, event handlers set streaming naturally.
 
-      // /new, /reset
-      if (trimmed === "/new" || trimmed === "/reset" || trimmed.startsWith("/new ") || trimmed.startsWith("/reset ")) {
+      // /new → open topic name dialog; /reset → gateway command
+      if (trimmed === "/new") {
+        setTopicNameDialogOpen(true);
+        return;
+      }
+      if (trimmed === "/reset" || trimmed.startsWith("/new ") || trimmed.startsWith("/reset ")) {
         addLocalMessage(text, "user");
         sendCommand(text);
         refreshSessions();
@@ -581,11 +587,11 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
   };
 
     const handleNewSession = () => {
-    createSessionForAgent(agentId);
+    setTopicNameDialogOpen(true);
   };
 
-  const createSessionForAgent = async (selectedAgentId: string) => {
-    const topicId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  const createSessionForAgent = async (selectedAgentId: string, topicName?: string | null) => {
+    const topicId = topicName || (Date.now().toString(36) + Math.random().toString(36).slice(2, 6));
     const newKey = `agent:${selectedAgentId}:main:topic:${topicId}`;
 
     // Switch agent context if different
@@ -599,11 +605,12 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
     setSessionKey(newKey);
 
     // Pre-label the thread
+    const label = topicName || makeDefaultThreadLabel(selectedAgentId);
     if (client && isConnected) {
       try {
         await client.request("sessions.patch", {
           key: newKey,
-          label: makeDefaultThreadLabel(selectedAgentId),
+          label,
         });
       } catch {
         // ignore; auto-labeled on first message
@@ -742,6 +749,16 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
         tokenPercent={(currentSession as any)?.percentUsed as number | undefined}
         replyingTo={replyingTo}
         onClearReply={clearReplyTo}
+      />
+
+      {/* Topic Name Dialog */}
+      <TopicNameDialog
+        open={topicNameDialogOpen}
+        onConfirm={(name) => {
+          setTopicNameDialogOpen(false);
+          createSessionForAgent(agentId, name);
+        }}
+        onCancel={() => setTopicNameDialogOpen(false)}
       />
 
       {/* New Session Picker */}
