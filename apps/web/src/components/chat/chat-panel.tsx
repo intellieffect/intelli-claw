@@ -21,7 +21,7 @@ import { matchesShortcutId } from "@/lib/shortcuts";
 import { windowStoragePrefix } from "@/lib/utils";
 import { useIsMobile } from "@/lib/hooks/use-mobile";
 import { useKeyboardHeight } from "@/lib/hooks/use-keyboard-height";
-import { useSwipeGesture, getNextAgentIndex } from "@/lib/hooks/use-swipe-gesture";
+import { useSwipeGesture, getNextAgentIndex, getNextTopicIndex, useSwipeMode } from "@/lib/hooks/use-swipe-gesture";
 import { NewSessionPicker, AgentManager } from "@/components/settings/agent-manager";
 import { SessionManagerPanel } from "./session-manager-panel";
 import { TopicHistory } from "./topic-history";
@@ -99,30 +99,59 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
   const [topicNameDialogOpen, setTopicNameDialogOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
 
-  // Swipe gesture for mobile agent switching
+  // Swipe mode: agent vs topic
+  const [swipeMode, setSwipeModeValue] = useSwipeMode(agents.length);
+
+  // Swipe gesture for mobile agent/topic switching
   const handleSwipeLeft = useCallback(() => {
-    if (agents.length <= 1) return;
-    const currentIdx = agents.findIndex((a) => a.id === agentId);
-    const nextIdx = getNextAgentIndex(
-      currentIdx === -1 ? 0 : currentIdx,
-      agents.length,
-      "left",
-    );
-    const nextAgent = agents[nextIdx];
-    if (nextAgent) handleAgentChange(nextAgent.id);
-  }, [agents, agentId]);
+    if (swipeMode === "topic") {
+      // 토픽 간 전환
+      if (agentSessions.length <= 1) return;
+      const currentIdx = agentSessions.findIndex((s) => s.key === effectiveSessionKey);
+      const nextIdx = getNextTopicIndex(
+        currentIdx === -1 ? 0 : currentIdx,
+        agentSessions.length,
+        "left",
+      );
+      if (agentSessions[nextIdx]) setSessionKey(agentSessions[nextIdx].key);
+    } else {
+      // 에이전트 간 전환
+      if (agents.length <= 1) return;
+      const currentIdx = agents.findIndex((a) => a.id === agentId);
+      const nextIdx = getNextAgentIndex(
+        currentIdx === -1 ? 0 : currentIdx,
+        agents.length,
+        "left",
+      );
+      const nextAgent = agents[nextIdx];
+      if (nextAgent) handleAgentChange(nextAgent.id);
+    }
+  }, [swipeMode, agents, agentId, agentSessions, effectiveSessionKey, setSessionKey]);
 
   const handleSwipeRight = useCallback(() => {
-    if (agents.length <= 1) return;
-    const currentIdx = agents.findIndex((a) => a.id === agentId);
-    const nextIdx = getNextAgentIndex(
-      currentIdx === -1 ? 0 : currentIdx,
-      agents.length,
-      "right",
-    );
-    const nextAgent = agents[nextIdx];
-    if (nextAgent) handleAgentChange(nextAgent.id);
-  }, [agents, agentId]);
+    if (swipeMode === "topic") {
+      // 토픽 간 전환
+      if (agentSessions.length <= 1) return;
+      const currentIdx = agentSessions.findIndex((s) => s.key === effectiveSessionKey);
+      const nextIdx = getNextTopicIndex(
+        currentIdx === -1 ? 0 : currentIdx,
+        agentSessions.length,
+        "right",
+      );
+      if (agentSessions[nextIdx]) setSessionKey(agentSessions[nextIdx].key);
+    } else {
+      // 에이전트 간 전환
+      if (agents.length <= 1) return;
+      const currentIdx = agents.findIndex((a) => a.id === agentId);
+      const nextIdx = getNextAgentIndex(
+        currentIdx === -1 ? 0 : currentIdx,
+        agents.length,
+        "right",
+      );
+      const nextAgent = agents[nextIdx];
+      if (nextAgent) handleAgentChange(nextAgent.id);
+    }
+  }, [swipeMode, agents, agentId, agentSessions, effectiveSessionKey, setSessionKey]);
 
   useSwipeGesture(panelRef, {
     onSwipeLeft: handleSwipeLeft,
@@ -871,6 +900,9 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
         onSelectSession={(key) => { setSessionKey(key); setSessionManagerOpen(false); }}
         onDeleteSession={async (key) => { await handleDelete(key); }}
         onResetSession={async (key) => { await handleReset(key); }}
+        swipeMode={swipeMode}
+        onSwipeModeChange={setSwipeModeValue}
+        isMobile={isMobile}
       />
 
       {/* Topic History Panel */}
