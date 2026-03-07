@@ -225,7 +225,25 @@ export function normalizeContentForDedup(content: string): string {
   normalized = normalized.replace(/^\s*(?:\[System\]|\(System\)|System:)\s*/i, "");
 
   if (IMAGE_PLACEHOLDERS_DEDUP.has(normalized)) return "(image)";
-  return normalized.slice(0, 200);
+
+  // #155: Use full content instead of truncating to 200 chars.
+  // Short messages use the normalized string directly.
+  // Long messages use a fast hash to keep comparison cost low
+  // while still distinguishing messages that share a 200-char prefix.
+  if (normalized.length <= 200) return normalized;
+  return `${normalized.slice(0, 120)}|H:${simpleHash(normalized)}|L:${normalized.length}`;
+}
+
+/**
+ * Fast non-cryptographic hash for dedup fingerprinting (#155).
+ * DJB2 variant — deterministic, collision-resistant enough for UI dedup.
+ */
+function simpleHash(str: string): string {
+  let hash = 5381;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) + hash + str.charCodeAt(i)) | 0;
+  }
+  return (hash >>> 0).toString(36);
 }
 
 /**
@@ -538,6 +556,8 @@ export function useChat(sessionKey?: string) {
   const pendingHistoryReloadRef = useRef(false);
   const reconnectSafetyRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const finalizedEventKeysRef = useRef<Set<string>>(new Set());
+  // #155: Track recently finalized stream IDs so loadHistory can skip duplicates
+  const finalizedStreamIdsRef = useRef<Set<string>>(new Set());
   const messagesRef = useRef<DisplayMessage[]>([]);
   // Throttle streaming UI updates to once per animation frame
   const streamRafRef = useRef<number | null>(null);
@@ -555,7 +575,11 @@ export function useChat(sessionKey?: string) {
     })()
   );
 
-  const STREAMING_TIMEOUT_MS = 120_000;
+  // Tiered streaming timeouts (#154):
+  // - Thinking phase (no content yet): 45s — stale connections are detected faster
+  // - Writing phase (content streaming): 90s — allows long responses to complete
+  const THINKING_TIMEOUT_MS = 45_000;
+  const WRITING_TIMEOUT_MS = 90_000;
   const queueStorageKey = sessionKey ? `awf:queue:${sessionKey}` : null;
   const pendingStreamStorageKey = sessionKey ? `${PENDING_STREAM_SESSION_KEY_PREFIX}${sessionKey}` : null;
 
@@ -592,10 +616,12 @@ export function useChat(sessionKey?: string) {
     }
   }, []);
 
-  const startStreamingTimeout = useCallback(() => {
+  const startStreamingTimeout = useCallback((phase?: "thinking" | "writing") => {
     clearStreamingTimeout();
+    // Use shorter timeout for thinking phase, longer for writing (#154)
+    const timeoutMs = phase === "writing" ? WRITING_TIMEOUT_MS : THINKING_TIMEOUT_MS;
     streamingTimeoutRef.current = setTimeout(() => {
-      console.warn("[AWF] streaming timeout — force reset");
+      console.warn(`[AWF] streaming timeout (${phase || "thinking"}, ${timeoutMs}ms) — force reset`);
       if (streamBuf.current) {
         const id = streamBuf.current.id;
         setMessages((prev) =>
@@ -607,7 +633,7 @@ export function useChat(sessionKey?: string) {
       clearPersistedPendingStream();
       setStreaming(false);
       setAgentStatusDebug({ phase: "idle" });
-    }, STREAMING_TIMEOUT_MS);
+    }, timeoutMs);
   }, [clearStreamingTimeout, clearPersistedPendingStream]);
 
   useEffect(() => {
@@ -703,7 +729,7 @@ export function useChat(sessionKey?: string) {
         });
       }
       restoredFromSnapshotRef.current = true;
-      startStreamingTimeout();
+      startStreamingTimeout(parsed.content ? "writing" : "thinking");
       console.log("[AWF] Restored pending stream from sessionStorage", {
         runId: parsed.runId?.slice(0, 8),
         streamId: parsed.streamId,
@@ -919,9 +945,34 @@ export function useChat(sessionKey?: string) {
 
           // Local messages not in gateway — split into older (prepend) and newer (append)
           // Use normalized content matching (consistent with gatewayContentKeys) (#121)
-          const isNotInGateway = (lm: StoredMessage) =>
-            !gatewayIds.has(lm.id) &&
-            !gatewayContentKeys.has(`${lm.role}:${normalizeContentForDedup(lm.content)}:${attachmentFingerprint(lm.attachments as DisplayAttachment[] | undefined)}`);
+          // #155: Enhanced dedup — also match by role + close timestamp when
+          // content differs slightly (e.g. tool_use text blocks stripped by gateway).
+          const gatewayByRoleTs = dedupedHistMsgs.map((m) => ({
+            role: m.role,
+            ts: new Date(m.timestamp).getTime(),
+            contentKey: normalizeContentForDedup(m.content),
+          }));
+          const isNotInGateway = (lm: StoredMessage) => {
+            if (gatewayIds.has(lm.id)) return false;
+            const localContentKey = normalizeContentForDedup(lm.content);
+            const localAttKey = attachmentFingerprint(lm.attachments as DisplayAttachment[] | undefined);
+            // Exact content+attachment match
+            if (gatewayContentKeys.has(`${lm.role}:${localContentKey}:${localAttKey}`)) return false;
+            // #155: Fuzzy match — same role, close timestamp (< 30s), and
+            // content shares a meaningful prefix (first 80 chars after normalization).
+            // Catches cases where gateway strips short tool_use text blocks.
+            const localTs = new Date(lm.timestamp).getTime();
+            const localPrefix = localContentKey.slice(0, 80);
+            if (localPrefix.length >= 20) {
+              const fuzzyMatch = gatewayByRoleTs.some((g) =>
+                g.role === lm.role &&
+                Math.abs(g.ts - localTs) < 30_000 &&
+                g.contentKey.slice(0, 80) === localPrefix
+              );
+              if (fuzzyMatch) return false;
+            }
+            return true;
+          };
 
           // Separate session-boundary messages — these are local-only and must
           // be re-inserted at the correct position regardless of timestamp range.
@@ -1051,6 +1102,22 @@ export function useChat(sessionKey?: string) {
       }
       mergedMsgs = mergeLiveStreamingIntoHistory(mergedMsgs, liveStreaming);
 
+      // #155: Remove finalized stream messages that now have a gateway equivalent.
+      // After finalizeActiveStream, both the finalized msg (stream-...) and the
+      // gateway version (hist-N) can coexist. Remove the stream version if
+      // a gateway message with matching content already exists.
+      if (finalizedStreamIdsRef.current.size > 0 && dedupedHistMsgs.length > 0) {
+        const gwContentKeys = new Set(
+          dedupedHistMsgs.map((m) => `${m.role}:${normalizeContentForDedup(m.content)}`),
+        );
+        mergedMsgs = mergedMsgs.filter((m) => {
+          if (!finalizedStreamIdsRef.current.has(m.id)) return true;
+          // Keep if no gateway equivalent exists (gateway hasn't caught up yet)
+          const key = `${m.role}:${normalizeContentForDedup(m.content)}`;
+          return !gwContentKeys.has(key);
+        });
+      }
+
       const savedQueue = queueStorageKey ? localStorage.getItem(queueStorageKey) : null;
       if (savedQueue) {
         try {
@@ -1095,9 +1162,11 @@ export function useChat(sessionKey?: string) {
   const flushDeferredHistoryReload = useCallback(() => {
     if (!pendingHistoryReloadRef.current) return;
     pendingHistoryReloadRef.current = false;
-    if (Date.now() - lastLoadAtRef.current >= 800) {
-      loadHistory();
-    }
+    // Always reload after a run completes (#154).
+    // The previous 800ms throttle could skip the reload when loadHistory was
+    // called recently (e.g., during reconnect), leaving the final response
+    // invisible until the next user interaction.
+    loadHistory();
   }, [loadHistory]);
 
   useEffect(() => { loadHistory(); }, [loadHistory]);
@@ -1297,6 +1366,11 @@ export function useChat(sessionKey?: string) {
         }]).catch(() => {});
       }
 
+      // #155: Record finalized stream ID so loadHistory won't re-add it
+      finalizedStreamIdsRef.current.add(finalId);
+      // Auto-expire after 30s to prevent unbounded growth
+      setTimeout(() => finalizedStreamIdsRef.current.delete(finalId), 30_000);
+
       streamBuf.current = null;
       runIdRef.current = null;
       clearPersistedPendingStream();
@@ -1319,12 +1393,22 @@ export function useChat(sessionKey?: string) {
 
       // Strict session isolation (#5536-v2):
       // 1) If event has a sessionKey, it MUST match our bound session key
-      // 2) If event has NO sessionKey, reject it when we have a session
-      // 3) Double-check against both the closure value AND the ref to catch
-      //    any edge case where one drifts from the other
+      // 2) If event has NO sessionKey, reject it when we have a session —
+      //    UNLESS it's a lifecycle event whose runId matches our active run (#154).
+      //    Gateway may omit sessionKey on lifecycle.end while including it on
+      //    lifecycle.start, causing the end event to be silently dropped.
       if (evSessionKey && evSessionKey !== boundSessionKey) return;
       if (evSessionKey && evSessionKey !== sessionKeyRef.current) return;
-      if (!evSessionKey && (boundSessionKey || sessionKeyRef.current)) return;
+      if (!evSessionKey && (boundSessionKey || sessionKeyRef.current)) {
+        // Allow lifecycle events through if they carry a runId matching our active run
+        const eventRunId = (raw.runId ?? data?.runId) as string | undefined;
+        const isMatchingLifecycle =
+          stream === "lifecycle" &&
+          eventRunId &&
+          runIdRef.current &&
+          eventRunId === runIdRef.current;
+        if (!isMatchingLifecycle) return;
+      }
 
 
       // Ignore events after abort until next lifecycle start
@@ -1335,7 +1419,7 @@ export function useChat(sessionKey?: string) {
         // Cancel reconnect safety timer — events are flowing again
         if (reconnectSafetyRef.current) { clearTimeout(reconnectSafetyRef.current); reconnectSafetyRef.current = null; }
         setStreaming(true);
-        startStreamingTimeout();
+        startStreamingTimeout("writing");
         setAgentStatusDebug({ phase: "writing" });
         if (!streamBuf.current) {
           streamBuf.current = { id: `stream-${Date.now()}-${++streamIdCounter.current}`, content: "", toolCalls: new Map() };
@@ -1480,7 +1564,7 @@ export function useChat(sessionKey?: string) {
         if (reconnectSafetyRef.current) { clearTimeout(reconnectSafetyRef.current); reconnectSafetyRef.current = null; }
         setStreaming(true);
         abortedRef.current = false;
-        startStreamingTimeout();
+        startStreamingTimeout("thinking");
         runIdRef.current = resolveRunId(raw, data);
         const runKey = finalEventKey(runIdRef.current);
         if (runKey) {
@@ -1561,7 +1645,7 @@ export function useChat(sessionKey?: string) {
       if (!client || state !== "connected") return;
       setMessages((prev) => prev.map((m) => (m.id === msgId ? { ...m, queued: false } : m)));
       setStreaming(true);
-      startStreamingTimeout();
+      startStreamingTimeout("thinking");
       setAgentStatusDebug({ phase: "thinking" });
 
       const idempotencyKey = `awf-${Date.now()}-${Math.random().toString(36).slice(2)}`;
