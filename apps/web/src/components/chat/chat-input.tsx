@@ -321,6 +321,30 @@ export function ChatInput({
     return () => document.removeEventListener("focus-chat-input", handler);
   }, []);
 
+  // Clock: update every minute
+  const [clockTime, setClockTime] = useState(() => {
+    const now = new Date();
+    return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+  });
+  useEffect(() => {
+    const tick = () => {
+      const now = new Date();
+      setClockTime(`${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`);
+    };
+    // Align to next minute boundary
+    const msUntilNextMinute = (60 - new Date().getSeconds()) * 1000 - new Date().getMilliseconds();
+    const alignTimeout = setTimeout(() => {
+      tick();
+      // Then tick every 60s
+      intervalRef.current = setInterval(tick, 60_000);
+    }, msUntilNextMinute);
+    const intervalRef: { current: ReturnType<typeof setInterval> | null } = { current: null };
+    return () => {
+      clearTimeout(alignTimeout);
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, []);
+
   const showAttachments = onRemoveAttachment && attachments.length > 0;
 
   return (
@@ -408,6 +432,8 @@ export function ChatInput({
                     <span className="font-semibold">{tokenPercent}%</span>
                   </>
                 )}
+                <span className="text-zinc-700">·</span>
+                <span data-testid="chat-clock">{clockTime}</span>
                 {isCritical && (
                   <span className="ml-1 text-[11px] font-medium text-red-400/90">
                     ⚠️ 컨텍스트 한도 임박 — <code className="rounded bg-red-400/10 px-1 py-0.5 text-[10px]">/new</code> 또는 <code className="rounded bg-red-400/10 px-1 py-0.5 text-[10px]">/compact</code> 권장
