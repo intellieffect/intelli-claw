@@ -100,6 +100,46 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
 
   const { attachments, addFiles, removeAttachment, clearAttachments } = useFileAttachments();
 
+  // Build ordered session list for current agent (matches header tab order: main first, then by updatedAt desc)
+  // NOTE: Must be declared before swipe handlers to avoid TDZ in production builds
+  const [hiddenVersion, setHiddenVersion] = useState(0);
+  const agentSessions = useMemo(() => {
+    return (sessions as GatewaySession[])
+      .filter((s) => {
+        const p = parseSessionKey(s.key);
+        if (p.agentId !== agentId) return false;
+        if (p.type !== "main" && p.type !== "thread") return false;
+        // Hide hidden sessions (main always visible)
+        if (p.type !== "main" && isSessionHidden(s.key)) return false;
+        // Hide closed topics from tab bar
+        if (isTopicClosed(s)) return false;
+        return true;
+      })
+      .sort((a, b) => {
+        const aType = parseSessionKey(a.key).type;
+        const bType = parseSessionKey(b.key).type;
+        if (aType === "main" && bType !== "main") return -1;
+        if (bType === "main" && aType !== "main") return 1;
+        return (b.updatedAt || 0) - (a.updatedAt || 0);
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessions, agentId, hiddenVersion]);
+
+  const handleAgentChange = useCallback((id: string | undefined) => {
+    const newId = id || import.meta.env.VITE_DEFAULT_AGENT || "default";
+    setAgentId(newId);
+    if (typeof window !== "undefined") {
+      localStorage.setItem(`${storagePrefix}agentId`, newId);
+      const remembered = getRememberedSessionForAgent({
+        agentId: newId,
+        getItem: (k) => localStorage.getItem(k),
+      });
+      setSessionKey(remembered || undefined);
+      return;
+    }
+    setSessionKey(undefined);
+  }, [storagePrefix, setSessionKey]);
+
   const [sessionSwitcherOpen, setSessionSwitcherOpen] = useState(false);
   const [agentBrowserOpen, setAgentBrowserOpen] = useState(false);
   const [newSessionPickerOpen, setNewSessionPickerOpen] = useState(false);
@@ -169,30 +209,6 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
     threshold: 50,
     enabled: isMobile,
   });
-
-  // Build ordered session list for current agent (matches header tab order: main first, then by updatedAt desc)
-  const [hiddenVersion, setHiddenVersion] = useState(0);
-  const agentSessions = useMemo(() => {
-    return (sessions as GatewaySession[])
-      .filter((s) => {
-        const p = parseSessionKey(s.key);
-        if (p.agentId !== agentId) return false;
-        if (p.type !== "main" && p.type !== "thread") return false;
-        // Hide hidden sessions (main always visible)
-        if (p.type !== "main" && isSessionHidden(s.key)) return false;
-        // Hide closed topics from tab bar
-        if (isTopicClosed(s)) return false;
-        return true;
-      })
-      .sort((a, b) => {
-        const aType = parseSessionKey(a.key).type;
-        const bType = parseSessionKey(b.key).type;
-        if (aType === "main" && bType !== "main") return -1;
-        if (bType === "main" && aType !== "main") return 1;
-        return (b.updatedAt || 0) - (a.updatedAt || 0);
-      });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessions, agentId, hiddenVersion]);
 
   // Restore focus to this panel's textarea
   const refocusPanel = useCallback(() => {
@@ -696,21 +712,6 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
     },
     [attachments, client, isConnected, effectiveSessionKey, sessionKey, clearAttachments, sendMessage, sendCommand, addUserMessage, addLocalMessage, clearMessages, handleStatusCommand, patchSession, abort, refreshSessions, sessions, summarizeLabelFromText]
   );
-
-  const handleAgentChange = (id: string | undefined) => {
-    const newId = id || import.meta.env.VITE_DEFAULT_AGENT || "default";
-    setAgentId(newId);
-    if (typeof window !== "undefined") {
-      localStorage.setItem(`${storagePrefix}agentId`, newId);
-      const remembered = getRememberedSessionForAgent({
-        agentId: newId,
-        getItem: (k) => localStorage.getItem(k),
-      });
-      setSessionKey(remembered || undefined);
-      return;
-    }
-    setSessionKey(undefined);
-  };
 
     const handleNewSession = () => {
     setTopicNameDialogOpen(true);
