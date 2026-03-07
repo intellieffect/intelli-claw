@@ -673,17 +673,33 @@ function CopyButton({ text }: { text: string }) {
 }
 
 
-/** Reply quote block shown above message content */
-function ReplyQuoteBlock({ replyTo }: { replyTo: { id: string; content: string; role: string } }) {
+/** Reply quote block shown above message content — click to scroll to original */
+function ReplyQuoteBlock({ replyTo, allMessages }: { replyTo: { id: string; content: string; role: string }; allMessages?: DisplayMessage[] }) {
   const roleLabel = replyTo.role === "user" ? "나" : "에이전트";
+
+  const handleClick = useCallback(() => {
+    // Find the original message element by scanning data-msg-id attributes
+    const target = document.querySelector(`[data-msg-id="${CSS.escape(replyTo.id)}"]`) as HTMLElement | null;
+    if (target) {
+      target.scrollIntoView({ behavior: "smooth", block: "center" });
+      // Highlight animation
+      target.classList.add("reply-highlight");
+      setTimeout(() => target.classList.remove("reply-highlight"), 1500);
+    }
+  }, [replyTo.id]);
+
   return (
-    <div className="mb-1.5 flex items-start gap-1.5 rounded-lg border-l-2 border-primary/40 bg-primary/5 px-2.5 py-1.5 text-xs text-muted-foreground">
+    <button
+      type="button"
+      onClick={handleClick}
+      className="mb-1.5 flex w-full items-start gap-1.5 rounded-lg border-l-2 border-primary/40 bg-primary/5 px-2.5 py-1.5 text-left text-xs text-muted-foreground transition hover:bg-primary/10 cursor-pointer"
+    >
       <Reply size={12} className="mt-0.5 shrink-0 rotate-180 text-primary/60" />
       <div className="min-w-0">
         <span className="font-medium text-primary/80">{roleLabel}</span>
         <p className="mt-0.5 truncate">{replyTo.content || "(내용 없음)"}</p>
       </div>
-    </div>
+    </button>
   );
 }
 
@@ -719,7 +735,7 @@ const MessageBubble = React.memo(React.forwardRef<HTMLDivElement, { message: Dis
   }
 
   return (
-    <div ref={ref} className={`group flex gap-3 ${isUser ? "justify-end" : ""} `}>
+    <div ref={ref} data-msg-id={message.id} className={`group flex gap-3 transition-colors duration-500 ${isUser ? "justify-end" : ""} [&.reply-highlight]:bg-primary/10 [&.reply-highlight]:rounded-xl`}>
       {/* Action buttons for user messages (left of bubble) */}
       {isUser && (
         <div className="flex items-start gap-0.5 pt-2">
