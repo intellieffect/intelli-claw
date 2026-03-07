@@ -4,7 +4,7 @@ import {
   MessageSquare, Plus, X, Pin, Zap,
   MessageCircle, Bot, Settings, History, Trash2,
 } from "lucide-react";
-import { parseSessionKey } from "@/lib/gateway/session-utils";
+import { parseSessionKey, isTopicClosed, getCleanLabel } from "@/lib/gateway/session-utils";
 import { isSessionHidden, hideSession } from "@/lib/gateway/hidden-sessions";
 import type { Agent, Session } from "@/lib/gateway/protocol";
 import type { AgentStatus } from "@/lib/gateway/hooks";
@@ -52,7 +52,7 @@ const TYPE_ICONS: Record<string, React.ReactNode> = {
 function sessionTabLabel(session: SessionEntry): string {
   // 1. User-set or auto-generated label
   if (session.label && typeof session.label === "string") {
-    const label = session.label as string;
+    const label = getCleanLabel({ label: session.label as string }) || (session.label as string);
     const slashIdx = label.indexOf("/");
     const clean = slashIdx > 0 && slashIdx < 16 ? label.slice(slashIdx + 1) : label;
     return clean.length > 28 ? `${clean.slice(0, 26)}…` : clean;
@@ -112,7 +112,7 @@ function deriveTopic(
   messages: Array<Record<string, unknown>>
 ): string | null {
   if (session?.label && typeof session.label === "string") {
-    const label = session.label as string;
+    const label = getCleanLabel({ label: session.label as string }) || (session.label as string);
     const slashIdx = label.indexOf("/");
     if (slashIdx > 0 && slashIdx < 16) return label.slice(slashIdx + 1);
     return label;
@@ -192,6 +192,8 @@ export function ChatHeader({
         if (p.type !== "main" && p.type !== "thread") return false;
         // Hide hidden sessions from tabs (main is always visible)
         if (p.type !== "main" && isSessionHidden(s.key as string)) return false;
+        // Hide closed topics from tab bar
+        if (s.label && typeof s.label === "string" && isTopicClosed({ label: s.label })) return false;
         return true;
       })
       .sort((a, b) => {
@@ -365,6 +367,11 @@ export function ChatHeader({
         <span className="rounded-md bg-zinc-800 px-2 py-0.5 text-[10px] font-medium text-zinc-500 uppercase tracking-wide">
           {sessionType}
         </span>
+        {session && isTopicClosed({ label: session.label as string | undefined }) && (
+          <span className="rounded-md bg-red-900/30 border border-red-700/40 px-2 py-0.5 text-[10px] font-medium text-red-400">
+            닫힘
+          </span>
+        )}
         {topicCount > 1 && onOpenTopicHistory && (
           <button
             onClick={onOpenTopicHistory}

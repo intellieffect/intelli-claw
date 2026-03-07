@@ -142,6 +142,29 @@ export interface GatewaySession {
   sessionId?: string;
 }
 
+// --- Topic close helpers (label-prefix convention) ---
+
+export const CLOSED_PREFIX = "[closed] ";
+
+/** Check if a session is closed by inspecting its label prefix */
+export function isTopicClosed(session: { label?: string | null }): boolean {
+  return typeof session.label === "string" && session.label.startsWith(CLOSED_PREFIX);
+}
+
+/** Get label without the [closed] prefix for display */
+export function getCleanLabel(session: { label?: string | null }): string {
+  if (!session.label) return "";
+  if (session.label.startsWith(CLOSED_PREFIX)) {
+    return session.label.slice(CLOSED_PREFIX.length);
+  }
+  return session.label;
+}
+
+/** Check if a session key represents a topic (thread/topic) session */
+export function isTopicSession(key: string): boolean {
+  return key.includes(":thread:") || key.includes(":topic:");
+}
+
 /**
  * Group sessions by agent ID, sorted by most recent updatedAt within each group.
  * Groups are also sorted by most recent session.

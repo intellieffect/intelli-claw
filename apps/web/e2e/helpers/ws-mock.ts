@@ -177,6 +177,24 @@ export async function setupMockGateway(page: Page, options: MockGatewayOptions =
             return;
           }
 
+          // Sessions patch — update mock session state
+          if (frame.method === 'sessions.patch') {
+            const params = frame.params || {};
+            const sessions = window.__mockGatewaySessions;
+            const idx = sessions.findIndex(s => s.key === params.key);
+            if (idx >= 0) {
+              if (params.label !== undefined) sessions[idx].label = params.label;
+              if (params.model !== undefined) sessions[idx].model = params.model;
+            }
+            this._deliver({
+              type: 'res',
+              id: frame.id,
+              ok: true,
+              payload: {}
+            });
+            return;
+          }
+
           // Chat send
           if (frame.method === 'chat.send') {
             this._deliver({
