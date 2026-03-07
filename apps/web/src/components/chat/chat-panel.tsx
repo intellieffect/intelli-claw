@@ -11,6 +11,9 @@ import { DropZone, useFileAttachments, attachmentToPayload } from "./file-attach
 import { parseSessionKey, sessionDisplayName, type GatewaySession, isTopicClosed, isTopicSession, CLOSED_PREFIX, getCleanLabel } from "@/lib/gateway/session-utils";
 import { getTopicCount } from "@/lib/gateway/topic-store";
 import { isSessionHidden, hideSession, unhideSession, getHiddenSessions } from "@/lib/gateway/hidden-sessions";
+import { getLocalMessages } from "@/lib/gateway/message-store";
+import { generateTopicSummary } from "@/lib/gateway/topic-summary";
+import { markSessionEnded } from "@/lib/gateway/topic-store";
 
 import { SessionSettings } from "@/components/settings/session-settings";
 import { ChatHeader } from "./chat-header";
@@ -188,6 +191,20 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
         : currentLabel;
       try {
         await client.request("sessions.patch", { key, label: CLOSED_PREFIX + cleanLabel });
+
+        // Phase 3: flush topic summary to memory
+        try {
+          const localMessages = await getLocalMessages(key);
+          const summary = generateTopicSummary(localMessages);
+          const sessionId = session?.sessionId || key;
+          await markSessionEnded(key, sessionId, {
+            summary: summary || undefined,
+            messageCount: localMessages.length,
+          });
+        } catch (summaryErr) {
+          console.warn("[AWF] topic summary flush failed:", summaryErr);
+        }
+
         await refreshSessions();
       } catch (err) {
         console.error("[AWF] close topic error:", err);
