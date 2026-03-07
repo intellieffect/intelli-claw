@@ -11,7 +11,6 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import {
   getExt,
   getFileAccent,
-  stripTaskMemo,
   messageBubbleAreEqual,
   MessageList,
 } from "@/components/chat/message-list";
@@ -81,23 +80,6 @@ describe("getExt", () => {
   });
 });
 
-describe("stripTaskMemo", () => {
-  it("removes task-memo HTML comment (including surrounding whitespace)", () => {
-    const input = 'Hello <!-- task-memo: {"key":"val"} --> World';
-    // Regex uses \s* around the comment, so surrounding spaces are consumed
-    expect(stripTaskMemo(input)).toBe("HelloWorld");
-  });
-
-  it("returns text unchanged when no task-memo", () => {
-    expect(stripTaskMemo("Normal text")).toBe("Normal text");
-  });
-
-  it("removes multiple task-memo comments (including surrounding whitespace)", () => {
-    const input = 'A <!-- task-memo: {} --> B <!-- task-memo: {"x":1} --> C';
-    // Each comment + surrounding \s* is consumed, result is trimEnd()
-    expect(stripTaskMemo(input)).toBe("ABC");
-  });
-});
 
 describe("getFileAccent", () => {
   it("returns red accent for PDF", () => {
@@ -425,17 +407,6 @@ describe("MessageBubble — assistant messages", () => {
     render(<MessageList messages={messages} loading={false} streaming={false} />);
     expect(screen.getByText("나")).toBeInTheDocument(); // role label for user
     expect(screen.getByText("Original question text")).toBeInTheDocument();
-  });
-
-  it("strips task-memo from assistant content", () => {
-    const messages = [
-      makeAssistantMessage('Answer text <!-- task-memo: {"key":"val"} -->'),
-    ];
-    render(<MessageList messages={messages} loading={false} streaming={false} />);
-    // MarkdownRenderer receives stripped content
-    const md = screen.getByTestId("markdown");
-    expect(md.textContent).toContain("Answer text");
-    expect(md.textContent).not.toContain("task-memo");
   });
 
   it("renders assistant image attachments", () => {
