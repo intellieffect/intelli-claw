@@ -1,5 +1,7 @@
-import { readFile, stat, open } from "node:fs/promises";
-import { extname, basename } from "node:path";
+import { readFile, stat, open, mkdir, writeFile } from "node:fs/promises";
+import { extname, basename, join } from "node:path";
+import { homedir } from "node:os";
+import { randomUUID } from "node:crypto";
 
 const MIME_MAP: Record<string, string> = {
   png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif",
@@ -80,4 +82,37 @@ export async function handleMediaRange(
     end: actualEnd,
     total: info.size,
   };
+}
+
+// ---- #157: File upload (same as server api-server.ts upload handler) ----
+
+const UPLOAD_DIR = join(homedir(), ".openclaw", "media", "uploads");
+
+const UPLOAD_MIME_TO_EXT: Record<string, string> = {
+  "image/jpeg": "jpg", "image/png": "png", "image/gif": "gif",
+  "image/webp": "webp", "image/svg+xml": "svg", "image/bmp": "bmp",
+  "text/plain": "txt", "text/csv": "csv", "text/markdown": "md",
+  "text/xml": "xml", "text/yaml": "yaml", "text/html": "html",
+  "text/tab-separated-values": "tsv",
+  "application/json": "json", "application/xml": "xml",
+  "application/pdf": "pdf",
+};
+
+export async function handleMediaUpload(
+  data: string,
+  mimeType: string,
+  fileName?: string,
+): Promise<{ path: string }> {
+  const ext = UPLOAD_MIME_TO_EXT[mimeType] || mimeType.split("/")[1] || "bin";
+  const uuid = randomUUID();
+  const outName = fileName
+    ? `${uuid}-${fileName.replace(/[^a-zA-Z0-9._-]/g, "_")}`
+    : `${uuid}.${ext}`;
+  const outPath = join(UPLOAD_DIR, outName);
+
+  await mkdir(UPLOAD_DIR, { recursive: true });
+  const buffer = Buffer.from(data, "base64");
+  await writeFile(outPath, buffer);
+
+  return { path: outPath };
 }
