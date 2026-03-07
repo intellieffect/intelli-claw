@@ -37,6 +37,10 @@ import {
 } from "@/lib/gateway/hidden-sessions";
 import { getTopicHistory, type TopicEntry } from "@/lib/gateway/topic-store";
 import type { Session } from "@/lib/gateway/protocol";
+import {
+  computeVisualRange,
+  getSelectedKeysFromRange,
+} from "@/lib/visual-select";
 
 // ---- Type icon per session type ----
 
@@ -153,6 +157,11 @@ export function SessionSwitcher({
   const [visibleCount, setVisibleCount] = useState(40);
   const [topicSummaries, setTopicSummaries] = useState<Record<string, string>>({});
 
+  // Vim visual select mode
+  const [visualMode, setVisualMode] = useState(false);
+  const [visualAnchor, setVisualAnchor] = useState<number | null>(null);
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+
   const searchRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const isKeyboardNav = useRef(false);
@@ -250,6 +259,9 @@ export function SessionSwitcher({
       setEditingKey(null);
       setSelectedIndex(0);
       setVisibleCount(40); // progressive render for performance
+      setVisualMode(false);
+      setVisualAnchor(null);
+      setSelectedKeys(new Set());
       setTimeout(() => searchRef.current?.focus(), 16);
       // warm up list after first paint
       setTimeout(() => setVisibleCount(120), 60);
@@ -299,24 +311,102 @@ export function SessionSwitcher({
     });
   }, [selectedIndex]);
 
+  // Update visual selection when cursor moves in visual mode
+  const updateVisualSelection = useCallback(
+    (newIndex: number) => {
+      if (visualAnchor === null) return;
+      const { start, end } = computeVisualRange(visualAnchor, newIndex);
+      setSelectedKeys(getSelectedKeysFromRange(filtered, start, end));
+    },
+    [visualAnchor, filtered],
+  );
+
   // Keyboard navigation
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (editingKey) return; // let inline edit handle keys
 
+      // Don't handle vim keys when search input is focused (except Escape)
+      const isSearchFocused = searchRef.current === document.activeElement;
+
       // +1 for "new conversation" item at the end
       const totalItems = filtered.length + 1;
+
+      const moveDown = () => {
+        isKeyboardNav.current = true;
+        setSelectedIndex((prev) => {
+          const next = (prev + 1) % totalItems;
+          if (visualMode && visualAnchor !== null) {
+            const { start, end } = computeVisualRange(visualAnchor, next);
+            setSelectedKeys(getSelectedKeysFromRange(filtered, start, end));
+          }
+          return next;
+        });
+      };
+
+      const moveUp = () => {
+        isKeyboardNav.current = true;
+        setSelectedIndex((prev) => {
+          const next = (prev - 1 + totalItems) % totalItems;
+          if (visualMode && visualAnchor !== null) {
+            const { start, end } = computeVisualRange(visualAnchor, next);
+            setSelectedKeys(getSelectedKeysFromRange(filtered, start, end));
+          }
+          return next;
+        });
+      };
 
       switch (e.key) {
         case "ArrowDown":
           e.preventDefault();
-          isKeyboardNav.current = true;
-          setSelectedIndex((i) => (i + 1) % totalItems);
+          moveDown();
           break;
         case "ArrowUp":
           e.preventDefault();
-          isKeyboardNav.current = true;
-          setSelectedIndex((i) => (i - 1 + totalItems) % totalItems);
+          moveUp();
+          break;
+        case "j":
+          if (isSearchFocused) return;
+          e.preventDefault();
+          moveDown();
+          break;
+        case "k":
+          if (isSearchFocused) return;
+          e.preventDefault();
+          moveUp();
+          break;
+        case "v":
+          if (isSearchFocused) return;
+          e.preventDefault();
+          if (!visualMode) {
+            // Enter visual mode
+            setVisualMode(true);
+            setVisualAnchor(selectedIndex);
+            if (selectedIndex < filtered.length) {
+              setSelectedKeys(new Set([filtered[selectedIndex].key]));
+            }
+          } else {
+            // Exit visual mode, keep selection
+            setVisualMode(false);
+            setVisualAnchor(null);
+          }
+          break;
+        case "d":
+          if (isSearchFocused) return;
+          if (selectedKeys.size > 0 && onDelete) {
+            e.preventDefault();
+            const keysToDelete = [...selectedKeys];
+            const count = keysToDelete.length;
+            if (!confirm(`${count}개 세션을 삭제하시겠습니까?`)) return;
+            setVisualMode(false);
+            setVisualAnchor(null);
+            setSelectedKeys(new Set());
+            (async () => {
+              for (const key of keysToDelete) {
+                await onDelete(key);
+              }
+            })();
+          }
           break;
         case "Enter":
           e.preventDefault();
@@ -330,11 +420,18 @@ export function SessionSwitcher({
           break;
         case "Escape":
           e.preventDefault();
-          setOpen(false);
+          if (visualMode) {
+            // Exit visual mode + clear selection
+            setVisualMode(false);
+            setVisualAnchor(null);
+            setSelectedKeys(new Set());
+          } else {
+            setOpen(false);
+          }
           break;
       }
     },
-    [editingKey, filtered, selectedIndex, onSelect, onNew, setOpen],
+    [editingKey, filtered, selectedIndex, onSelect, onNew, setOpen, visualMode, visualAnchor, onDelete, updateVisualSelection],
   );
 
   // Actions
@@ -502,13 +599,18 @@ export function SessionSwitcher({
                 const isSelected = selectedIndex === index;
                 const isHidden = hiddenSet.has(session.key);
                 const isMain = parsed.type === "main";
+                const isVisualSelected = selectedKeys.has(session.key);
 
                 return (
                   <div
                     key={session.key}
                     data-session-item
                     className={`group mx-1 flex items-center gap-3 rounded-lg px-3 py-2.5 min-h-[44px] transition-colors ${
-                      isSelected ? "bg-muted/70" : "hover:bg-muted"
+                      isVisualSelected
+                        ? "bg-primary/15 ring-1 ring-primary/30"
+                        : isSelected
+                          ? "bg-muted/70"
+                          : "hover:bg-muted"
                     } ${isHidden ? "opacity-50" : ""}`}
                     onMouseMove={() => {
                       if (!isKeyboardNav.current && selectedIndex !== index) setSelectedIndex(index);
@@ -782,22 +884,48 @@ export function SessionSwitcher({
             {/* Footer hint (desktop only) */}
             {!isMobile && (
               <div className="flex items-center gap-3 border-t border-border px-4 py-2 text-[10px] text-muted-foreground">
-                <span className="flex items-center gap-1">
-                  <kbd className="rounded border border-border px-1">↑↓</kbd>
-                  이동
-                </span>
-                <span className="flex items-center gap-1">
-                  <kbd className="rounded border border-border px-1">↵</kbd>
-                  선택
-                </span>
-                <span className="flex items-center gap-1">
-                  <kbd className="rounded border border-border px-1">R</kbd>
-                  이름변경
-                </span>
-                <span className="flex items-center gap-1">
-                  <kbd className="rounded border border-border px-1">esc</kbd>
-                  닫기
-                </span>
+                {visualMode ? (
+                  <>
+                    <span className="rounded bg-primary/20 px-1.5 py-0.5 font-medium text-primary">
+                      VISUAL
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <kbd className="rounded border border-border px-1">j/k</kbd>
+                      범위 선택
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <kbd className="rounded border border-border px-1">d</kbd>
+                      삭제 ({selectedKeys.size})
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <kbd className="rounded border border-border px-1">v</kbd>
+                      확정
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <kbd className="rounded border border-border px-1">esc</kbd>
+                      취소
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span className="flex items-center gap-1">
+                      <kbd className="rounded border border-border px-1">j/k</kbd>
+                      이동
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <kbd className="rounded border border-border px-1">↵</kbd>
+                      선택
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <kbd className="rounded border border-border px-1">v</kbd>
+                      비주얼
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <kbd className="rounded border border-border px-1">esc</kbd>
+                      닫기
+                    </span>
+                  </>
+                )}
               </div>
             )}
           </div>
