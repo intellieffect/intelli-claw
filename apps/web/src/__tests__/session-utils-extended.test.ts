@@ -19,6 +19,18 @@ describe("parseSessionKey — channel-routed sessions", () => {
     });
   });
 
+  it("parses channel-routed topic session", () => {
+    const result = parseSessionKey(
+      "agent:main:telegram:mybot:direct:123456789:topic:002",
+    );
+    expect(result).toEqual({
+      agentId: "main",
+      type: "thread",
+      detail: "002",
+      channel: "telegram",
+    });
+  });
+
   it("parses channel-routed main session (no thread)", () => {
     const result = parseSessionKey(
       "agent:main:telegram:mybot:direct:123456789",
@@ -28,6 +40,20 @@ describe("parseSessionKey — channel-routed sessions", () => {
       type: "main",
       channel: "telegram",
     });
+  });
+});
+
+describe("parseSessionKey — :topic: sessions", () => {
+  it("parses topic session (new format)", () => {
+    const result = parseSessionKey("agent:alpha:main:topic:abc123");
+    expect(result).toEqual({ agentId: "alpha", type: "thread", detail: "abc123" });
+  });
+
+  it("topic sessions produce same type as thread sessions", () => {
+    const threadResult = parseSessionKey("agent:alpha:main:thread:id1");
+    const topicResult = parseSessionKey("agent:alpha:main:topic:id1");
+    expect(threadResult.type).toBe(topicResult.type);
+    expect(threadResult.type).toBe("thread");
   });
 });
 

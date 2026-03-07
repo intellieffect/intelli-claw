@@ -311,7 +311,7 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
     const currentLabel = (session?.label || "").trim();
     const isAutoOrEmpty =
       !currentLabel ||
-      /스레드\s*#|thread\s*#|^thread[:\s-]|작업-\d{4}/i.test(currentLabel);
+      /스레드\s*#|토픽\s*#|thread\s*#|topic\s*#|^thread[:\s-]|^topic[:\s-]|작업-\d{4}/i.test(currentLabel);
 
     if (!isAutoOrEmpty) return;
 
@@ -415,7 +415,7 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
           "| `/model` | 현재 모델 표시 |",
           "| `/model <name>` | 모델 변경 |",
           "| `/clear` | 채팅 표시 비우기 |",
-          "| `/new` | 새 스레드 생성 |",
+          "| `/new` | 새 토픽 생성 |",
           "| `/reset` | 세션 초기화 |",
           "| `/reasoning <level>` | 추론 레벨 변경 |",
           "| `/stop` | 스트리밍 중단 |",
@@ -585,8 +585,8 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
   };
 
   const createSessionForAgent = async (selectedAgentId: string) => {
-    const threadId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-    const newKey = `agent:${selectedAgentId}:main:thread:${threadId}`;
+    const topicId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const newKey = `agent:${selectedAgentId}:main:topic:${topicId}`;
 
     // Switch agent context if different
     if (selectedAgentId !== agentId) {

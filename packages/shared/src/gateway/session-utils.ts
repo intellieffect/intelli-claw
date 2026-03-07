@@ -14,7 +14,8 @@ export interface ParsedSessionKey {
  * Parse a session key into agent ID and type.
  * Patterns:
  * - agent:{agentId}:main
- * - agent:{agentId}:main:thread:{id}
+ * - agent:{agentId}:main:thread:{id}  (legacy)
+ * - agent:{agentId}:main:topic:{id}   (preferred)
  * - agent:{agentId}:cron:{id}
  * - agent:{agentId}:subagent:{id}
  * - agent:{agentId}:agent:{targetAgent}:main
@@ -28,8 +29,8 @@ export function parseSessionKey(key: string): ParsedSessionKey {
 
   const agentId = parts[1];
 
-  // agent:{id}:main:thread:{threadId}
-  if (parts[2] === "main" && parts[3] === "thread" && parts[4]) {
+  // agent:{id}:main:thread:{threadId} or agent:{id}:main:topic:{topicId}
+  if (parts[2] === "main" && (parts[3] === "thread" || parts[3] === "topic") && parts[4]) {
     return { agentId, type: "thread", detail: parts[4] };
   }
 
@@ -54,8 +55,9 @@ export function parseSessionKey(key: string): ParsedSessionKey {
   }
 
   // Channel-routed sessions: agent:{id}:{channel}:{bot}:{chatType}:{userId}:thread:{threadId}
+  // or: agent:{id}:{channel}:{bot}:{chatType}:{userId}:topic:{topicId}
   // e.g. agent:main:telegram:mybot:direct:123456789:thread:001
-  const threadIdx = parts.indexOf("thread");
+  const threadIdx = Math.max(parts.indexOf("thread"), parts.indexOf("topic"));
   if (threadIdx > 2 && parts[threadIdx + 1]) {
     const channel = parts[2]; // telegram, signal, whatsapp, etc.
     return { agentId, type: "thread", detail: parts[threadIdx + 1], channel };
@@ -73,7 +75,7 @@ export function parseSessionKey(key: string): ParsedSessionKey {
 
 const TYPE_LABELS: Record<string, string> = {
   main: "메인",
-  thread: "스레드",
+  thread: "토픽",
   cron: "크론",
   subagent: "서브에이전트",
   a2a: "A2A",
