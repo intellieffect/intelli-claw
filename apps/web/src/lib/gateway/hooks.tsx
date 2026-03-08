@@ -210,11 +210,14 @@ export function useSessions() {
 
 // --- Helpers ---
 
-function stripInboundMeta(text: string): string {
+export function stripInboundMeta(text: string): string {
   let cleaned = text.replace(/Conversation info \(untrusted metadata\):\s*```json\s*\{[\s\S]*?\}\s*```\s*/g, "");
+  cleaned = cleaned.replace(/Sender \(untrusted metadata\):\s*```json\s*\{[\s\S]*?\}\s*```\s*/g, "");
+  cleaned = cleaned.replace(/OpenClaw runtime context \(internal\):[\s\S]*$/g, "");
   // Only strip gateway-injected timestamp prefixes like [2024-01-15 10:30:45+09:00]
+  // Also handles day-prefixed format like [Sun 2026-03-08 10:45 GMT+9]
   // Do NOT strip arbitrary bracketed text like [important], [TODO], etc. (#55)
-  cleaned = cleaned.replace(/^\[\d{4}-\d{2}-\d{2}[\w\s\-:+]*\]\s*/g, "");
+  cleaned = cleaned.replace(/^\[(?:\w{3}\s+)?\d{4}-\d{2}-\d{2}[\w\s\-:+]*\]\s*/g, "");
   return cleaned.trim();
 }
 
@@ -1082,7 +1085,7 @@ export function useChat(sessionKey?: string) {
           const toDisplayMsg = (lm: StoredMessage): DisplayMessage => ({
             id: lm.id,
             role: lm.role as DisplayMessage["role"],
-            content: lm.content,
+            content: lm.role === "user" ? stripInboundMeta(lm.content) : lm.content,
             timestamp: lm.timestamp,
             toolCalls: (lm.toolCalls || []) as ToolCall[],
             attachments: lm.attachments as DisplayAttachment[] | undefined,
