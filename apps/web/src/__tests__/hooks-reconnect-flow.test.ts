@@ -240,7 +240,7 @@ describe("Reconnect flow", () => {
     if (stored) {
       const parsed = JSON.parse(stored);
       expect(parsed.content).toContain("Must not lose this");
-      expect(parsed.v).toBe(1);
+      expect(parsed.v).toBe(2);
     }
   });
 
