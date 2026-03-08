@@ -54,6 +54,16 @@ vi.mock("@/lib/utils/format-time", () => ({
   },
 }));
 
+// Mock IntersectionObserver for jsdom
+class MockIntersectionObserver {
+  callback: IntersectionObserverCallback;
+  constructor(cb: IntersectionObserverCallback) { this.callback = cb; }
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+(globalThis as any).IntersectionObserver = MockIntersectionObserver;
+
 beforeEach(() => {
   resetFixtureCounter();
 });
@@ -547,7 +557,7 @@ describe("ThinkingIndicator", () => {
 });
 
 describe("Virtual pagination", () => {
-  it("shows 이전 메시지 불러오기 button when more messages than page size", () => {
+  it("shows loading sentinel when more messages than page size", () => {
     // PAGE_SIZE is 50 in the component
     const messages = Array.from({ length: 60 }, (_, i) =>
       makeUserMessage(`Message ${i}`, {
@@ -557,8 +567,8 @@ describe("Virtual pagination", () => {
     );
 
     render(<MessageList messages={messages} loading={false} streaming={false} />);
-    const loadMoreBtn = screen.queryByText(/이전 메시지 불러오기/);
-    expect(loadMoreBtn).toBeTruthy();
+    const sentinel = screen.queryByText(/이전 메시지 불러오는 중/);
+    expect(sentinel).toBeTruthy();
   });
 
   it("does not show load more when messages fit in one page", () => {
@@ -570,10 +580,10 @@ describe("Virtual pagination", () => {
     );
 
     render(<MessageList messages={messages} loading={false} streaming={false} />);
-    expect(screen.queryByText(/이전 메시지 불러오기/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/이전 메시지 불러오는 중/)).not.toBeInTheDocument();
   });
 
-  it("shows remaining message count in load more button", () => {
+  it("shows sentinel with spinner when more messages exist", () => {
     const messages = Array.from({ length: 60 }, (_, i) =>
       makeUserMessage(`Message ${i}`, {
         id: `msg-${i}`,
@@ -582,13 +592,13 @@ describe("Virtual pagination", () => {
     );
 
     render(<MessageList messages={messages} loading={false} streaming={false} />);
-    const btn = screen.getByText(/이전 메시지 불러오기/);
-    // Should show "10개 남음" (60 - 50 = 10)
-    expect(btn.textContent).toContain("10");
+    const sentinel = screen.getByText(/이전 메시지 불러오는 중/);
+    expect(sentinel).toBeTruthy();
   });
 
-  it("loads more messages when button is clicked", () => {
-    const messages = Array.from({ length: 60 }, (_, i) =>
+  it("hides sentinel after all messages are visible", () => {
+    // Exactly PAGE_SIZE (50) messages — no pagination needed
+    const messages = Array.from({ length: 50 }, (_, i) =>
       makeUserMessage(`Msg ${i}`, {
         id: `msg-${i}`,
         timestamp: new Date(Date.now() + i * 1000).toISOString(),
@@ -596,13 +606,7 @@ describe("Virtual pagination", () => {
     );
 
     render(<MessageList messages={messages} loading={false} streaming={false} />);
-    const btn = screen.getByText(/이전 메시지 불러오기/);
-    fireEvent.click(btn);
-
-    // After loading more, all messages should be visible and button should be gone
-    // (60 messages total, after loading 2nd page of 50, all 60 visible)
-    // Need to wait for rAF mock
-    expect(screen.queryByText(/이전 메시지 불러오기/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/이전 메시지 불러오는 중/)).not.toBeInTheDocument();
   });
 });
 

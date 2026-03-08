@@ -180,6 +180,21 @@ export function MessageList({
     });
   }, [hasMore, loadingMore]);
 
+  // Auto-load when "load more" sentinel enters viewport
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) loadMore();
+      },
+      { root: containerRef.current, threshold: 0 },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [loadMore]);
+
   // Detect if user has scrolled up from bottom
   const handleScroll = useCallback(() => {
     const el = containerRef.current;
@@ -187,12 +202,7 @@ export function MessageList({
     // Consider "at bottom" if within 80px of the bottom
     const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
     setUserScrolledUp(!atBottom);
-
-    // Load more messages when scrolled to top
-    if (el.scrollTop < 100 && hasMore && !loadingMore) {
-      loadMore();
-    }
-  }, [hasMore, loadingMore, loadMore]);
+  }, []);
 
   // Re-evaluate scroll position when container is resized
   // (e.g. textarea height change, mobile keyboard appear/disappear)
@@ -381,15 +391,19 @@ export function MessageList({
         return;
       }
 
-      // k → previous message
+      // k → previous message (auto-loads more when reaching top)
       if (key === "k" && !e.shiftKey) {
         e.preventDefault();
         if (navigableIndices.length === 0) return;
         setFocusedIdx((prev) => {
           if (prev === null) return navigableIndices[navigableIndices.length - 1];
           const curPos = navigableIndices.indexOf(prev);
-          const nextPos = Math.max(curPos - 1, 0);
-          return navigableIndices[nextPos];
+          if (curPos <= 0) {
+            // Already at the top — trigger load more
+            loadMore();
+            return navigableIndices[0];
+          }
+          return navigableIndices[curPos - 1];
         });
         return;
       }
@@ -472,7 +486,7 @@ export function MessageList({
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [scrollToBottom, scrollToTop, navigableIndices, focusedIdx, visibleMessages, onReply]);
+  }, [scrollToBottom, scrollToTop, navigableIndices, focusedIdx, visibleMessages, onReply, loadMore]);
 
   if (loading) {
     return (
@@ -496,21 +510,13 @@ export function MessageList({
     <div className="relative flex-1 min-h-0">
     <div ref={containerRef} onScroll={handleScroll} className="h-full overflow-y-auto overflow-x-hidden px-[3%] pt-3 pb-8 md:px-[5%] lg:px-[7%] md:pt-4 md:pb-12" style={{ WebkitOverflowScrolling: "touch" }}>
       <div className="mx-auto max-w-[1200px] space-y-3 md:space-y-4">
-        {/* Load more indicator */}
+        {/* Load-more sentinel — auto-loads when scrolled into view */}
         {hasMore && (
-          <div className="flex justify-center py-3">
-            <button
-              onClick={loadMore}
-              disabled={loadingMore}
-              className="flex items-center gap-2 rounded-lg border border-zinc-700/50 bg-zinc-800/60 px-4 py-2 text-xs text-zinc-400 transition hover:bg-zinc-700/60 hover:text-zinc-300 disabled:opacity-50"
-            >
-              {loadingMore ? (
-                <Loader2 size={14} className="animate-spin" />
-              ) : (
-                <History size={14} />
-              )}
-              이전 메시지 불러오기 ({displayMessages.length - visibleCount}개 남음)
-            </button>
+          <div ref={sentinelRef} className="flex justify-center py-3">
+            <div className="flex items-center gap-2 text-xs text-zinc-500">
+              <Loader2 size={14} className="animate-spin" />
+              이전 메시지 불러오는 중...
+            </div>
           </div>
         )}
         {visibleMessages
