@@ -179,7 +179,7 @@ describe("Bug #4: beforeunload should immediately persist streaming content", ()
     const parsed = JSON.parse(stored!);
     expect(parsed.content).toBe("Partial content being streamed...");
     expect(parsed.streamId).toBe("stream-1");
-    expect(parsed.v).toBe(1);
+    expect(parsed.v).toBe(2);
   });
 
   it("throttled persist does not lose content during 500ms window", () => {

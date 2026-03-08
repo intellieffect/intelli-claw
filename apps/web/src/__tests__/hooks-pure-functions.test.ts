@@ -199,7 +199,7 @@ describe("PendingStreamSnapshot", () => {
       now: 1_000_000,
     });
 
-    expect(snapshot.v).toBe(1);
+    expect(snapshot.v).toBe(2);
     expect(snapshot.runId).toBe("run-1");
     expect(snapshot.streamId).toBe("stream-1");
     expect(snapshot.content).toBe("Partial content");
@@ -239,8 +239,8 @@ describe("PendingStreamSnapshot", () => {
       content: "x",
       toolCalls: [],
     });
-    // Tamper with version
-    (snapshot as any).v = 2;
+    // Tamper with version to an unsupported value
+    (snapshot as any).v = 99;
     expect(isPendingStreamSnapshotFresh(snapshot)).toBe(false);
   });
 });

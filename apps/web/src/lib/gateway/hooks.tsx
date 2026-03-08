@@ -5,6 +5,7 @@ import {
   useState,
   useCallback,
   type ReactNode,
+  type SetStateAction,
 } from "react";
 import { getMimeType } from "@/lib/mime-types";
 import { windowStoragePrefix } from "@/lib/utils";
@@ -512,7 +513,9 @@ const PENDING_STREAM_TTL_MS = 45_000;
 type PendingToolCall = Pick<ToolCall, "callId" | "name" | "args" | "status" | "result">;
 
 export interface PendingStreamSnapshot {
-  v: 1;
+  v: 1 | 2;
+  /** #169: Which session this snapshot belongs to (v2+) */
+  sessionKey?: string;
   runId: string | null;
   streamId: string;
   content: string;
@@ -521,6 +524,7 @@ export interface PendingStreamSnapshot {
 }
 
 export function createPendingStreamSnapshot(params: {
+  sessionKey?: string;
   runId: string | null;
   streamId: string;
   content: string;
@@ -528,7 +532,8 @@ export function createPendingStreamSnapshot(params: {
   now?: number;
 }): PendingStreamSnapshot {
   return {
-    v: 1,
+    v: 2,
+    sessionKey: params.sessionKey,
     runId: params.runId,
     streamId: params.streamId,
     content: params.content,
@@ -548,7 +553,7 @@ export function isPendingStreamSnapshotFresh(
   now = Date.now(),
   ttlMs = PENDING_STREAM_TTL_MS,
 ): boolean {
-  return snapshot.v === 1 && now - snapshot.updatedAt <= ttlMs;
+  return (snapshot.v === 1 || snapshot.v === 2) && now - snapshot.updatedAt <= ttlMs;
 }
 
 export function finalEventKey(runId: string | null | undefined): string | null {
@@ -603,7 +608,7 @@ export function buildReplyTo(msg: DisplayMessage): ReplyTo | null {
 
 export function useChat(sessionKey?: string) {
   const { client, state } = useGateway();
-  const [messages, setMessages] = useState<DisplayMessage[]>([]);
+  const [messages, setMessagesRaw] = useState<DisplayMessage[]>([]);
   const [streaming, setStreaming] = useState(false);
   const streamingRef = useRef(false);
   const [replyingTo, setReplyingToState] = useState<ReplyTo | null>(null);
@@ -623,6 +628,9 @@ export function useChat(sessionKey?: string) {
   const abortedRef = useRef(false);
   const streamingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sessionKeyRef = useRef(sessionKey);
+  // #169: Centralized session guard — incremented on every session switch.
+  // All async operations capture this version at start and check before writing state.
+  const guardVersionRef = useRef(0);
   /** Set by the restore-effect when a pending-stream snapshot is successfully restored
    *  from sessionStorage. The sessionKey change effect checks this to avoid wiping
    *  the just-restored streaming state (which happens during the default→real
@@ -652,6 +660,40 @@ export function useChat(sessionKey?: string) {
     })()
   );
 
+  // #169: Centralized session-guarded setMessages wrapper.
+  // All message state updates should go through this instead of setMessagesRaw.
+  // For sync operations within an event handler that already validated sessionKey,
+  // calling without opts is fine. For async operations (loadHistory, backfill,
+  // reconnect), use createScopedUpdater() at the start of the async chain.
+  const setMessages = useCallback((
+    updater: SetStateAction<DisplayMessage[]>,
+    opts?: { sessionKey?: string },
+  ) => {
+    if (opts?.sessionKey && opts.sessionKey !== sessionKeyRef.current) {
+      console.warn(`[AWF] #169 guarded setMessages rejected: expected="${sessionKeyRef.current}" got="${opts.sessionKey}"`);
+      return;
+    }
+    setMessagesRaw(updater);
+  }, []);
+
+  // #169: Create a scoped updater that captures the current guard version.
+  // Any async operation should capture this at start and check before updating.
+  const createScopedUpdater = useCallback(() => {
+    const capturedVersion = guardVersionRef.current;
+    const capturedKey = sessionKeyRef.current;
+    return {
+      isValid: () => guardVersionRef.current === capturedVersion,
+      sessionKey: capturedKey,
+      setMessages: (updater: SetStateAction<DisplayMessage[]>) => {
+        if (guardVersionRef.current !== capturedVersion) {
+          console.warn(`[AWF] #169 scoped updater expired: version ${capturedVersion} vs ${guardVersionRef.current}`);
+          return;
+        }
+        setMessagesRaw(updater);
+      },
+    };
+  }, []);
+
   // Tiered streaming timeouts (#154):
   // - Thinking phase (no content yet): 45s — stale connections are detected faster
   // - Writing phase (content streaming): 90s — allows long responses to complete
@@ -669,6 +711,7 @@ export function useChat(sessionKey?: string) {
   const persistPendingStreamImmediate = useCallback(() => {
     if (!pendingStreamStorageKey || !streamBuf.current) return;
     const snapshot = createPendingStreamSnapshot({
+      sessionKey: sessionKeyRef.current,
       runId: runIdRef.current,
       streamId: streamBuf.current.id,
       content: streamBuf.current.content,
@@ -698,11 +741,15 @@ export function useChat(sessionKey?: string) {
     clearStreamingTimeout();
     // Use shorter timeout for thinking phase, longer for writing (#154)
     const timeoutMs = phase === "writing" ? WRITING_TIMEOUT_MS : THINKING_TIMEOUT_MS;
+    // #169: Capture guard version before setTimeout gap
+    const timeoutScoped = createScopedUpdater();
     streamingTimeoutRef.current = setTimeout(() => {
       console.warn(`[AWF] streaming timeout (${phase || "thinking"}, ${timeoutMs}ms) — force reset`);
+      // #169: If session switched during the timeout, bail out
+      if (!timeoutScoped.isValid()) return;
       if (streamBuf.current) {
         const id = streamBuf.current.id;
-        setMessages((prev) =>
+        timeoutScoped.setMessages((prev) =>
           prev.map((m) => m.id === id ? { ...m, streaming: false } : m)
         );
         streamBuf.current = null;
@@ -712,7 +759,7 @@ export function useChat(sessionKey?: string) {
       setStreaming(false);
       setAgentStatusDebug({ phase: "idle" });
     }, timeoutMs);
-  }, [clearStreamingTimeout, clearPersistedPendingStream]);
+  }, [clearStreamingTimeout, clearPersistedPendingStream, createScopedUpdater]);
 
   useEffect(() => {
     streamingRef.current = streaming;
@@ -737,7 +784,8 @@ export function useChat(sessionKey?: string) {
       // If streaming is active but no content yet (thinking/tool phase), save a minimal marker
       if (!streamBuf.current && streamingRef.current && pendingStreamStorageKey) {
         const snapshot: PendingStreamSnapshot = {
-          v: 1,
+          v: 2,
+          sessionKey: sessionKeyRef.current,
           runId: runIdRef.current,
           streamId: `stream-pending-${Date.now()}`,
           content: "",
@@ -758,6 +806,12 @@ export function useChat(sessionKey?: string) {
       if (!raw) return;
       const parsed = JSON.parse(raw) as PendingStreamSnapshot;
       if (!isPendingStreamSnapshotFresh(parsed)) {
+        sessionStorage.removeItem(pendingStreamStorageKey);
+        return;
+      }
+      // #169: Validate sessionKey match for v2+ snapshots
+      if (parsed.v >= 2 && parsed.sessionKey && parsed.sessionKey !== sessionKey) {
+        console.warn(`[AWF] #169 Snapshot sessionKey mismatch: snapshot="${parsed.sessionKey}" current="${sessionKey}"`);
         sessionStorage.removeItem(pendingStreamStorageKey);
         return;
       }
@@ -824,6 +878,9 @@ export function useChat(sessionKey?: string) {
       sessionKeyRef.current = sessionKey;
       // Invalidate any in-flight loadHistory before clearing messages (#63)
       ++loadVersionRef.current;
+      // #169: Increment guard version to invalidate all in-flight async operations
+      // (loadHistory, backfill, reconnect handlers) that captured the old version.
+      ++guardVersionRef.current;
 
       if (restoredFromSnapshotRef.current) {
         // The restore-effect (which runs before this effect in the same commit)
@@ -833,13 +890,16 @@ export function useChat(sessionKey?: string) {
         restoredFromSnapshotRef.current = false;
       } else {
         // Genuine session switch (user navigated to a different agent/chat):
-        // wipe all state so the new session starts fresh.
-        setMessages([]);
+        // wipe all state so the new session starts fresh. (#169: atomic reset)
+        setMessagesRaw([]);
         setStreaming(false);
         clearStreamingTimeout();
         setAgentStatusDebug({ phase: "idle" });
         streamBuf.current = null;
+        runIdRef.current = null;
         finalizedEventKeysRef.current.clear();
+        finalizedStreamIdsRef.current.clear();
+        abortedRef.current = false;
 
       }
       // Clear the OLD session's pending stream, not the new one's.
@@ -864,6 +924,9 @@ export function useChat(sessionKey?: string) {
 
   const loadHistory = useCallback(async () => {
     if (!client || state !== "connected") return;
+    // #169: Capture guard version at start of async chain. If session switches
+    // during any await, the scoped updater will reject the write.
+    const scopedUpdate = createScopedUpdater();
     // Bump version to detect stale responses from concurrent loadHistory calls.
     // When sessionKey changes mid-flight, the old callback must not overwrite
     // messages loaded by the new callback (#63).
@@ -1230,10 +1293,10 @@ export function useChat(sessionKey?: string) {
             id: q.id, role: "user" as const, content: q.text,
             timestamp: new Date().toISOString(), toolCalls: [], queued: true,
           }));
-          setMessages(queuedMsgs.length > 0 ? [...mergedMsgs, ...queuedMsgs] : mergedMsgs);
-        } catch { setMessages(mergedMsgs); }
+          scopedUpdate.setMessages(queuedMsgs.length > 0 ? [...mergedMsgs, ...queuedMsgs] : mergedMsgs);
+        } catch { scopedUpdate.setMessages(mergedMsgs); }
       } else {
-        setMessages(mergedMsgs);
+        scopedUpdate.setMessages(mergedMsgs);
       }
     } catch {
       // silently fail
@@ -1243,7 +1306,7 @@ export function useChat(sessionKey?: string) {
         lastLoadAtRef.current = Date.now();
       }
     }
-  }, [client, state, sessionKey, queueStorageKey]);
+  }, [client, state, sessionKey, queueStorageKey, createScopedUpdater]);
 
   const flushDeferredHistoryReload = useCallback(() => {
     if (!pendingHistoryReloadRef.current) return;
@@ -1348,11 +1411,15 @@ export function useChat(sessionKey?: string) {
         if (hasStreamingState) {
           persistPendingStream();
           if (reconnectSafetyRef.current) clearTimeout(reconnectSafetyRef.current);
+          // #169: Capture guard version before the setTimeout gap
+          const reconnectScoped = createScopedUpdater();
           reconnectSafetyRef.current = setTimeout(() => {
             reconnectSafetyRef.current = null;
+            // #169: If session switched during the 3s gap, bail out
+            if (!reconnectScoped.isValid()) return;
             if (!streamBuf.current) return;
             const id = streamBuf.current.id;
-            setMessages((prev) =>
+            reconnectScoped.setMessages((prev) =>
               prev.map((m) => m.id === id ? { ...m, streaming: false } : m)
             );
             streamBuf.current = null;
@@ -1366,7 +1433,7 @@ export function useChat(sessionKey?: string) {
       }
     });
     return unsub;
-  }, [client, loadHistory, persistPendingStream, clearPersistedPendingStream, clearStreamingTimeout]);
+  }, [client, loadHistory, persistPendingStream, clearPersistedPendingStream, clearStreamingTimeout, createScopedUpdater]);
 
   // Handle agent events
   useEffect(() => {
