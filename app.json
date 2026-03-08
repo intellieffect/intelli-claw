@@ -1,0 +1,15 @@
+{
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "32aef4ab-26e8-4f20-b47a-b0f851dac43b"
+      }
+    },
+    "ios": {
+      "bundleIdentifier": "com.intellieffect.intelliclaw",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    }
+  }
+}

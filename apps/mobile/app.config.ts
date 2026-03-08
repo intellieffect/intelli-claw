@@ -11,7 +11,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   newArchEnabled: true,
   ios: {
     supportsTablet: true,
-    bundleIdentifier: "com.intelliclaw.mobile",
+    bundleIdentifier: "com.intellieffect.intelliclaw",
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
     },
