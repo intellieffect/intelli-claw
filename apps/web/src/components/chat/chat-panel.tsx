@@ -887,6 +887,16 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
         sessionKey={effectiveSessionKey}
       />
 
+      {/* Topic Name Dialog */}
+      <TopicNameDialog
+        open={topicNameDialogOpen}
+        onConfirm={(name) => {
+          setTopicNameDialogOpen(false);
+          createSessionForAgent(agentId, name);
+        }}
+        onCancel={() => setTopicNameDialogOpen(false)}
+      />
+
       {/* New Session Picker */}
       <NewSessionPicker
         open={newSessionPickerOpen}
