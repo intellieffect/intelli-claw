@@ -73,6 +73,17 @@ export function AgentChatPage({ sessionKey, agentId, isActive, headerHeight = 0 
     }
   }, [messages.length, streaming]);
 
+  // Scroll to bottom when page becomes active (swipe transition)
+  useEffect(() => {
+    if (isActive && !loading && filteredMessages.length > 0) {
+      setTimeout(() => {
+        flatListRef.current?.scrollToEnd({ animated: false });
+        isAtBottomRef.current = true;
+        setUserScrolledUp(false);
+      }, 50);
+    }
+  }, [isActive, loading]);
+
   const scrollToBottom = useCallback(() => {
     flatListRef.current?.scrollToEnd({ animated: true });
     setUserScrolledUp(false);
