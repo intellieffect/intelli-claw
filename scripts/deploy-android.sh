@@ -77,7 +77,7 @@ fi
 if [ "$BUILD_ONLY" = false ]; then
   info "Downloading latest Android build..."
 
-  # Download the latest APK/AAB from EAS
+  # Download the latest APK from EAS (buildType: apk in eas.json)
   BUILD_URL=$(eas build:list --platform android --status finished --limit 1 --json --non-interactive 2>/dev/null | node -e "
     const data = JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));
     console.log(data[0]?.artifacts?.applicationArchiveUrl || data[0]?.artifacts?.buildUrl || '');
@@ -88,7 +88,7 @@ if [ "$BUILD_ONLY" = false ]; then
   fi
 
   TMPDIR=$(mktemp -d)
-  APK_PATH="$TMPDIR/app.aab"
+  APK_PATH="$TMPDIR/app.apk"
   info "Downloading from EAS..."
   curl -sL "$BUILD_URL" -o "$APK_PATH"
   ok "Downloaded: $APK_PATH"
