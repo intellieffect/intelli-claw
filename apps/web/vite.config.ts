@@ -30,7 +30,11 @@ export default defineConfig({
   server: {
     port: 4000,
     host: "127.0.0.1",
-    allowedHosts: process.env.ALLOWED_HOSTS?.split(",").map(h => h.trim()) || [],
+    allowedHosts: [
+      "localhost",
+      "brucechoe-macstudio.tailcc76d6.ts.net",
+      ...(process.env.ALLOWED_HOSTS?.split(",").map(h => h.trim()) || []),
+    ],
     https: httpsConfig,
     hmr: {
       host: "localhost",

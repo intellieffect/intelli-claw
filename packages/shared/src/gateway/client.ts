@@ -1,4 +1,4 @@
-import { makeReq, parseFrame, type Frame, type ResFrame, type EventFrame, type ErrorShape, type ClientId, type ClientMode } from "./protocol";
+import { makeReq, parseFrame, type Frame, type ReqFrame, type ResFrame, type EventFrame, type ErrorShape, type ClientId, type ClientMode } from "./protocol";
 import { getCryptoAdapter } from "./device-identity";
 
 export type ConnectionState = "disconnected" | "connecting" | "authenticating" | "connected";
@@ -46,6 +46,7 @@ export class GatewayClient {
   private authTimer: ReturnType<typeof setTimeout> | null = null;
   private pingTimer: ReturnType<typeof setInterval> | null = null;
   private pongTimer: ReturnType<typeof setTimeout> | null = null;
+  private pingIds = new Set<string>();
   private intentionalClose = false;
   private wasConnected = false;
   private networkCleanup: (() => void) | null = null;
@@ -302,6 +303,12 @@ export class GatewayClient {
   }
 
   private handleResponse(frame: ResFrame): void {
+    // Ignore ping responses — don't let ping errors pollute lastError
+    if (this.pingIds.has(frame.id)) {
+      this.pingIds.delete(frame.id);
+      return;
+    }
+
     if (!frame.ok) {
       const errObj = frame.error as ErrorShape | undefined;
       console.error("[AWF] Server error:", errObj?.code, errObj?.message, frame.error);
@@ -378,7 +385,9 @@ export class GatewayClient {
     this.stopPing();
     this.pingTimer = setInterval(() => {
       if (this.ws && this.ws.readyState === 1) {
-        this.ws.send(JSON.stringify({ type: "ping" }));
+        const pingFrame = makeReq("ping");
+        this.pingIds.add(pingFrame.id);
+        this.send(pingFrame);
         this.pongTimer = setTimeout(() => {
           console.warn("[AWF] Pong timeout — connection stale, closing");
           this.ws?.close();
@@ -392,6 +401,7 @@ export class GatewayClient {
       clearInterval(this.pingTimer);
       this.pingTimer = null;
     }
+    this.pingIds.clear();
     this.clearPongTimer();
   }
 
