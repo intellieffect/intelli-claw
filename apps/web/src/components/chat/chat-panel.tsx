@@ -624,7 +624,7 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
         const pdfPathHints: string[] = [];
         const nonPdfAttachments = attachments.filter((att) => {
           if (att.filePath && (att.file.type === "application/pdf" || att.file.name.toLowerCase().endsWith(".pdf"))) {
-            pdfPathHints.push(`📎 [PDF: ${att.file.name}] ${att.filePath}`);
+            pdfPathHints.push(`📎 [PDF: ${att.file.name}] ${att.filePath}\n💡 Use the \`pdf\` tool for native analysis.`);
             return false; // exclude from base64 payload
           }
           return true;
