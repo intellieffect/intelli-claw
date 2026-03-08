@@ -91,6 +91,7 @@ pnpm lint
 
 ## MUST DO
 
+- **기능 구현 후 반드시 E2E 테스트 수행** — 유닛 테스트만으로 끝내지 말 것. 실제 dev 서버(localhost:4000)에서 브라우저로 기능 동작 확인 필수. Chrome 자동화(claude-in-chrome) 또는 Playwright 사용.
 - 개발 서버는 **반드시 `scripts/start-dev.sh`** 사용
 - Electron 개발은 `pnpm dev:electron`
 - 경로 alias는 `@/` 사용 → `apps/web/src/`로 해석 (e.g. `@/components/ui/button`)
