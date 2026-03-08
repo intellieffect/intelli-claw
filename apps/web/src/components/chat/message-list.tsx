@@ -273,7 +273,7 @@ export function MessageList({
     const codeToKey: Record<string, string> = {
       KeyJ: "j", KeyK: "k", KeyH: "h", KeyL: "l",
       KeyG: "g", KeyI: "i", KeyY: "y", KeyD: "d", KeyU: "u",
-      KeyV: "v", KeyO: "o", Space: " ",
+      KeyV: "v", KeyO: "o", KeyR: "r", Space: " ",
     };
 
     const normalizeKey = (e: KeyboardEvent): string => {
@@ -436,6 +436,32 @@ export function MessageList({
         }
       }
 
+      // r → reply to most recent assistant message (or focused message) + enter insert mode
+      if (key === "r" && !e.shiftKey) {
+        e.preventDefault();
+        if (onReply) {
+          // If a message is focused, reply to that; otherwise find the last assistant message
+          let targetMsg: DisplayMessage | undefined;
+          if (focusedIdx !== null) {
+            targetMsg = visibleMessages[focusedIdx];
+          } else {
+            // Find last assistant message that can be a reply target
+            for (let i = visibleMessages.length - 1; i >= 0; i--) {
+              if (visibleMessages[i].role === "assistant" && canBeReplyTarget(visibleMessages[i])) {
+                targetMsg = visibleMessages[i];
+                break;
+              }
+            }
+          }
+          if (targetMsg && canBeReplyTarget(targetMsg)) {
+            onReply(targetMsg);
+            setFocusedIdx(null);
+            document.dispatchEvent(new CustomEvent("focus-chat-input"));
+          }
+        }
+        return;
+      }
+
       // i → enter insert mode (focus input)
       if (key === "i" && !e.shiftKey) {
         e.preventDefault();
@@ -446,7 +472,7 @@ export function MessageList({
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [scrollToBottom, scrollToTop, navigableIndices, focusedIdx, visibleMessages]);
+  }, [scrollToBottom, scrollToTop, navigableIndices, focusedIdx, visibleMessages, onReply]);
 
   if (loading) {
     return (
@@ -695,10 +721,10 @@ function CopyButton({ text }: { text: string }) {
   return (
     <button
       onClick={handleCopy}
-      className="rounded p-1 text-muted-foreground opacity-60 sm:opacity-0 transition group-hover:opacity-100 hover:bg-white/10 hover:text-accent-foreground active:scale-90"
+      className="rounded p-0.5 text-muted-foreground/40 transition hover:text-muted-foreground hover:bg-white/10 active:scale-90"
       title="복사"
     >
-      {copied ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+      {copied ? <Check size={11} className="text-emerald-400" /> : <Copy size={11} />}
     </button>
   );
 }
@@ -734,15 +760,15 @@ function ReplyQuoteBlock({ replyTo, allMessages }: { replyTo: { id: string; cont
   );
 }
 
-/** Reply button shown on hover */
+/** Reply button — always visible with subtle styling */
 function ReplyButton({ onClick }: { onClick: () => void }) {
   return (
     <button
       onClick={(e) => { e.stopPropagation(); onClick(); }}
-      className="rounded p-1 text-muted-foreground opacity-0 transition group-hover:opacity-60 hover:!opacity-100 hover:bg-white/10 hover:text-accent-foreground active:scale-90"
+      className="rounded p-0.5 text-muted-foreground/40 transition hover:text-muted-foreground hover:bg-white/10 active:scale-90"
       title="답장"
     >
-      <Reply size={12} />
+      <Reply size={11} />
     </button>
   );
 }
