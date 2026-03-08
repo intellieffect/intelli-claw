@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from "react";
-import { Wifi, Key, Fingerprint, Server, Copy, Check, RotateCcw, Save } from "lucide-react";
+import { Wifi, Key, Fingerprint, Server, Copy, Check, RotateCcw, Save, Monitor } from "lucide-react";
 import { useGateway, GATEWAY_CONFIG_STORAGE_KEY, DEFAULT_GATEWAY_URL } from "@/lib/gateway/hooks";
 import { clearDeviceIdentity, getOrCreateDevice } from "@/lib/gateway/device-identity";
 import { getSetupGuide, classifyError } from "@/lib/gateway/setup-guide";
 import { STATUS_CONFIG } from "@/components/chat/connection-status";
+import { useNodeStatus } from "@/lib/hooks/use-node-status";
 
 interface ConnectionSettingsProps {
   open: boolean;
@@ -12,6 +13,7 @@ interface ConnectionSettingsProps {
 
 export function ConnectionSettings({ open, onClose }: ConnectionSettingsProps) {
   const { client, state, error, updateConfig, serverVersion, serverCommit, gatewayUrl } = useGateway();
+  const nodeStatus = useNodeStatus();
 
   const [url, setUrl] = useState("");
   const [token, setToken] = useState("");
@@ -162,6 +164,49 @@ export function ConnectionSettings({ open, onClose }: ConnectionSettingsProps) {
               {serverVersion && <span>Version: <span className="text-zinc-400">{serverVersion}</span></span>}
               {serverCommit && <span>Commit: <span className="text-zinc-400 font-mono">{serverCommit.slice(0, 8)}</span></span>}
             </div>
+          </div>
+        )}
+
+        {/* Canvas Node Mode (Electron only) */}
+        {nodeStatus && (
+          <div className="border-b border-zinc-800 px-4 py-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <Monitor size={10} className="text-zinc-500" />
+                <label className="text-[10px] font-medium text-zinc-500">Canvas Node Mode</label>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
+                  nodeStatus.nodeState === "connected"
+                    ? "bg-emerald-900/50 text-emerald-400"
+                    : nodeStatus.nodeState === "disabled"
+                      ? "bg-zinc-800 text-zinc-500"
+                      : "bg-amber-900/50 text-amber-400"
+                }`}>
+                  {nodeStatus.nodeState}
+                </span>
+                <button
+                  onClick={() => {
+                    if (nodeStatus.nodeState === "disabled" || nodeStatus.nodeState === "disconnected") {
+                      nodeStatus.enable(url || gatewayUrl, token);
+                    } else {
+                      nodeStatus.disable();
+                    }
+                  }}
+                  disabled={nodeStatus.loading}
+                  className={`rounded-md px-2 py-0.5 text-[10px] font-medium transition-colors ${
+                    nodeStatus.nodeState !== "disabled" && nodeStatus.nodeState !== "disconnected"
+                      ? "bg-red-900/30 text-red-400 hover:bg-red-900/50"
+                      : "bg-emerald-900/30 text-emerald-400 hover:bg-emerald-900/50"
+                  } disabled:opacity-50`}
+                >
+                  {nodeStatus.nodeState !== "disabled" && nodeStatus.nodeState !== "disconnected" ? "비활성화" : "활성화"}
+                </button>
+              </div>
+            </div>
+            <p className="mt-1 text-[10px] text-zinc-600">
+              에이전트가 Canvas/A2UI 도구를 이 창에서 사용할 수 있게 합니다
+            </p>
           </div>
         )}
 

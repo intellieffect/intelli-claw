@@ -1,9 +1,23 @@
-import { makeReq, parseFrame, type Frame, type ResFrame, type EventFrame, type ErrorShape } from "./protocol";
+import { makeReq, parseFrame, type Frame, type ResFrame, type EventFrame, type ErrorShape, type ClientId, type ClientMode } from "./protocol";
 import { getCryptoAdapter } from "./device-identity";
 
 export type ConnectionState = "disconnected" | "connecting" | "authenticating" | "connected";
 type EventHandler = (event: EventFrame) => void;
 type StateHandler = (state: ConnectionState, error?: ErrorShape | null) => void;
+
+export type InvokeHandler = (id: string, command: string, params: unknown) => Promise<unknown>;
+
+export interface GatewayClientOptions {
+  role?: "operator" | "node";
+  clientId?: ClientId;
+  clientMode?: ClientMode;
+  caps?: string[];
+  commands?: string[];
+  permissions?: Record<string, boolean>;
+  scopes?: string[];
+  displayName?: string;
+  onInvoke?: InvokeHandler;
+}
 type PendingReq = {
   resolve: (payload: unknown) => void;
   reject: (error: Error) => void;
@@ -39,6 +53,8 @@ export class GatewayClient {
   public serverVersion = "";
   public serverCommit = "";
   public lastError: ErrorShape | null = null;
+  public canvasHostUrl = "";
+  private options: GatewayClientOptions;
 
   private handleOnline = (): void => {
     // Network came back — if we're disconnected (not intentionally), reconnect immediately
@@ -63,9 +79,16 @@ export class GatewayClient {
     }
   };
 
-  constructor(url: string, token: string) {
+  constructor(url: string, token: string, options?: GatewayClientOptions) {
     this.url = url;
     this.token = token;
+    this.options = {
+      role: "operator",
+      clientId: "openclaw-control-ui",
+      clientMode: "ui",
+      scopes: ["operator.read", "operator.write", "operator.admin"],
+      ...options,
+    };
   }
 
   // --- Public API ---
@@ -190,24 +213,34 @@ export class GatewayClient {
     }
   }
 
+  private buildConnectParams(): Record<string, unknown> {
+    const opts = this.options;
+    const params: Record<string, unknown> = {
+      minProtocol: 3,
+      maxProtocol: 3,
+      client: {
+        id: opts.clientId,
+        version: "1.0.0",
+        platform: "web",
+        mode: opts.clientMode,
+        ...(opts.displayName && { displayName: opts.displayName }),
+      },
+      role: opts.role,
+      scopes: opts.scopes,
+      auth: { token: this.token },
+    };
+    if (opts.caps?.length) params.caps = opts.caps;
+    if (opts.commands?.length) params.commands = opts.commands;
+    if (opts.permissions) params.permissions = opts.permissions;
+    return params;
+  }
+
   private async handleEvent(frame: EventFrame): Promise<void> {
     if (frame.event === "connect.challenge") {
       const challenge = frame.payload as { nonce?: string } | undefined;
       const nonce = challenge?.nonce || "";
-
-      const connectParams: Record<string, unknown> = {
-        minProtocol: 3,
-        maxProtocol: 3,
-        client: {
-          id: "openclaw-control-ui",
-          version: "1.0.0",
-          platform: "web",
-          mode: "ui",
-        },
-        role: "operator",
-        scopes: ["operator.read", "operator.write", "operator.admin"],
-        auth: { token: this.token },
-      };
+      const opts = this.options;
+      const connectParams = this.buildConnectParams();
 
       // Add device identity if crypto adapter is available
       const cryptoAdapter = getCryptoAdapter();
@@ -220,10 +253,10 @@ export class GatewayClient {
           const payload = [
             "v3",
             keyPair.id,
-            "openclaw-control-ui",
-            "ui",
-            "operator",
-            "operator.read,operator.write,operator.admin",
+            String(opts.clientId),
+            String(opts.clientMode),
+            String(opts.role),
+            (opts.scopes || []).join(","),
             String(signedAt),
             this.token,
             nonce,
@@ -246,6 +279,21 @@ export class GatewayClient {
 
       const authFrame = makeReq("connect", connectParams);
       this.send(authFrame);
+      return;
+    }
+
+    // Handle node invoke requests from gateway
+    if (frame.event === "node.invoke.request" && this.options.onInvoke) {
+      const req = frame.payload as { id: string; command: string; params?: unknown } | undefined;
+      if (req?.id && req?.command) {
+        try {
+          const result = await this.options.onInvoke(req.id, req.command, req.params);
+          this.send(makeReq("node.invoke.result", { id: req.id, ok: true, payload: result }));
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          this.send(makeReq("node.invoke.result", { id: req.id, ok: false, error: { code: "INVOKE_ERROR", message: msg } }));
+        }
+      }
       return;
     }
 
@@ -272,6 +320,7 @@ export class GatewayClient {
       const server = payload.server as Record<string, unknown> | undefined;
       this.serverVersion = (server?.version as string) || "";
       this.serverCommit = (server?.commit as string) || "";
+      this.canvasHostUrl = (payload?.canvasHostUrl as string) || "";
       const isReconnect = this.wasConnected;
       console.log("[AWF] hello-ok: mainSessionKey=", this.mainSessionKey, "version=", this.serverVersion, "commit=", this.serverCommit, isReconnect ? "(reconnect)" : "(initial)");
       this.reconnectAttempt = 0;

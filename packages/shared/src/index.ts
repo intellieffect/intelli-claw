@@ -1,5 +1,6 @@
 // --- Gateway ---
-export { GatewayClient, type ConnectionState } from "./gateway/client";
+export { GatewayClient, type ConnectionState, type GatewayClientOptions, type InvokeHandler } from "./gateway/client";
+export { NodeGatewayClient } from "./gateway/node-client";
 export {
   makeReq,
   parseFrame,
@@ -32,6 +33,8 @@ export {
   type ChatMessage,
   type ContentPart,
   type ToolCall,
+  type NodeInvokeRequest,
+  type NodeInvokeResult,
 } from "./gateway/protocol";
 export {
   signChallenge,

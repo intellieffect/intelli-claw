@@ -19,6 +19,11 @@ const electronAPI = {
     showcaseList: () => ipcRenderer.invoke("showcase:list"),
     showcaseServe: (relPath: string) => ipcRenderer.invoke("showcase:serve", relPath),
   },
+  node: {
+    status: () => ipcRenderer.invoke("node:status") as Promise<string>,
+    enable: (url: string, token: string) => ipcRenderer.invoke("node:enable", url, token) as Promise<string>,
+    disable: () => ipcRenderer.invoke("node:disable") as Promise<string>,
+  },
 };
 
 contextBridge.exposeInMainWorld("electronAPI", electronAPI);

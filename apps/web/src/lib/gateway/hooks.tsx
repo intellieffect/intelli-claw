@@ -85,6 +85,41 @@ function saveConfig(url: string, token: string): void {
 // Run one-time migration on module load to purge corrupted IndexedDB data (#5536-v2)
 runMessageStoreMigration();
 
+/**
+ * Auto-approve pairing requests from this device's node-role connection.
+ * When the node client connects, the gateway may emit a device.pair.requested
+ * event to the operator client. We automatically approve if it's the same device.
+ */
+function useNodePairAutoApprove() {
+  const { client, state } = useGateway();
+
+  useEffect(() => {
+    if (!client || state !== "connected") return;
+
+    const unsub = client.onEvent(async (frame) => {
+      if (frame.event !== "device.pair.requested") return;
+      const payload = frame.payload as {
+        deviceId?: string;
+        role?: string;
+        requestId?: string;
+      } | undefined;
+      if (!payload?.requestId) return;
+
+      // Only auto-approve if the request is for a "node" role
+      if (payload.role !== "node") return;
+
+      try {
+        await client.request("devices.approve", { requestId: payload.requestId });
+        console.log("[AWF] Auto-approved node pairing for device:", payload.deviceId);
+      } catch (err) {
+        console.warn("[AWF] Failed to auto-approve node pairing:", err);
+      }
+    });
+
+    return unsub;
+  }, [client, state]);
+}
+
 export function GatewayProvider({ children }: { children: ReactNode }) {
   const config = loadGatewayConfig();
   return (
@@ -93,9 +128,16 @@ export function GatewayProvider({ children }: { children: ReactNode }) {
       token={config.token}
       onConfigChange={saveConfig}
     >
+      <NodePairAutoApprover />
       {children}
     </GatewayProviderBase>
   );
+}
+
+/** Internal component that runs the auto-approve hook inside GatewayProviderBase context */
+function NodePairAutoApprover() {
+  useNodePairAutoApprove();
+  return null;
 }
 
 // --- useSessions (web-specific: uses IndexedDB topic-store) ---

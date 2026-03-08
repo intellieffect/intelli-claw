@@ -231,6 +231,22 @@ export type AgentEvent =
   | AgentDone
   | AgentError;
 
+// --- Node Invoke Types ---
+
+export interface NodeInvokeRequest {
+  id: string;
+  command: string;
+  params?: unknown;
+  timeoutMs?: number;
+}
+
+export interface NodeInvokeResult {
+  id: string;
+  ok: boolean;
+  payload?: unknown;
+  error?: { code: string; message: string };
+}
+
 // --- Helpers ---
 
 export function makeReq(method: string, params?: Record<string, unknown>): ReqFrame {

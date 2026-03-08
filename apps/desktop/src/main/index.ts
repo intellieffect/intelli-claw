@@ -5,6 +5,7 @@ import { readFileSync, writeFileSync } from "fs";
 // Read version from package.json (bundled into the app)
 const appVersion = app.getVersion(); // electron-builder sets this from package.json
 import { registerIpcHandlers } from "./ipc-handlers";
+import { NodeConnectionManager } from "./node-connection";
 
 // --- Dev mode detection & isolation ---
 const isDev = !app.isPackaged;
@@ -22,6 +23,7 @@ if (process.platform === "win32") {
 let mainWindow: BrowserWindow | null = null;
 let nextWindowId = 0;
 let isQuitting = false;
+const nodeConnection = new NodeConnectionManager();
 
 // Track active session key per window (windowId → sessionKey)
 const windowSessionKeys = new Map<number, string>();
@@ -294,7 +296,7 @@ app.whenReady().then(() => {
   }
 
   registerProtocol();
-  registerIpcHandlers();
+  registerIpcHandlers(nodeConnection);
 
   // IPC: renderer reports its active session key (#170)
   ipcMain.on("session:update", (event, sessionKey: string) => {
