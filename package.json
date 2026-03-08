@@ -1,6 +1,6 @@
 {
   "name": "intelli-claw",
-  "version": "0.2.15",
+  "version": "0.2.16",
   "private": true,
   "packageManager": "pnpm@10.12.4",
   "scripts": {
@@ -18,7 +18,8 @@
     "dev:mobile": "pnpm --filter @intelli-claw/mobile dev",
     "deploy:local": "bash scripts/deploy.sh local",
     "deploy:macbook": "bash scripts/deploy.sh macbook",
-    "deploy:all": "bash scripts/deploy.sh all"
+    "deploy:all": "bash scripts/deploy.sh all",
+    "deploy:testflight": "bash scripts/deploy-testflight.sh"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",
