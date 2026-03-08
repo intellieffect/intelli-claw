@@ -622,6 +622,7 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
 
         // Separate all PDFs — pass path hint for agent's `pdf` tool instead of client-side extraction
         const pdfPathHints: string[] = [];
+        const webPdfs: typeof attachments = [];
         const nonPdfAttachments = attachments.filter((att) => {
           const isPdf = att.file.type === "application/pdf" || att.file.name.toLowerCase().endsWith(".pdf");
           if (!isPdf) return true;
@@ -629,10 +630,33 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
           if (att.filePath) {
             // Electron: absolute path available
             pdfPathHints.push(`📎 [PDF: ${att.file.name}] ${att.filePath}\n💡 Use the \`pdf\` tool for native analysis.`);
+          } else {
+            // Web: upload separately, don't send via chat.send (gateway rejects non-image attachments)
+            webPdfs.push(att);
           }
-          // Web PDFs without filePath: will be uploaded below and path hint added there
-          return !att.filePath && isPdf; // keep web PDFs for upload flow
+          return false; // exclude all PDFs from payload flow
         });
+
+        // Upload web PDFs to server and add path hints
+        if (platform.mediaUpload) {
+          for (const att of webPdfs) {
+            try {
+              const base64 = await new Promise<string>((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => {
+                  const dataUrl = reader.result as string;
+                  resolve(dataUrl.includes(",") ? dataUrl.split(",")[1] : dataUrl);
+                };
+                reader.onerror = () => reject(new Error("Failed to read PDF"));
+                reader.readAsDataURL(att.file);
+              });
+              const { path: savedPath } = await platform.mediaUpload(base64, att.file.type || "application/pdf", att.file.name);
+              pdfPathHints.push(`📎 [PDF: ${att.file.name}] ${savedPath}\n💡 Use the \`pdf\` tool for native analysis.`);
+            } catch (err) {
+              console.warn("[AWF] PDF upload failed:", err);
+            }
+          }
+        }
 
         // Convert remaining attachments (images, etc.) to base64 payloads
         const results = await Promise.all(nonPdfAttachments.map(attachmentToPayload));
@@ -650,9 +674,6 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
                 const { path: savedPath } = await platform.mediaUpload(p.content, p.mimeType, p.fileName);
                 if (p.mimeType?.startsWith("image/")) {
                   mediaLines.push(`MEDIA:${savedPath}`);
-                } else if (p.mimeType === "application/pdf" || p.fileName.toLowerCase().endsWith(".pdf")) {
-                  // PDF: pass path for agent's `pdf` tool
-                  pdfPathHints.push(`📎 [PDF: ${p.fileName}] ${savedPath}\n💡 Use the \`pdf\` tool for native analysis.`);
                 } else {
                   // Non-image files: provide path so agent can read via `read` tool
                   filePathLines.push(`📎 [${p.fileName}] ${savedPath}`);
