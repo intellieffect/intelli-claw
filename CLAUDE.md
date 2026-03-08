@@ -91,14 +91,19 @@ pnpm package
 # 모바일 개발 (Expo)
 pnpm dev:mobile
 
-# TestFlight 배포 (빌드 + 제출)
+# iOS TestFlight 배포
 pnpm deploy:testflight
 
-# TestFlight 빌드만 (제출 없이)
-scripts/deploy-testflight.sh --build-only
+# Android Firebase App Distribution 배포
+pnpm deploy:android
 
-# TestFlight 제출만 (최신 빌드)
+# 빌드만 (제출/배포 없이)
+scripts/deploy-testflight.sh --build-only
+scripts/deploy-android.sh --build-only
+
+# 최신 빌드를 배포만
 scripts/deploy-testflight.sh --skip-build
+scripts/deploy-android.sh --skip-build
 
 # 테스트
 pnpm test
