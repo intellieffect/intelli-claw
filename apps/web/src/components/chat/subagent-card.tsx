@@ -207,17 +207,20 @@ export function SubagentCard({
             <div className="mb-2">
               <div className="mb-1 text-[10px] font-medium text-muted-foreground">첨부 파일</div>
               <div className="flex flex-col gap-1">
-                {attachments.map((att, i) => (
+                {attachments.map((att, i) => {
+                  const receipt = receipts?.find((r) => r.name === att.name);
+                  return (
                   <div key={i} className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
                     {attachmentIcon(att.mimeType)}
                     <span>{att.name}</span>
-                    {receipts?.find((r) => r.name === att.name) && (
+                    {receipt && (
                       <span className="ml-auto font-mono text-[9px] text-emerald-500">
-                        {receipts.find((r) => r.name === att.name)!.sha256.slice(0, 12)}…
+                        {receipt.sha256.slice(0, 12)}…
                       </span>
                     )}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
