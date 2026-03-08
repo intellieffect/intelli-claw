@@ -4,13 +4,10 @@
     "appVersionSource": "remote"
   },
   "build": {
-    "base": {
+    "development": {
       "node": "22.16.0",
       "pnpm": "10.12.4",
-      "installCommand": "cd ../.. && pnpm install"
-    },
-    "development": {
-      "extends": "base",
+      "installCommand": "cd ../.. && pnpm install",
       "developmentClient": true,
       "distribution": "internal",
       "ios": {
@@ -18,11 +15,15 @@
       }
     },
     "preview": {
-      "extends": "base",
+      "node": "22.16.0",
+      "pnpm": "10.12.4",
+      "installCommand": "cd ../.. && pnpm install",
       "distribution": "internal"
     },
     "production": {
-      "extends": "base",
+      "node": "22.16.0",
+      "pnpm": "10.12.4",
+      "installCommand": "cd ../.. && pnpm install",
       "autoIncrement": true
     }
   },
