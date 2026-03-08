@@ -934,9 +934,48 @@ export function useChat(sessionKey?: string) {
     // When sessionKey changes mid-flight, the old callback must not overwrite
     // messages loaded by the new callback (#63).
     const thisLoadVersion = ++loadVersionRef.current;
-    // Only show loading spinner on initial load (no messages yet).
-    // Post-stream reloads should update silently to avoid full-screen flash.
-    if (messagesRef.current.length === 0) {
+
+    // --- #201 Phase 1: Cache-first loading ---
+    // Show cached messages from IndexedDB immediately to eliminate blank screen.
+    // Server response will be merged silently afterward.
+    const isHiddenMessageEarly = (role: string, text: string) => {
+      if (role === "system") return true;
+      return HIDDEN_REPLY_RE.test(text.trim());
+    };
+    let cacheShown = false;
+    if (messagesRef.current.length === 0 && sessionKey) {
+      try {
+        const cachedMsgs = await getLocalMessages(sessionKey);
+        // Stale guard — bail if session switched during await
+        if (loadVersionRef.current !== thisLoadVersion) return;
+        if (cachedMsgs.length > 0) {
+          const displayCached: DisplayMessage[] = cachedMsgs
+            .filter((lm) => !isHiddenMessageEarly(lm.role, lm.content))
+            .map((lm) => ({
+              id: lm.id,
+              role: lm.role as DisplayMessage["role"],
+              content: lm.role === "user" ? stripInboundMeta(lm.content) : lm.content,
+              timestamp: lm.timestamp,
+              toolCalls: (lm.toolCalls || []) as ToolCall[],
+              attachments: lm.attachments as DisplayAttachment[] | undefined,
+              oldSessionId: lm.oldSessionId,
+              newSessionId: lm.newSessionId,
+              replyTo: lm.replyTo as ReplyTo | undefined,
+              resetReason: lm.resetReason,
+            }));
+          if (displayCached.length > 0) {
+            scopedUpdate.setMessages(displayCached);
+            cacheShown = true;
+          }
+        }
+      } catch {
+        // IndexedDB failure — fall through to server load
+      }
+    }
+
+    // Only show loading spinner when no messages are visible at all.
+    // If cache was shown, skip loading indicator (silent server merge).
+    if (!cacheShown && messagesRef.current.length === 0) {
       setLoading(true);
     }
     try {
@@ -1270,6 +1309,21 @@ export function useChat(sessionKey?: string) {
         });
       }
 
+      // --- #201: Skip rerender if server merge result matches cache ---
+      // When cache-first loaded messages and server merge produces identical
+      // content, avoid unnecessary rerender (compare count + last message id).
+      const shouldSkipUpdate = (finalMsgs: DisplayMessage[]) => {
+        if (!cacheShown) return false;
+        const current = messagesRef.current;
+        if (current.length !== finalMsgs.length) return false;
+        if (current.length === 0) return true;
+        const lastCurrent = current[current.length - 1];
+        const lastFinal = finalMsgs[finalMsgs.length - 1];
+        // Compare last message's role + content fingerprint
+        return lastCurrent.role === lastFinal.role &&
+          normalizeContentForDedup(lastCurrent.content) === normalizeContentForDedup(lastFinal.content);
+      };
+
       const savedQueue = queueStorageKey ? localStorage.getItem(queueStorageKey) : null;
       if (savedQueue) {
         try {
@@ -1296,10 +1350,19 @@ export function useChat(sessionKey?: string) {
             id: q.id, role: "user" as const, content: q.text,
             timestamp: new Date().toISOString(), toolCalls: [], queued: true,
           }));
-          scopedUpdate.setMessages(queuedMsgs.length > 0 ? [...mergedMsgs, ...queuedMsgs] : mergedMsgs);
-        } catch { scopedUpdate.setMessages(mergedMsgs); }
+          const finalMsgs = queuedMsgs.length > 0 ? [...mergedMsgs, ...queuedMsgs] : mergedMsgs;
+          if (!shouldSkipUpdate(finalMsgs)) {
+            scopedUpdate.setMessages(finalMsgs);
+          }
+        } catch {
+          if (!shouldSkipUpdate(mergedMsgs)) {
+            scopedUpdate.setMessages(mergedMsgs);
+          }
+        }
       } else {
-        scopedUpdate.setMessages(mergedMsgs);
+        if (!shouldSkipUpdate(mergedMsgs)) {
+          scopedUpdate.setMessages(mergedMsgs);
+        }
       }
     } catch {
       // silently fail
