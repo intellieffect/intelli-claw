@@ -29,7 +29,8 @@
     "production": {
       "ios": {
         "appleId": "dev@intellieffect.com",
-        "appleTeamId": "J2Y925QHNV"
+        "appleTeamId": "J2Y925QHNV",
+        "ascAppId": "6760249434"
       }
     }
   }
