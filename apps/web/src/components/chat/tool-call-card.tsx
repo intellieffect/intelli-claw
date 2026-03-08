@@ -2,7 +2,7 @@
 import { useState, useMemo } from "react";
 import { ChevronDown, ChevronRight, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
 import type { ToolCall } from "@/lib/gateway/protocol";
-import { SubagentCard } from "./subagent-card";
+import { SubagentCard, type SpawnAttachment, type SpawnReceipt } from "./subagent-card";
 
 /** Tools that spawn subagents */
 const SPAWN_TOOLS = new Set(["sessions_spawn", "subagents"]);
@@ -17,14 +17,26 @@ export function ToolCallCard({ toolCall }: { toolCall: ToolCall }) {
       const args = toolCall.args ? JSON.parse(toolCall.args) : {};
       let result: Record<string, unknown> = {};
       try { result = toolCall.result ? JSON.parse(toolCall.result) : {}; } catch {}
+      const rawAttachments = args.attachments as Array<{ name: string; mimeType?: string }> | undefined;
+      const attachments: SpawnAttachment[] | undefined = rawAttachments?.map((a) => ({
+        name: a.name,
+        mimeType: a.mimeType,
+      }));
+      const rawReceipts = (result.receipts as Array<{ name: string; sha256: string }>) || undefined;
+      const receipts: SpawnReceipt[] | undefined = rawReceipts?.map((r) => ({
+        name: r.name,
+        sha256: r.sha256,
+      }));
       return {
         sessionKey: (result.childSessionKey || result.sessionKey || result.key || undefined) as string | undefined,
         label: (args.label || result.label || undefined) as string | undefined,
         task: (args.task || args.message || undefined) as string | undefined,
+        attachments,
+        receipts,
       };
     } catch {
       // Even if parsing fails, still show the card for spawn tools
-      return { sessionKey: undefined, label: undefined, task: undefined };
+      return { sessionKey: undefined, label: undefined, task: undefined, attachments: undefined, receipts: undefined };
     }
   }, [toolCall.name, toolCall.args, toolCall.result]);
 
@@ -35,6 +47,8 @@ export function ToolCallCard({ toolCall }: { toolCall: ToolCall }) {
         sessionKey={spawnInfo.sessionKey}
         label={spawnInfo.label}
         task={spawnInfo.task}
+        attachments={spawnInfo.attachments}
+        receipts={spawnInfo.receipts}
       />
     );
   }
