@@ -46,6 +46,7 @@ vi.mock("@intelli-claw/shared", async () => {
 vi.mock("@/lib/gateway/message-store", () => ({
   saveMessages: vi.fn().mockResolvedValue(undefined),
   getLocalMessages: vi.fn().mockResolvedValue([]),
+  getRecentLocalMessages: vi.fn().mockResolvedValue([]),
   backfillFromApi: vi.fn().mockResolvedValue([]),
   isBackfillDone: vi.fn().mockReturnValue(true),
   runMessageStoreMigration: vi.fn(),

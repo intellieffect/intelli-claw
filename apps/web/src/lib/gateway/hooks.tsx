@@ -51,6 +51,7 @@ import {
 import {
   saveMessages as saveLocalMessages,
   getLocalMessages,
+  getRecentLocalMessages,
   backfillFromApi,
   isBackfillDone,
   runMessageStoreMigration,
@@ -945,7 +946,7 @@ export function useChat(sessionKey?: string) {
     let cacheShown = false;
     if (messagesRef.current.length === 0 && sessionKey) {
       try {
-        const cachedMsgs = await getLocalMessages(sessionKey);
+        const cachedMsgs = await getRecentLocalMessages(sessionKey, 100);
         // Stale guard — bail if session switched during await
         if (loadVersionRef.current !== thisLoadVersion) return;
         if (cachedMsgs.length > 0) {

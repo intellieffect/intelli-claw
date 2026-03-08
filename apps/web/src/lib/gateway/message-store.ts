@@ -119,6 +119,40 @@ export async function getLocalMessages(
   });
 }
 
+/**
+ * Get the most recent N messages for a session key (fast cache-first load).
+ * Uses the byTimestamp index with a reverse cursor to avoid loading all messages.
+ */
+export async function getRecentLocalMessages(
+  sessionKey: string,
+  limit = 100,
+): Promise<StoredMessage[]> {
+  if (!sessionKey) return [];
+  const db = await openDB();
+  return new Promise<StoredMessage[]>((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, "readonly");
+    const index = tx.objectStore(STORE_NAME).index("byTimestamp");
+    const range = IDBKeyRange.bound([sessionKey], [sessionKey, "\uffff"]);
+    const results: StoredMessage[] = [];
+    const req = index.openCursor(range, "prev");
+    req.onsuccess = () => {
+      const cursor = req.result;
+      if (cursor && results.length < limit) {
+        results.push(cursor.value as StoredMessage);
+        cursor.continue();
+      } else {
+        db.close();
+        results.reverse(); // oldest first
+        resolve(results);
+      }
+    };
+    req.onerror = () => {
+      db.close();
+      reject(req.error);
+    };
+  });
+}
+
 /** Clear all messages for a session key */
 export async function clearMessages(sessionKey: string): Promise<void> {
   const db = await openDB();
