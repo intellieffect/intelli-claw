@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "native:prebuild": "expo prebuild",
     "ios": "expo run:ios",
-    "android": "expo run:android"
+    "android": "expo run:android",
+    "eas-build-post-install": "cd ../.. && pnpm install --frozen-lockfile"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.1.1",
