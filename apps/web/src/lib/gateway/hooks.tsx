@@ -1106,9 +1106,13 @@ export function useChat(sessionKey?: string) {
       if (loadVersionRef.current !== thisLoadVersion) return;
 
       // --- Merge local messages (pre-compaction) with gateway history ---
+      // #201: Cap local messages to avoid O(n²) merge with 16k+ stored messages.
+      // Pre-compaction messages beyond this limit are still in IndexedDB but not
+      // loaded on session switch. Users can scroll up to trigger pagination.
+      const LOCAL_MERGE_LIMIT = 500;
       let mergedMsgs = dedupedHistMsgs;
       try {
-        const localMsgs = await getLocalMessages(sessionKey);
+        const localMsgs = await getRecentLocalMessages(sessionKey, LOCAL_MERGE_LIMIT);
         if (localMsgs.length > 0 && dedupedHistMsgs.length > 0) {
           // Build lookup sets for dedup — match by id AND by content+role+close-timestamp
           const gatewayIds = new Set(dedupedHistMsgs.map((m) => m.id));
