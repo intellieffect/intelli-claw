@@ -244,6 +244,11 @@ function PdfToolCard({ toolCall }: { toolCall: ToolCall }) {
                     {pdfInfo.native ? "Native" : "Extraction"}
                   </span>
                 )}
+                {pdfInfo.model && (
+                  <span className="text-[9px] text-muted-foreground font-mono">
+                    {pdfInfo.model}
+                  </span>
+                )}
               </div>
               <pre className="max-h-48 overflow-y-auto overflow-x-hidden whitespace-pre-wrap break-all rounded bg-background p-2 text-muted-foreground font-mono">
                 {pdfInfo.resultText}
