@@ -327,6 +327,9 @@ describe("Merge pipeline", () => {
 
     const { result, rerender } = renderHook(() => useChat(sessionKey));
 
+    // Allow cache-first getLocalMessages to resolve (returns []) and chat.history to be called
+    await act(async () => { vi.advanceTimersByTime(10); });
+
     // The loadHistory for agent-a is now pending...
     // Switch session
     sessionKey = "test:agent-b";
