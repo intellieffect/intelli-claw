@@ -6,8 +6,13 @@ import {
   Bot,
   ChevronDown,
   ChevronUp,
+  File,
+  FileText,
+  Image as ImageIcon,
   Loader2,
   CheckCircle2,
+  Paperclip,
+  Video,
   Wrench,
   Zap,
 } from "lucide-react";
@@ -21,6 +26,24 @@ interface SubagentStatus {
   updatedAt: number;
 }
 
+export interface SpawnAttachment {
+  name: string;
+  mimeType?: string;
+}
+
+export interface SpawnReceipt {
+  name: string;
+  sha256: string;
+}
+
+function attachmentIcon(mimeType?: string) {
+  if (!mimeType) return <File size={12} className="text-muted-foreground" />;
+  if (mimeType === "application/pdf") return <FileText size={12} className="text-muted-foreground" />;
+  if (mimeType.startsWith("image/")) return <ImageIcon size={12} className="text-muted-foreground" />;
+  if (mimeType.startsWith("video/")) return <Video size={12} className="text-muted-foreground" />;
+  return <File size={12} className="text-muted-foreground" />;
+}
+
 /**
  * Inline card that shows realtime subagent progress inside an assistant bubble.
  * Subscribes to gateway agent events for the given sessionKey.
@@ -29,10 +52,14 @@ export function SubagentCard({
   sessionKey,
   label,
   task,
+  attachments,
+  receipts,
 }: {
   sessionKey?: string;
   label?: string;
   task?: string;
+  attachments?: SpawnAttachment[];
+  receipts?: SpawnReceipt[];
 }) {
   const { client } = useGateway();
   const [status, setStatus] = useState<SubagentStatus>({
@@ -129,6 +156,17 @@ export function SubagentCard({
           {displayLabel}
         </span>
 
+        {/* Attachments badge */}
+        {attachments && attachments.length > 0 && (
+          <span
+            className="flex items-center gap-1 rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground"
+            title={`첨부 ${attachments.length}개`}
+          >
+            <Paperclip size={10} />
+            {attachments.length}
+          </span>
+        )}
+
         {/* Tool indicator */}
         {status.toolName && (
           <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
@@ -163,6 +201,24 @@ export function SubagentCard({
             <div className="mb-2 text-[11px] text-muted-foreground">
               <span className="text-muted-foreground">Task: </span>
               {task.length > 200 ? task.slice(0, 200) + "…" : task}
+            </div>
+          )}
+          {attachments && attachments.length > 0 && (
+            <div className="mb-2">
+              <div className="mb-1 text-[10px] font-medium text-muted-foreground">첨부 파일</div>
+              <div className="flex flex-col gap-1">
+                {attachments.map((att, i) => (
+                  <div key={i} className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                    {attachmentIcon(att.mimeType)}
+                    <span>{att.name}</span>
+                    {receipts?.find((r) => r.name === att.name) && (
+                      <span className="ml-auto font-mono text-[9px] text-emerald-500">
+                        {receipts.find((r) => r.name === att.name)!.sha256.slice(0, 12)}…
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
           )}
           <pre className="max-h-48 overflow-y-auto overflow-x-hidden whitespace-pre-wrap break-all text-[11px] leading-relaxed text-muted-foreground font-mono">
