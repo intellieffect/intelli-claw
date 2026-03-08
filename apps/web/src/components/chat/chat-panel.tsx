@@ -620,14 +620,18 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
       if (attachments.length > 0) {
         await maybeAutoLabelSession(effectiveSessionKey, text);
 
-        // Separate PDFs with absolute paths (send path to agent) from other attachments
+        // Separate all PDFs — pass path hint for agent's `pdf` tool instead of client-side extraction
         const pdfPathHints: string[] = [];
         const nonPdfAttachments = attachments.filter((att) => {
-          if (att.filePath && (att.file.type === "application/pdf" || att.file.name.toLowerCase().endsWith(".pdf"))) {
+          const isPdf = att.file.type === "application/pdf" || att.file.name.toLowerCase().endsWith(".pdf");
+          if (!isPdf) return true;
+
+          if (att.filePath) {
+            // Electron: absolute path available
             pdfPathHints.push(`📎 [PDF: ${att.file.name}] ${att.filePath}\n💡 Use the \`pdf\` tool for native analysis.`);
-            return false; // exclude from base64 payload
           }
-          return true;
+          // Web PDFs without filePath: will be uploaded below and path hint added there
+          return !att.filePath && isPdf; // keep web PDFs for upload flow
         });
 
         // Convert remaining attachments (images, etc.) to base64 payloads
@@ -646,6 +650,9 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
                 const { path: savedPath } = await platform.mediaUpload(p.content, p.mimeType, p.fileName);
                 if (p.mimeType?.startsWith("image/")) {
                   mediaLines.push(`MEDIA:${savedPath}`);
+                } else if (p.mimeType === "application/pdf" || p.fileName.toLowerCase().endsWith(".pdf")) {
+                  // PDF: pass path for agent's `pdf` tool
+                  pdfPathHints.push(`📎 [PDF: ${p.fileName}] ${savedPath}\n💡 Use the \`pdf\` tool for native analysis.`);
                 } else {
                   // Non-image files: provide path so agent can read via `read` tool
                   filePathLines.push(`📎 [${p.fileName}] ${savedPath}`);

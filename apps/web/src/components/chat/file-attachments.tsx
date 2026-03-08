@@ -1,7 +1,7 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import { Paperclip, X, FileText, Image as ImageIcon, File, Video } from "lucide-react";
-import { extractPdf, extractPdfPreview } from "@/lib/utils/pdf";
+import { extractPdfPreview } from "@/lib/utils/pdf";
 
 export interface ChatAttachment {
   id: string;
@@ -413,26 +413,9 @@ export interface AttachmentPayloadResult {
 export async function attachmentToPayload(
   att: ChatAttachment,
 ): Promise<AttachmentPayloadResult> {
-  // --- PDF: text extraction + page images ---
+  // --- PDF: send raw file for server-side analysis via OpenClaw `pdf` tool ---
   if (isPdf(att.file)) {
-    try {
-      const extraction = await extractPdf(att.file);
-
-      const prependText = extraction.text.trim()
-        ? `📄 [PDF: ${att.file.name} — ${extraction.totalPages} pages]\n${extraction.text}`
-        : undefined;
-
-      const payloads: AttachmentPayload[] = extraction.images.map((img) => ({
-        fileName: `${att.file.name}-page-${img.page}.jpg`,
-        mimeType: img.mimeType,
-        content: img.base64,
-      }));
-
-      return { prependText, payloads };
-    } catch (err) {
-      console.warn("[PDF] extraction failed, sending raw:", err);
-      return { payloads: [await rawPayload(att)] };
-    }
+    return { payloads: [await rawPayload(att)] };
   }
 
   // --- Images: compress ---
