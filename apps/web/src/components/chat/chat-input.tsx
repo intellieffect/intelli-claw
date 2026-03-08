@@ -422,6 +422,8 @@ export function ChatInput({
         onSelect={handleSkillSelect}
         onDismiss={() => setSkillPickerOpen(false)}
         visible={skillPickerOpen}
+        selectedIndex={skillSelectedIndex}
+        onChangeIndex={setSkillSelectedIndex}
       />
 
       <div

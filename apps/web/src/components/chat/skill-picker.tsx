@@ -1,5 +1,5 @@
 
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useEffect, useRef, useMemo } from "react";
 import { Puzzle, ExternalLink, Terminal } from "lucide-react";
 import { useSkills, type Skill } from "@/lib/gateway/use-skills";
 
@@ -32,11 +32,14 @@ interface SkillPickerProps {
   onDismiss: () => void;
   /** Whether picker should be visible */
   visible: boolean;
+  /** Controlled selected index */
+  selectedIndex: number;
+  /** Called when selected index changes (e.g. mouse hover) */
+  onChangeIndex: (index: number) => void;
 }
 
-export function SkillPicker({ inputText, onSelect, onDismiss, visible }: SkillPickerProps) {
+export function SkillPicker({ inputText, onSelect, onDismiss, visible, selectedIndex, onChangeIndex }: SkillPickerProps) {
   const { skills } = useSkills();
-  const [selectedIndex, setSelectedIndex] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
 
   // Only show eligible, non-disabled skills
@@ -73,11 +76,6 @@ export function SkillPicker({ inputText, onSelect, onDismiss, visible }: SkillPi
   }, [activeSkills, query]);
 
   const totalCount = filteredBuiltins.length + filtered.length;
-
-  // Reset selection on filter change
-  useEffect(() => {
-    setSelectedIndex(0);
-  }, [filtered.length, query]);
 
   // Scroll selected into view
   useEffect(() => {
@@ -117,7 +115,7 @@ export function SkillPicker({ inputText, onSelect, onDismiss, visible }: SkillPi
                       onSelect(`/${cmd.name} `);
                     }
                   }}
-                  onMouseEnter={() => setSelectedIndex(i)}
+                  onMouseEnter={() => onChangeIndex(i)}
                   className={`flex w-full items-center gap-3 px-3 py-2 text-left transition-colors ${
                     i === selectedIndex ? "bg-muted" : "hover:bg-muted/50"
                   }`}
@@ -146,7 +144,7 @@ export function SkillPicker({ inputText, onSelect, onDismiss, visible }: SkillPi
               <button
                 key={skill.skillKey}
                 onClick={() => onSelect(`/${skill.name} `)}
-                onMouseEnter={() => setSelectedIndex(idx)}
+                onMouseEnter={() => onChangeIndex(idx)}
                 className={`flex w-full items-center gap-3 px-3 py-2 text-left transition-colors ${
                   idx === selectedIndex ? "bg-muted" : "hover:bg-muted/50"
                 }`}
