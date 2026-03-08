@@ -12,6 +12,9 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   ios: {
     supportsTablet: true,
     bundleIdentifier: "com.intelliclaw.mobile",
+    infoPlist: {
+      ITSAppUsesNonExemptEncryption: false,
+    },
   },
   android: {
     adaptiveIcon: {
@@ -27,5 +30,8 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     gatewayUrl: process.env.GATEWAY_URL || "ws://127.0.0.1:18789",
     gatewayToken: process.env.GATEWAY_TOKEN || "",
     gatewayHttpUrl: process.env.GATEWAY_HTTP_URL || "http://127.0.0.1:18789",
+    eas: {
+      projectId: "32aef4ab-26e8-4f20-b47a-b0f851dac43b",
+    },
   },
 });
