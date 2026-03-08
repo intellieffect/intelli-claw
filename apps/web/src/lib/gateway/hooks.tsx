@@ -1711,6 +1711,18 @@ export function useChat(sessionKey?: string) {
             if (!originDeviceId && role === "user" && isDuplicateOfOptimistic(prev, role, cleanedText, timestamp)) {
               return prev;
             }
+            // Assistant content dedup — prevent duplicate display when the same
+            // response arrives via both streaming and inbound events
+            if (role === "assistant") {
+              const normalizedInbound = normalizeContentForDedup(cleanedText);
+              const isDup = prev.some(
+                (m) => m.role === "assistant" && normalizeContentForDedup(m.content) === normalizedInbound
+              );
+              if (isDup) {
+                console.warn("[AWF] Inbound assistant message deduplicated (content match)");
+                return prev;
+              }
+            }
             return [...prev, {
               id: inboundId,
               role,
