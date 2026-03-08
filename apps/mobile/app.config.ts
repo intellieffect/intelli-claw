@@ -12,6 +12,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   ios: {
     supportsTablet: true,
     bundleIdentifier: "com.intellieffect.intelliclaw",
+    googleServicesFile: "./GoogleService-Info.plist",
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
     },
@@ -20,9 +21,15 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     adaptiveIcon: {
       backgroundColor: "#ffffff",
     },
-    package: "com.intelliclaw.mobile",
+    package: "com.intellieffect.intelliclaw",
+    googleServicesFile: "./google-services.json",
   },
-  plugins: ["expo-router", "expo-secure-store", "expo-font"],
+  plugins: [
+    "expo-router",
+    "expo-secure-store",
+    "expo-font",
+    "@react-native-firebase/app",
+  ],
   experiments: {
     typedRoutes: true,
   },
