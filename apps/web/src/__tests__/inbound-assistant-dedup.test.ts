@@ -84,4 +84,20 @@ describe("inbound assistant message dedup", () => {
     ];
     expect(wouldDedup(prev, "assistant", "Hello world")).toBe(false);
   });
+
+  it("deduplicates when inbound has template vars but finalized does not", () => {
+    // finalizeActiveStream strips [[reply_to_current]] via stripTemplateVars,
+    // but inbound event arrives with raw content including template vars.
+    const prev = [
+      makeMsg({ id: "stream-1", role: "assistant", content: "Hello world" }),
+    ];
+    expect(wouldDedup(prev, "assistant", "[[reply_to_current]] Hello world")).toBe(true);
+  });
+
+  it("deduplicates when inbound has reply_to:<id> template var", () => {
+    const prev = [
+      makeMsg({ id: "stream-1", role: "assistant", content: "Here is the answer" }),
+    ];
+    expect(wouldDedup(prev, "assistant", "[[reply_to:abc123]] Here is the answer")).toBe(true);
+  });
 });

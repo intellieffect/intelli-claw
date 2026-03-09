@@ -14,8 +14,8 @@ import {
 } from "@/lib/gateway/hooks";
 
 const T1 = "2026-01-01T00:00:00Z";
-const T2 = "2026-01-01T00:00:30Z"; // 30s later (within 60s window)
-const T3 = "2026-01-01T00:02:00Z"; // 2min later (beyond 60s window)
+const T2 = "2026-01-01T00:00:30Z"; // 30s later (within 5min window)
+const T3 = "2026-01-01T00:06:00Z"; // 6min later (beyond 5min window)
 
 function msg(
   overrides: Partial<DisplayMessage> & { id: string },

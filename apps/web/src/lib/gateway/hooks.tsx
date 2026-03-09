@@ -51,6 +51,7 @@ import {
 import {
   saveMessages as saveLocalMessages,
   getLocalMessages,
+  deleteMessagesByIds,
   backfillFromApi,
   isBackfillDone,
   runMessageStoreMigration,
@@ -235,6 +236,10 @@ export function normalizeContentForDedup(content: string): string {
   // Keep normalization aligned across history merge + final dedup.
   let normalized = content.replace(/\s+/g, " ").trim();
 
+  // Strip template vars (e.g. [[reply_to_current]], [[reply_to:123]]) so that
+  // inbound messages (raw) match finalized/history messages (stripped). (#211-v2)
+  normalized = normalized.replace(/\[\[[^\]]+\]\]\s*/g, "").trim();
+
   // Normalize gateway-injected timestamp prefix on user messages
   // e.g. "[2026-03-03 15:10:00+09:00] 질문" -> "질문"
   normalized = normalized.replace(/^\[\d{4}-\d{2}-\d{2}[\w\s\-:+]*\]\s*/i, "");
@@ -304,7 +309,7 @@ export function deduplicateMessages<T extends { id: string; role: string; conten
     const isImagePlaceholder = IMAGE_PLACEHOLDERS_DEDUP.has(m.content.replace(/\s+/g, " ").trim());
     const isDup = seen.some((s) => {
       if (s.role !== m.role || s.contentKey !== contentKey) return false;
-      if (Math.abs(s.ts - ts) >= 60_000) return false;
+      if (Math.abs(s.ts - ts) >= 300_000) return false;
       // For image placeholders: skip att comparison if either side has no attachments
       if (isImagePlaceholder && (!attKey || !s.attKey)) return true;
       return s.attKey === attKey;
@@ -966,12 +971,6 @@ export function useChat(sessionKey?: string) {
             const hasToolUse = parts.some(p => p.type === 'tool_use');
             for (const p of parts) {
               if (p.type === 'text' && typeof p.text === 'string') {
-                if (hasToolUse && m.role === 'assistant') {
-                  const text = (p.text as string).trim();
-                  // Keep text blocks with markdown images/media even if short
-                  const hasMedia = /!\[.*?\]\(.*?\)|^MEDIA:\s/m.test(text);
-                  if (!hasMedia && text.length < 100 && !text.includes('\n')) continue;
-                }
                 textContent += p.text;
               } else if (p.type === 'image_url' || p.type === 'image') {
                 let url: string | undefined;
@@ -1118,7 +1117,7 @@ export function useChat(sessionKey?: string) {
             if (localPrefix.length >= 20) {
               const fuzzyMatch = gatewayByRoleTs.some((g) =>
                 g.role === lm.role &&
-                Math.abs(g.ts - localTs) < 30_000 &&
+                Math.abs(g.ts - localTs) < 300_000 &&
                 g.contentKey.slice(0, 80) === localPrefix
               );
               if (fuzzyMatch) return false;
@@ -1214,6 +1213,24 @@ export function useChat(sessionKey?: string) {
               newSessionId: lm.newSessionId,
               replyTo: lm.replyTo as ReplyTo | undefined,
             }));
+        }
+        // Clean up stale stream-* entries from IndexedDB that now have
+        // gateway equivalents.  These linger because saveLocalMessages uses
+        // put (upsert by key) and stream IDs differ from hist-N IDs.
+        if (localMsgs.length > 0 && dedupedHistMsgs.length > 0) {
+          const gwContentSet = new Set(
+            dedupedHistMsgs.map((m) => `${m.role}:${normalizeContentForDedup(m.content)}`),
+          );
+          const staleStreamIds = localMsgs
+            .filter((lm) => {
+              if (!lm.id.startsWith("stream-")) return false;
+              const key = `${lm.role}:${normalizeContentForDedup(lm.content)}`;
+              return gwContentSet.has(key);
+            })
+            .map((lm) => lm.id);
+          if (staleStreamIds.length > 0) {
+            deleteMessagesByIds(sessionKey, staleStreamIds).catch(() => {});
+          }
         }
       } catch (e) {
         console.warn("[AWF] Failed to load local messages:", e);

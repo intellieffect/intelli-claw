@@ -119,6 +119,30 @@ export async function getLocalMessages(
   });
 }
 
+/** Delete specific messages by their IDs within a session */
+export async function deleteMessagesByIds(
+  sessionKey: string,
+  ids: string[],
+): Promise<void> {
+  if (!sessionKey || ids.length === 0) return;
+  const db = await openDB();
+  return new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, "readwrite");
+    const store = tx.objectStore(STORE_NAME);
+    for (const id of ids) {
+      store.delete([sessionKey, id]);
+    }
+    tx.oncomplete = () => {
+      db.close();
+      resolve();
+    };
+    tx.onerror = () => {
+      db.close();
+      reject(tx.error);
+    };
+  });
+}
+
 /** Clear all messages for a session key */
 export async function clearMessages(sessionKey: string): Promise<void> {
   const db = await openDB();

@@ -45,6 +45,7 @@ const mockGetLocalMessages = vi.fn().mockResolvedValue([]);
 vi.mock("@/lib/gateway/message-store", () => ({
   saveMessages: vi.fn().mockResolvedValue(undefined),
   getLocalMessages: (...args: any[]) => mockGetLocalMessages(...args),
+  deleteMessagesByIds: vi.fn().mockResolvedValue(undefined),
   backfillFromApi: vi.fn().mockResolvedValue([]),
   isBackfillDone: vi.fn().mockReturnValue(true),
   runMessageStoreMigration: vi.fn(),

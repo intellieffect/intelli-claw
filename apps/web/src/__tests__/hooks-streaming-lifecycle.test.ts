@@ -42,6 +42,7 @@ vi.mock("@intelli-claw/shared", async () => {
 // Mock local dependencies that useChat imports
 vi.mock("@/lib/gateway/message-store", () => ({
   saveMessages: vi.fn().mockResolvedValue(undefined),
+  deleteMessagesByIds: vi.fn().mockResolvedValue(undefined),
   getLocalMessages: vi.fn().mockResolvedValue([]),
   backfillFromApi: vi.fn().mockResolvedValue([]),
   isBackfillDone: vi.fn().mockReturnValue(true),
