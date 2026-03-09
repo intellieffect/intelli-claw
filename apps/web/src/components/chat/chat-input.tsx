@@ -1,7 +1,7 @@
 
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowUp, Paperclip, Square, X, Reply } from "lucide-react";
+import { ArrowUp, Paperclip, Square, X, Reply, History, Trash2 } from "lucide-react";
 
 import { cn, windowStoragePrefix } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -14,7 +14,25 @@ import { SkillPicker, BUILTIN_COMMANDS } from "./skill-picker";
 import { useSkills } from "@/lib/gateway/use-skills";
 import { useKeyboardHeight } from "@/lib/hooks/use-keyboard-height";
 import { useIsMobile } from "@/lib/hooks/use-mobile";
-import type { ReplyTo } from "@/lib/gateway/hooks";
+import { useInputHistory } from "@/hooks/use-input-history";
+import type { ReplyTo, AgentStatus } from "@/lib/gateway/hooks";
+
+/** Format agent status for display */
+function formatAgentStatus(status?: AgentStatus): { text: string; dotColor: string } | null {
+  if (!status || status.phase === "idle") return null;
+  switch (status.phase) {
+    case "thinking":
+      return { text: "생각 중…", dotColor: "bg-yellow-400" };
+    case "writing":
+      return { text: "작성 중…", dotColor: "bg-green-400" };
+    case "tool":
+      return { text: `${status.toolName}`, dotColor: "bg-blue-400" };
+    case "waiting":
+      return { text: "응답 대기 중", dotColor: "bg-zinc-500" };
+    default:
+      return null;
+  }
+}
 
 export function ChatInput({
   onSend,
@@ -33,6 +51,12 @@ export function ChatInput({
   tokenPercent,
   replyingTo,
   onClearReply,
+  sessionType,
+  topicCount,
+  agentStatus,
+  onOpenTopicHistory,
+  onClearMessages,
+  sessionKey,
 }: {
   onSend: (text: string) => void;
   onAbort: () => void;
@@ -58,9 +82,22 @@ export function ChatInput({
   replyingTo?: ReplyTo | null;
   /** Clear reply target */
   onClearReply?: () => void;
+  /** Session type label (e.g. "Main", "Thread") */
+  sessionType?: string;
+  /** Number of topics for topic history button */
+  topicCount?: number;
+  /** Agent status for writing/thinking indicator */
+  agentStatus?: AgentStatus;
+  /** Callback to open topic history */
+  onOpenTopicHistory?: () => void;
+  /** Callback to clear messages */
+  onClearMessages?: () => void;
+  /** Session key for input history (#161) */
+  sessionKey?: string;
 }) {
   const keyboardHeight = useKeyboardHeight();
   const isMobile = useIsMobile();
+  const inputHistory = useInputHistory(sessionKey);
 
   const agentSlotFromAvatar = agentAvatar ? (
     <div
@@ -146,10 +183,13 @@ export function ChatInput({
 
   const handleSend = useCallback(() => {
     if (!canSend || disabled) return;
-    onSend(text.trim());
+    const trimmed = text.trim();
+    inputHistory.push(trimmed);
+    inputHistory.reset();
+    onSend(trimmed);
     setText("");
     if (storageKey) localStorage.removeItem(storageKey);
-  }, [text, disabled, onSend, canSend, storageKey]);
+  }, [text, disabled, onSend, canSend, storageKey, inputHistory]);
 
   const handleSkillSelect = useCallback((command: string) => {
     setText(command);
@@ -205,6 +245,61 @@ export function ChatInput({
         }
       }
 
+      // macOS Ctrl+C: clear input (#166)
+      if (e.ctrlKey && e.key === "c") {
+        const ta = e.target as HTMLTextAreaElement;
+        // Only clear if no text is selected (preserve Cmd+C copy)
+        if (ta.selectionStart === ta.selectionEnd) {
+          e.preventDefault();
+          setText("");
+          inputHistory.reset();
+          if (storageKey) localStorage.removeItem(storageKey);
+          return;
+        }
+      }
+
+      // Input history navigation (#161): ArrowUp/Down when skill picker is closed
+      if (e.key === "ArrowUp" && !skillPickerOpen) {
+        const ta = e.target as HTMLTextAreaElement;
+        const beforeCursor = ta.value.substring(0, ta.selectionStart);
+        // Only navigate history when cursor is on the first line
+        if (!beforeCursor.includes("\n")) {
+          const prev = inputHistory.navigateUp(ta.value);
+          if (prev !== null) {
+            e.preventDefault();
+            setText(prev);
+            // Move cursor to end after state update
+            requestAnimationFrame(() => {
+              if (textareaRef.current) {
+                textareaRef.current.selectionStart = prev.length;
+                textareaRef.current.selectionEnd = prev.length;
+              }
+            });
+          }
+          return;
+        }
+      }
+
+      if (e.key === "ArrowDown" && !skillPickerOpen) {
+        const ta = e.target as HTMLTextAreaElement;
+        const afterCursor = ta.value.substring(ta.selectionStart);
+        // Only navigate history when cursor is on the last line
+        if (!afterCursor.includes("\n")) {
+          const next = inputHistory.navigateDown();
+          if (next !== null) {
+            e.preventDefault();
+            setText(next);
+            requestAnimationFrame(() => {
+              if (textareaRef.current) {
+                textareaRef.current.selectionStart = next.length;
+                textareaRef.current.selectionEnd = next.length;
+              }
+            });
+          }
+          return;
+        }
+      }
+
       if (e.key === "Escape") {
         e.preventDefault();
         (e.target as HTMLTextAreaElement).blur();
@@ -218,7 +313,7 @@ export function ChatInput({
         handleSend();
       }
     },
-    [handleSend, skillPickerOpen, filteredSkills, filteredBuiltins, totalPickerItems, skillSelectedIndex, handleSkillSelect, onSend, storageKey]
+    [handleSend, skillPickerOpen, filteredSkills, filteredBuiltins, totalPickerItems, skillSelectedIndex, handleSkillSelect, onSend, storageKey, inputHistory]
   );
 
   // Paste files
@@ -289,6 +384,30 @@ export function ChatInput({
     return () => document.removeEventListener("focus-chat-input", handler);
   }, []);
 
+  // Clock: update every minute
+  const [clockTime, setClockTime] = useState(() => {
+    const now = new Date();
+    return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+  });
+  useEffect(() => {
+    const tick = () => {
+      const now = new Date();
+      setClockTime(`${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`);
+    };
+    // Align to next minute boundary
+    const msUntilNextMinute = (60 - new Date().getSeconds()) * 1000 - new Date().getMilliseconds();
+    const alignTimeout = setTimeout(() => {
+      tick();
+      // Then tick every 60s
+      intervalRef.current = setInterval(tick, 60_000);
+    }, msUntilNextMinute);
+    const intervalRef: { current: ReturnType<typeof setInterval> | null } = { current: null };
+    return () => {
+      clearTimeout(alignTimeout);
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, []);
+
   const showAttachments = onRemoveAttachment && attachments.length > 0;
 
   return (
@@ -303,6 +422,8 @@ export function ChatInput({
         onSelect={handleSkillSelect}
         onDismiss={() => setSkillPickerOpen(false)}
         visible={skillPickerOpen}
+        selectedIndex={skillSelectedIndex}
+        onChangeIndex={setSkillSelectedIndex}
       />
 
       <div
@@ -347,13 +468,14 @@ export function ChatInput({
             </div>
           )}
 
-          {/* Model & token info bar */}
-          {(model || tokenStr) && (() => {
+          {/* Model & token info bar + session meta */}
+          {(model || tokenStr || sessionType || topicCount || agentStatus) && (() => {
             const isCritical = tokenPercent != null && tokenPercent >= 90;
             const isWarning = tokenPercent != null && tokenPercent >= 70;
+            const statusInfo = formatAgentStatus(agentStatus);
             return (
               <div className={cn(
-                "flex items-center gap-2.5 px-3 pt-2 pb-0.5 text-xs tabular-nums tracking-tight",
+                "flex flex-wrap items-center gap-x-2.5 gap-y-1 px-3 pt-2 pb-0.5 text-xs tabular-nums tracking-tight",
                 isCritical
                   ? "text-red-400"
                   : isWarning
@@ -375,6 +497,8 @@ export function ChatInput({
                     <span className="font-semibold">{tokenPercent}%</span>
                   </>
                 )}
+                <span className="text-zinc-700">·</span>
+                <span data-testid="chat-clock">{clockTime}</span>
                 {isCritical && (
                   <span className="ml-1 text-[11px] font-medium text-red-400/90">
                     ⚠️ 컨텍스트 한도 임박 — <code className="rounded bg-red-400/10 px-1 py-0.5 text-[10px]">/new</code> 또는 <code className="rounded bg-red-400/10 px-1 py-0.5 text-[10px]">/compact</code> 권장
@@ -384,6 +508,60 @@ export function ChatInput({
                   <span className="ml-1 text-[11px] font-medium text-amber-400/80">
                     ⚡ 토큰 사용량 높음
                   </span>
+                )}
+
+                {/* Session meta — moved from header */}
+                {(sessionType || (topicCount && topicCount > 1) || onClearMessages || statusInfo) && (
+                  <>
+                    <span className="text-zinc-700">|</span>
+
+                    {sessionType && (
+                      <span className="rounded-md bg-zinc-800 px-1.5 py-0.5 text-[10px] font-medium text-zinc-500 uppercase tracking-wide">
+                        {sessionType}
+                      </span>
+                    )}
+
+                    {topicCount != null && topicCount > 1 && onOpenTopicHistory && (
+                      <button
+                        onClick={onOpenTopicHistory}
+                        className="flex items-center gap-1 rounded-md bg-amber-900/20 border border-amber-600/20 px-1.5 py-0.5 text-[10px] font-medium text-amber-500 hover:bg-amber-900/40 hover:border-amber-500/40 transition"
+                        title="대화 이력 보기 (리셋 기록)"
+                      >
+                        <History size={10} />
+                        <span>대화 {topicCount}</span>
+                      </button>
+                    )}
+
+                    {onClearMessages && (
+                      <button
+                        onClick={onClearMessages}
+                        className="flex items-center gap-1 rounded-md bg-zinc-800/50 border border-zinc-700/30 px-1 py-0.5 text-[10px] font-medium text-zinc-400 hover:bg-red-900/30 hover:border-red-500/30 hover:text-red-400 transition"
+                        title="채팅 비우기"
+                      >
+                        <Trash2 size={10} />
+                      </button>
+                    )}
+
+                    {statusInfo && (() => {
+                      const isAnimating = agentStatus?.phase !== "waiting";
+                      return (
+                        <span className="flex items-center gap-1.5">
+                          <span className="relative flex h-2 w-2">
+                            {isAnimating && (
+                              <span className={cn("absolute inline-flex h-full w-full animate-ping rounded-full opacity-75", statusInfo.dotColor)} />
+                            )}
+                            <span className={cn("relative inline-flex h-2 w-2 rounded-full", statusInfo.dotColor)} />
+                          </span>
+                          <span className={cn(
+                            "text-[11px] font-medium",
+                            agentStatus?.phase === "waiting" ? "text-zinc-500" : "text-zinc-300"
+                          )}>
+                            {statusInfo.text}
+                          </span>
+                        </span>
+                      );
+                    })()}
+                  </>
                 )}
               </div>
             );

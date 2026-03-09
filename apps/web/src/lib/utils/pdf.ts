@@ -3,23 +3,6 @@ import * as pdfjsLib from "pdfjs-dist";
 // Worker served from public/ (copied from pdfjs-dist v4 build/)
 pdfjsLib.GlobalWorkerOptions.workerSrc = "./pdf.worker.min.mjs";
 
-const MAX_PDF_PAGES = 20;
-const PDF_RENDER_SCALE = 1.5;
-const PDF_JPEG_QUALITY = 0.75;
-
-export interface PdfPageImage {
-  page: number;
-  base64: string;
-  mimeType: "image/jpeg";
-}
-
-export interface PdfExtraction {
-  text: string;
-  totalPages: number;
-  processedPages: number;
-  images: PdfPageImage[];
-}
-
 async function blobToBase64(blob: Blob): Promise<string> {
   const buf = await blob.arrayBuffer();
   const bytes = new Uint8Array(buf);
@@ -56,42 +39,6 @@ async function renderPageToJpeg(
   await page.render({ canvasContext: ctx, viewport }).promise;
   const dataUrl = canvas.toDataURL("image/jpeg", quality);
   return dataUrl.split(",")[1];
-}
-
-/**
- * Extract text and render page images from a PDF.
- */
-export async function extractPdf(
-  file: File,
-  maxPages = MAX_PDF_PAGES,
-): Promise<PdfExtraction> {
-  const data = new Uint8Array(await file.arrayBuffer());
-  const pdf = await pdfjsLib.getDocument({ data }).promise;
-  const totalPages = pdf.numPages;
-  const pagesToProcess = Math.min(totalPages, maxPages);
-
-  const textParts: string[] = [];
-  const images: PdfPageImage[] = [];
-
-  for (let i = 1; i <= pagesToProcess; i++) {
-    const page = await pdf.getPage(i);
-
-    const textContent = await page.getTextContent();
-    const pageText = textContent.items
-      .map((item) => ("str" in item ? item.str : ""))
-      .join(" ");
-    textParts.push(`[Page ${i}]\n${pageText}`);
-
-    const base64 = await renderPageToJpeg(page, PDF_RENDER_SCALE, PDF_JPEG_QUALITY);
-    images.push({ page: i, base64, mimeType: "image/jpeg" });
-  }
-
-  let text = textParts.join("\n\n");
-  if (totalPages > pagesToProcess) {
-    text += `\n\n[... ${totalPages - pagesToProcess} more pages not processed]`;
-  }
-
-  return { text, totalPages, processedPages: pagesToProcess, images };
 }
 
 /** First-page thumbnail as data URL for the attachment preview bar. */

@@ -36,9 +36,14 @@ function deriveApiUrl(): string {
 
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin()],
+    plugins: [externalizeDepsPlugin({ exclude: ["@intelli-claw/shared"] })],
     build: {
       outDir: "out/main",
+    },
+    resolve: {
+      alias: {
+        "@intelli-claw/shared": path.resolve(__dirname, "../../packages/shared/src"),
+      },
     },
     define: {
       // Inject gateway/API URLs into main process for API server fallback (#110)

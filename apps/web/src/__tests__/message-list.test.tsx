@@ -11,7 +11,6 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import {
   getExt,
   getFileAccent,
-  stripTaskMemo,
   messageBubbleAreEqual,
   MessageList,
 } from "@/components/chat/message-list";
@@ -55,6 +54,16 @@ vi.mock("@/lib/utils/format-time", () => ({
   },
 }));
 
+// Mock IntersectionObserver for jsdom
+class MockIntersectionObserver {
+  callback: IntersectionObserverCallback;
+  constructor(cb: IntersectionObserverCallback) { this.callback = cb; }
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+(globalThis as any).IntersectionObserver = MockIntersectionObserver;
+
 beforeEach(() => {
   resetFixtureCounter();
 });
@@ -81,23 +90,6 @@ describe("getExt", () => {
   });
 });
 
-describe("stripTaskMemo", () => {
-  it("removes task-memo HTML comment (including surrounding whitespace)", () => {
-    const input = 'Hello <!-- task-memo: {"key":"val"} --> World';
-    // Regex uses \s* around the comment, so surrounding spaces are consumed
-    expect(stripTaskMemo(input)).toBe("HelloWorld");
-  });
-
-  it("returns text unchanged when no task-memo", () => {
-    expect(stripTaskMemo("Normal text")).toBe("Normal text");
-  });
-
-  it("removes multiple task-memo comments (including surrounding whitespace)", () => {
-    const input = 'A <!-- task-memo: {} --> B <!-- task-memo: {"x":1} --> C';
-    // Each comment + surrounding \s* is consumed, result is trimEnd()
-    expect(stripTaskMemo(input)).toBe("ABC");
-  });
-});
 
 describe("getFileAccent", () => {
   it("returns red accent for PDF", () => {
@@ -428,17 +420,6 @@ describe("MessageBubble — assistant messages", () => {
     expect(screen.getByText("Original question text")).toBeInTheDocument();
   });
 
-  it("strips task-memo from assistant content", () => {
-    const messages = [
-      makeAssistantMessage('Answer text <!-- task-memo: {"key":"val"} -->'),
-    ];
-    render(<MessageList messages={messages} loading={false} streaming={false} />);
-    // MarkdownRenderer receives stripped content
-    const md = screen.getByTestId("markdown");
-    expect(md.textContent).toContain("Answer text");
-    expect(md.textContent).not.toContain("task-memo");
-  });
-
   it("renders assistant image attachments", () => {
     const messages = [
       makeAssistantMessage("Here's the image", {
@@ -576,7 +557,7 @@ describe("ThinkingIndicator", () => {
 });
 
 describe("Virtual pagination", () => {
-  it("shows 이전 메시지 불러오기 button when more messages than page size", () => {
+  it("shows loading sentinel when more messages than page size", () => {
     // PAGE_SIZE is 50 in the component
     const messages = Array.from({ length: 60 }, (_, i) =>
       makeUserMessage(`Message ${i}`, {
@@ -586,8 +567,8 @@ describe("Virtual pagination", () => {
     );
 
     render(<MessageList messages={messages} loading={false} streaming={false} />);
-    const loadMoreBtn = screen.queryByText(/이전 메시지 불러오기/);
-    expect(loadMoreBtn).toBeTruthy();
+    const sentinel = screen.queryByText(/이전 메시지 불러오는 중/);
+    expect(sentinel).toBeTruthy();
   });
 
   it("does not show load more when messages fit in one page", () => {
@@ -599,10 +580,10 @@ describe("Virtual pagination", () => {
     );
 
     render(<MessageList messages={messages} loading={false} streaming={false} />);
-    expect(screen.queryByText(/이전 메시지 불러오기/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/이전 메시지 불러오는 중/)).not.toBeInTheDocument();
   });
 
-  it("shows remaining message count in load more button", () => {
+  it("shows sentinel with spinner when more messages exist", () => {
     const messages = Array.from({ length: 60 }, (_, i) =>
       makeUserMessage(`Message ${i}`, {
         id: `msg-${i}`,
@@ -611,13 +592,13 @@ describe("Virtual pagination", () => {
     );
 
     render(<MessageList messages={messages} loading={false} streaming={false} />);
-    const btn = screen.getByText(/이전 메시지 불러오기/);
-    // Should show "10개 남음" (60 - 50 = 10)
-    expect(btn.textContent).toContain("10");
+    const sentinel = screen.getByText(/이전 메시지 불러오는 중/);
+    expect(sentinel).toBeTruthy();
   });
 
-  it("loads more messages when button is clicked", () => {
-    const messages = Array.from({ length: 60 }, (_, i) =>
+  it("hides sentinel after all messages are visible", () => {
+    // Exactly PAGE_SIZE (50) messages — no pagination needed
+    const messages = Array.from({ length: 50 }, (_, i) =>
       makeUserMessage(`Msg ${i}`, {
         id: `msg-${i}`,
         timestamp: new Date(Date.now() + i * 1000).toISOString(),
@@ -625,13 +606,7 @@ describe("Virtual pagination", () => {
     );
 
     render(<MessageList messages={messages} loading={false} streaming={false} />);
-    const btn = screen.getByText(/이전 메시지 불러오기/);
-    fireEvent.click(btn);
-
-    // After loading more, all messages should be visible and button should be gone
-    // (60 messages total, after loading 2nd page of 50, all 60 visible)
-    // Need to wait for rAF mock
-    expect(screen.queryByText(/이전 메시지 불러오기/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/이전 메시지 불러오는 중/)).not.toBeInTheDocument();
   });
 });
 

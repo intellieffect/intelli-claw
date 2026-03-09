@@ -9,7 +9,10 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.intelliclaw.mobile"
+      "bundleIdentifier": "com.intelliclaw.mobile",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -27,6 +30,15 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "gatewayUrl": "ws://127.0.0.1:18789",
+      "gatewayToken": "",
+      "gatewayHttpUrl": "http://127.0.0.1:18789",
+      "router": {},
+      "eas": {
+        "projectId": "32aef4ab-26e8-4f20-b47a-b0f851dac43b"
+      }
     }
   }
 }

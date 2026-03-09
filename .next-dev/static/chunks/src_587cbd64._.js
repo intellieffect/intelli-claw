@@ -268,7 +268,7 @@ function GatewayProvider(param) {
     (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$15$2e$5$2e$12_$40$babel$2b$core$40$7$2e$29$2e$0_react$2d$dom$40$19$2e$2$2e$4_react$40$19$2e$2$2e$4_$5f$react$40$19$2e$2$2e$4$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useEffect"])({
         "GatewayProvider.useEffect": ()=>{
             const url = ("TURBOPACK compile-time value", "ws://100.114.145.125:18789") || "ws://127.0.0.1:18789";
-            const token = ("TURBOPACK compile-time value", "REDACTED_TOKEN") || "";
+            const token = ("TURBOPACK compile-time value", "298e503e4ac3a1f0e8db82fa02c36c92e7c75bbd8b8eb8d3") || "";
             console.log("[AWF] Connecting to gateway:", url, "token:", ("TURBOPACK compile-time truthy", 1) ? "✓" : "TURBOPACK unreachable");
             const c = new __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$gateway$2f$client$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["GatewayClient"](url, token);
             setClient(c);

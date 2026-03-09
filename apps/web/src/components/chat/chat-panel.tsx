@@ -8,19 +8,24 @@ import { AgentSelector } from "./agent-selector";
 import { SessionSwitcher } from "./session-switcher";
 import { AgentBrowser } from "./agent-browser";
 import { DropZone, useFileAttachments, attachmentToPayload } from "./file-attachments";
-import { parseSessionKey, sessionDisplayName, type GatewaySession } from "@/lib/gateway/session-utils";
+import { parseSessionKey, sessionDisplayName, type GatewaySession, isTopicClosed, isTopicSession, CLOSED_PREFIX, getCleanLabel } from "@/lib/gateway/session-utils";
+import { getTopicCount } from "@/lib/gateway/topic-store";
 import { isSessionHidden, hideSession, unhideSession, getHiddenSessions } from "@/lib/gateway/hidden-sessions";
-import { TaskMemo } from "./task-memo";
+import { getLocalMessages } from "@/lib/gateway/message-store";
+import { generateTopicSummary } from "@/lib/gateway/topic-summary";
+import { markSessionEnded } from "@/lib/gateway/topic-store";
+
 import { SessionSettings } from "@/components/settings/session-settings";
 import { ChatHeader } from "./chat-header";
 import { matchesShortcutId } from "@/lib/shortcuts";
 import { windowStoragePrefix } from "@/lib/utils";
 import { useIsMobile } from "@/lib/hooks/use-mobile";
 import { useKeyboardHeight } from "@/lib/hooks/use-keyboard-height";
-import { useSwipeGesture, getNextAgentIndex } from "@/lib/hooks/use-swipe-gesture";
+import { useSwipeGesture, getNextAgentIndex, getNextTopicIndex, useSwipeMode } from "@/lib/hooks/use-swipe-gesture";
 import { NewSessionPicker, AgentManager } from "@/components/settings/agent-manager";
 import { SessionManagerPanel } from "./session-manager-panel";
 import { TopicHistory } from "./topic-history";
+import { TopicNameDialog } from "./topic-name-dialog";
 import { resolveInitialSessionState, getRememberedSessionForAgent } from "@/lib/session-continuity";
 import { platform } from "@/lib/platform";
 
@@ -46,6 +51,7 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
       windowPrefix: windowStoragePrefix(),
       defaultAgentId: import.meta.env.VITE_DEFAULT_AGENT || "default",
       getItem: (k) => localStorage.getItem(k),
+      urlSearch: window.location.search,
     });
     setSessionKeyRaw(initial.sessionKey);
     setAgentId(initial.agentId);
@@ -79,53 +85,23 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
   const effectiveSessionKey =
     sessionKey || (agentId ? `agent:${agentId}:main` : mainSessionKey) || undefined;
 
+  // Report active session to Electron main process for Cmd+N duplication (#170)
+  useEffect(() => {
+    if (typeof window === "undefined" || !effectiveSessionKey) return;
+    const api = (window as Record<string, unknown>).electronAPI as
+      | { updateSessionKey?: (key: string) => void }
+      | undefined;
+    api?.updateSessionKey?.(effectiveSessionKey);
+  }, [effectiveSessionKey]);
+
   const { messages, streaming, loading, agentStatus, sendMessage, sendCommand, addUserMessage, addLocalMessage, clearMessages, cancelQueued, abort, sendContextBridge, replyingTo, setReplyTo, clearReplyTo } = useChat(effectiveSessionKey);
   const { agents } = useAgents();
   const { sessions, loading: sessionsLoading, refresh: refreshSessions, patchSession } = useSessions();
 
   const { attachments, addFiles, removeAttachment, clearAttachments } = useFileAttachments();
 
-  const [sessionSwitcherOpen, setSessionSwitcherOpen] = useState(false);
-  const [agentBrowserOpen, setAgentBrowserOpen] = useState(false);
-  const [newSessionPickerOpen, setNewSessionPickerOpen] = useState(false);
-  const [agentManagerOpen, setAgentManagerOpen] = useState(false);
-  const [sessionManagerOpen, setSessionManagerOpen] = useState(false);
-  const [topicHistoryOpen, setTopicHistoryOpen] = useState(false);
-  const panelRef = useRef<HTMLDivElement>(null);
-
-  // Swipe gesture for mobile agent switching
-  const handleSwipeLeft = useCallback(() => {
-    if (agents.length <= 1) return;
-    const currentIdx = agents.findIndex((a) => a.id === agentId);
-    const nextIdx = getNextAgentIndex(
-      currentIdx === -1 ? 0 : currentIdx,
-      agents.length,
-      "left",
-    );
-    const nextAgent = agents[nextIdx];
-    if (nextAgent) handleAgentChange(nextAgent.id);
-  }, [agents, agentId]);
-
-  const handleSwipeRight = useCallback(() => {
-    if (agents.length <= 1) return;
-    const currentIdx = agents.findIndex((a) => a.id === agentId);
-    const nextIdx = getNextAgentIndex(
-      currentIdx === -1 ? 0 : currentIdx,
-      agents.length,
-      "right",
-    );
-    const nextAgent = agents[nextIdx];
-    if (nextAgent) handleAgentChange(nextAgent.id);
-  }, [agents, agentId]);
-
-  useSwipeGesture(panelRef, {
-    onSwipeLeft: handleSwipeLeft,
-    onSwipeRight: handleSwipeRight,
-    threshold: 50,
-    enabled: isMobile,
-  });
-
   // Build ordered session list for current agent (matches header tab order: main first, then by updatedAt desc)
+  // NOTE: Must be declared before swipe handlers to avoid TDZ in production builds
   const [hiddenVersion, setHiddenVersion] = useState(0);
   const agentSessions = useMemo(() => {
     return (sessions as GatewaySession[])
@@ -135,6 +111,8 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
         if (p.type !== "main" && p.type !== "thread") return false;
         // Hide hidden sessions (main always visible)
         if (p.type !== "main" && isSessionHidden(s.key)) return false;
+        // Hide closed topics from tab bar
+        if (isTopicClosed(s)) return false;
         return true;
       })
       .sort((a, b) => {
@@ -146,6 +124,91 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessions, agentId, hiddenVersion]);
+
+  const handleAgentChange = useCallback((id: string | undefined) => {
+    const newId = id || import.meta.env.VITE_DEFAULT_AGENT || "default";
+    setAgentId(newId);
+    if (typeof window !== "undefined") {
+      localStorage.setItem(`${storagePrefix}agentId`, newId);
+      const remembered = getRememberedSessionForAgent({
+        agentId: newId,
+        getItem: (k) => localStorage.getItem(k),
+      });
+      setSessionKey(remembered || undefined);
+      return;
+    }
+    setSessionKey(undefined);
+  }, [storagePrefix, setSessionKey]);
+
+  const [sessionSwitcherOpen, setSessionSwitcherOpen] = useState(false);
+  const [agentBrowserOpen, setAgentBrowserOpen] = useState(false);
+  const [newSessionPickerOpen, setNewSessionPickerOpen] = useState(false);
+  const [agentManagerOpen, setAgentManagerOpen] = useState(false);
+  const [sessionManagerOpen, setSessionManagerOpen] = useState(false);
+  const [topicHistoryOpen, setTopicHistoryOpen] = useState(false);
+  const [topicNameDialogOpen, setTopicNameDialogOpen] = useState(false);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  // Swipe mode: agent vs topic
+  const [swipeMode, setSwipeModeValue] = useSwipeMode(agents.length);
+
+  // Swipe gesture for mobile agent/topic switching
+  const handleSwipeLeft = useCallback(() => {
+    if (swipeMode === "topic") {
+      // 토픽 간 전환
+      if (agentSessions.length <= 1) return;
+      const currentIdx = agentSessions.findIndex((s) => s.key === effectiveSessionKey);
+      const nextIdx = getNextTopicIndex(
+        currentIdx === -1 ? 0 : currentIdx,
+        agentSessions.length,
+        "left",
+      );
+      if (agentSessions[nextIdx]) setSessionKey(agentSessions[nextIdx].key);
+    } else {
+      // 에이전트 간 전환
+      if (agents.length <= 1) return;
+      const currentIdx = agents.findIndex((a) => a.id === agentId);
+      const nextIdx = getNextAgentIndex(
+        currentIdx === -1 ? 0 : currentIdx,
+        agents.length,
+        "left",
+      );
+      const nextAgent = agents[nextIdx];
+      if (nextAgent) handleAgentChange(nextAgent.id);
+    }
+  }, [swipeMode, agents, agentId, agentSessions, effectiveSessionKey, setSessionKey]);
+
+  const handleSwipeRight = useCallback(() => {
+    if (swipeMode === "topic") {
+      // 토픽 간 전환
+      if (agentSessions.length <= 1) return;
+      const currentIdx = agentSessions.findIndex((s) => s.key === effectiveSessionKey);
+      const nextIdx = getNextTopicIndex(
+        currentIdx === -1 ? 0 : currentIdx,
+        agentSessions.length,
+        "right",
+      );
+      if (agentSessions[nextIdx]) setSessionKey(agentSessions[nextIdx].key);
+    } else {
+      // 에이전트 간 전환
+      if (agents.length <= 1) return;
+      const currentIdx = agents.findIndex((a) => a.id === agentId);
+      const nextIdx = getNextAgentIndex(
+        currentIdx === -1 ? 0 : currentIdx,
+        agents.length,
+        "right",
+      );
+      const nextAgent = agents[nextIdx];
+      if (nextAgent) handleAgentChange(nextAgent.id);
+    }
+  }, [swipeMode, agents, agentId, agentSessions, effectiveSessionKey, setSessionKey]);
+
+  useSwipeGesture(panelRef, {
+    onSwipeLeft: handleSwipeLeft,
+    onSwipeRight: handleSwipeRight,
+    threshold: 50,
+    enabled: isMobile,
+  });
 
   // Restore focus to this panel's textarea
   const refocusPanel = useCallback(() => {
@@ -173,6 +236,54 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
     [client, isConnected, sessionKey, setSessionKey, refreshSessions, refocusPanel]
   );
 
+  const handleCloseTopic = useCallback(
+    async (key: string) => {
+      if (!client || !isConnected) return;
+      const session = (sessions as GatewaySession[]).find((s) => s.key === key);
+      const currentLabel = session?.label || sessionDisplayName({ key });
+      const cleanLabel = isTopicClosed(session || { label: currentLabel })
+        ? getCleanLabel(session || { label: currentLabel })
+        : currentLabel;
+      try {
+        await client.request("sessions.patch", { key, label: CLOSED_PREFIX + cleanLabel });
+
+        // Phase 3: flush topic summary to memory
+        try {
+          const localMessages = await getLocalMessages(key);
+          const summary = generateTopicSummary(localMessages);
+          const sessionId = session?.sessionId || key;
+          await markSessionEnded(key, sessionId, {
+            summary: summary || undefined,
+            messageCount: localMessages.length,
+          });
+        } catch (summaryErr) {
+          console.warn("[AWF] topic summary flush failed:", summaryErr);
+        }
+
+        await refreshSessions();
+      } catch (err) {
+        console.error("[AWF] close topic error:", err);
+      }
+    },
+    [client, isConnected, sessions, refreshSessions],
+  );
+
+  const handleReopenTopic = useCallback(
+    async (key: string) => {
+      if (!client || !isConnected) return;
+      const session = (sessions as GatewaySession[]).find((s) => s.key === key);
+      if (!session) return;
+      const cleanLabel = getCleanLabel(session);
+      try {
+        await client.request("sessions.patch", { key, label: cleanLabel });
+        await refreshSessions();
+      } catch (err) {
+        console.error("[AWF] reopen topic error:", err);
+      }
+    },
+    [client, isConnected, sessions, refreshSessions],
+  );
+
   // Shortcuts (active panel only)
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -193,10 +304,10 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
         e.preventDefault();
         abort();
       }
-      // Cmd+T: create new session tab
+      // Cmd+T: open topic name dialog
       if (matchesShortcutId(e, "new-tab")) {
         e.preventDefault();
-        createSessionForAgent(agentId);
+        setTopicNameDialogOpen(true);
         return;
       }
       // Cmd+1~9: switch to specific tab (9 = last tab)
@@ -240,15 +351,42 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
         // Don't preventDefault for main — let Electron close the window
         return;
       }
-      // Cmd+Shift+T: reopen last hidden session
+      // Cmd+D: close topic (label prefix)
+      if (matchesShortcutId(e, "close-topic")) {
+        if (effectiveSessionKey && isTopicSession(effectiveSessionKey)) {
+          e.preventDefault();
+          handleCloseTopic(effectiveSessionKey);
+          // Switch to previous tab
+          const currentIdx = agentSessions.findIndex((s) => s.key === effectiveSessionKey);
+          const nextIdx = currentIdx > 0 ? currentIdx - 1 : 0;
+          if (agentSessions[nextIdx]) {
+            setSessionKey(agentSessions[nextIdx].key);
+          } else {
+            setSessionKey(undefined);
+          }
+        }
+        return;
+      }
+      // Cmd+Shift+T: reopen last closed topic, then fall back to hidden sessions
       if (matchesShortcutId(e, "reopen-tab")) {
         e.preventDefault();
+        // First: try reopening closed topics (label prefix)
+        const closedTopics = (sessions as GatewaySession[])
+          .filter((s) => {
+            const p = parseSessionKey(s.key);
+            return p.agentId === agentId && isTopicClosed(s);
+          })
+          .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+        if (closedTopics.length > 0) {
+          handleReopenTopic(closedTopics[0].key);
+          setSessionKey(closedTopics[0].key);
+          return;
+        }
+        // Fallback: hidden sessions (legacy)
         const hidden = getHiddenSessions();
-        // Find most recently hidden session for this agent
         const hiddenForAgent = agentSessions.length > 0
           ? Array.from(hidden).filter((k) => parseSessionKey(k).agentId === agentId)
           : Array.from(hidden);
-        // Unhide the last one (most recently added)
         const lastHidden = hiddenForAgent[hiddenForAgent.length - 1];
         if (lastHidden) {
           unhideSession(lastHidden);
@@ -275,7 +413,7 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [agentId, setSessionKey, refreshSessions, agentSessions, effectiveSessionKey, streaming, abort, sessions, handleDelete]);
+  }, [agentId, setSessionKey, refreshSessions, agentSessions, effectiveSessionKey, streaming, abort, sessions, handleDelete, handleCloseTopic, handleReopenTopic]);
 
   // Focus textarea on mount
   useEffect(() => {
@@ -311,7 +449,7 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
     const currentLabel = (session?.label || "").trim();
     const isAutoOrEmpty =
       !currentLabel ||
-      /스레드\s*#|thread\s*#|^thread[:\s-]|작업-\d{4}/i.test(currentLabel);
+      /스레드\s*#|토픽\s*#|thread\s*#|topic\s*#|^thread[:\s-]|^topic[:\s-]|작업-\d{4}/i.test(currentLabel);
 
     if (!isAutoOrEmpty) return;
 
@@ -415,7 +553,7 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
           "| `/model` | 현재 모델 표시 |",
           "| `/model <name>` | 모델 변경 |",
           "| `/clear` | 채팅 표시 비우기 |",
-          "| `/new` | 새 스레드 생성 |",
+          "| `/new` | 새 토픽 생성 |",
           "| `/reset` | 세션 초기화 |",
           "| `/reasoning <level>` | 추론 레벨 변경 |",
           "| `/stop` | 스트리밍 중단 |",
@@ -459,8 +597,12 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
       // Use sendCommand instead of sendMessage to avoid force-setting streaming=true.
       // If gateway starts an agent run, event handlers set streaming naturally.
 
-      // /new, /reset
-      if (trimmed === "/new" || trimmed === "/reset" || trimmed.startsWith("/new ") || trimmed.startsWith("/reset ")) {
+      // /new → open topic name dialog; /reset → gateway command
+      if (trimmed === "/new") {
+        setTopicNameDialogOpen(true);
+        return;
+      }
+      if (trimmed === "/reset" || trimmed.startsWith("/new ") || trimmed.startsWith("/reset ")) {
         addLocalMessage(text, "user");
         sendCommand(text);
         refreshSessions();
@@ -478,15 +620,43 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
       if (attachments.length > 0) {
         await maybeAutoLabelSession(effectiveSessionKey, text);
 
-        // Separate PDFs with absolute paths (send path to agent) from other attachments
+        // Separate all PDFs — pass path hint for agent's `pdf` tool instead of client-side extraction
         const pdfPathHints: string[] = [];
+        const webPdfs: typeof attachments = [];
         const nonPdfAttachments = attachments.filter((att) => {
-          if (att.filePath && (att.file.type === "application/pdf" || att.file.name.toLowerCase().endsWith(".pdf"))) {
-            pdfPathHints.push(`📎 [PDF: ${att.file.name}] ${att.filePath}`);
-            return false; // exclude from base64 payload
+          const isPdf = att.file.type === "application/pdf" || att.file.name.toLowerCase().endsWith(".pdf");
+          if (!isPdf) return true;
+
+          if (att.filePath) {
+            // Electron: absolute path available
+            pdfPathHints.push(`📎 [PDF: ${att.file.name}] ${att.filePath}\n💡 Use the \`pdf\` tool for native analysis.`);
+          } else {
+            // Web: upload separately, don't send via chat.send (gateway rejects non-image attachments)
+            webPdfs.push(att);
           }
-          return true;
+          return false; // exclude all PDFs from payload flow
         });
+
+        // Upload web PDFs to server and add path hints
+        if (platform.mediaUpload) {
+          for (const att of webPdfs) {
+            try {
+              const base64 = await new Promise<string>((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => {
+                  const dataUrl = reader.result as string;
+                  resolve(dataUrl.includes(",") ? dataUrl.split(",")[1] : dataUrl);
+                };
+                reader.onerror = () => reject(new Error("Failed to read PDF"));
+                reader.readAsDataURL(att.file);
+              });
+              const { path: savedPath } = await platform.mediaUpload(base64, att.file.type || "application/pdf", att.file.name);
+              pdfPathHints.push(`📎 [PDF: ${att.file.name}] ${savedPath}\n💡 Use the \`pdf\` tool for native analysis.`);
+            } catch (err) {
+              console.warn("[AWF] PDF upload failed:", err);
+            }
+          }
+        }
 
         // Convert remaining attachments (images, etc.) to base64 payloads
         const results = await Promise.all(nonPdfAttachments.map(attachmentToPayload));
@@ -571,28 +741,13 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
     [attachments, client, isConnected, effectiveSessionKey, sessionKey, clearAttachments, sendMessage, sendCommand, addUserMessage, addLocalMessage, clearMessages, handleStatusCommand, patchSession, abort, refreshSessions, sessions, summarizeLabelFromText]
   );
 
-  const handleAgentChange = (id: string | undefined) => {
-    const newId = id || import.meta.env.VITE_DEFAULT_AGENT || "default";
-    setAgentId(newId);
-    if (typeof window !== "undefined") {
-      localStorage.setItem(`${storagePrefix}agentId`, newId);
-      const remembered = getRememberedSessionForAgent({
-        agentId: newId,
-        getItem: (k) => localStorage.getItem(k),
-      });
-      setSessionKey(remembered || undefined);
-      return;
-    }
-    setSessionKey(undefined);
-  };
-
     const handleNewSession = () => {
-    createSessionForAgent(agentId);
+    setTopicNameDialogOpen(true);
   };
 
-  const createSessionForAgent = async (selectedAgentId: string) => {
-    const threadId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-    const newKey = `agent:${selectedAgentId}:main:thread:${threadId}`;
+  const createSessionForAgent = async (selectedAgentId: string, topicName?: string | null) => {
+    const topicId = topicName || (Date.now().toString(36) + Math.random().toString(36).slice(2, 6));
+    const newKey = `agent:${selectedAgentId}:main:topic:${topicId}`;
 
     // Switch agent context if different
     if (selectedAgentId !== agentId) {
@@ -605,11 +760,12 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
     setSessionKey(newKey);
 
     // Pre-label the thread
+    const label = topicName || makeDefaultThreadLabel(selectedAgentId);
     if (client && isConnected) {
       try {
         await client.request("sessions.patch", {
           key: newKey,
-          label: makeDefaultThreadLabel(selectedAgentId),
+          label,
         });
       } catch {
         // ignore; auto-labeled on first message
@@ -676,6 +832,16 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
         : `${tokenCount}`
     : null;
 
+  // Session type label for input bar meta
+  const sessionType = !parsedSession ? "" : parsedSession.type === "main" ? "Main" : parsedSession.type === "thread" ? "Thread" : parsedSession.type === "subagent" ? "Sub-agent" : parsedSession.type === "cron" ? "Cron" : parsedSession.type === "a2a" ? "A2A" : "";
+
+  // Topic count for input bar meta
+  const [topicCount, setTopicCount] = useState(0);
+  useEffect(() => {
+    if (!effectiveSessionKey) { setTopicCount(0); return; }
+    getTopicCount(effectiveSessionKey).then(setTopicCount).catch(() => setTopicCount(0));
+  }, [effectiveSessionKey]);
+
   return (
     <div
       ref={panelRef}
@@ -698,18 +864,7 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
           onHideSession={handleHide}
           onRenameSession={(key, label) => handleRename(key, label)}
           onOpenSessionManager={() => setSessionManagerOpen(true)}
-          onOpenTopicHistory={() => setTopicHistoryOpen(true)}
-          onClearMessages={() => {
-            if (window.confirm("채팅 내용을 모두 비우시겠습니까?")) {
-              clearMessages();
-            }
-          }}
         />
-      )}
-
-      {/* Task Memo */}
-      {effectiveSessionKey && (
-        <TaskMemo key={effectiveSessionKey} sessionKey={effectiveSessionKey} messages={messages as unknown as Array<Record<string, unknown>>} />
       )}
 
       {/* Messages */}
@@ -737,7 +892,7 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
         onSend={handleSend}
         onAbort={abort}
         streaming={streaming}
-        disabled={!isConnected}
+        disabled={!isConnected || (currentSession ? isTopicClosed(currentSession) : false)}
         attachments={attachments}
         onAttachFiles={addFiles}
         onRemoveAttachment={removeAttachment}
@@ -748,6 +903,26 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
         tokenPercent={(currentSession as any)?.percentUsed as number | undefined}
         replyingTo={replyingTo}
         onClearReply={clearReplyTo}
+        sessionType={sessionType || undefined}
+        topicCount={topicCount}
+        agentStatus={agentStatus}
+        onOpenTopicHistory={() => setTopicHistoryOpen(true)}
+        onClearMessages={() => {
+          if (window.confirm("채팅 내용을 모두 비우시겠습니까?")) {
+            clearMessages();
+          }
+        }}
+        sessionKey={effectiveSessionKey}
+      />
+
+      {/* Topic Name Dialog */}
+      <TopicNameDialog
+        open={topicNameDialogOpen}
+        onConfirm={(name) => {
+          setTopicNameDialogOpen(false);
+          createSessionForAgent(agentId, name);
+        }}
+        onCancel={() => setTopicNameDialogOpen(false)}
       />
 
       {/* New Session Picker */}
@@ -774,6 +949,9 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
         onSelectSession={(key) => { setSessionKey(key); setSessionManagerOpen(false); }}
         onDeleteSession={async (key) => { await handleDelete(key); }}
         onResetSession={async (key) => { await handleReset(key); }}
+        swipeMode={swipeMode}
+        onSwipeModeChange={setSwipeModeValue}
+        isMobile={isMobile}
       />
 
       {/* Topic History Panel */}
@@ -797,6 +975,8 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
           onDelete={handleDelete}
           onReset={handleReset}
           onHide={handleHide}
+          onCloseTopic={handleCloseTopic}
+          onReopenTopic={handleReopenTopic}
           open={sessionSwitcherOpen}
           onOpenChange={setSessionSwitcherOpen}
           portalContainer={panelRef.current}

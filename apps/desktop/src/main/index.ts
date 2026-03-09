@@ -1,10 +1,11 @@
-import { app, BrowserWindow, shell, protocol, net, Menu, screen, dialog, nativeImage } from "electron";
+import { app, BrowserWindow, shell, protocol, net, Menu, screen, dialog, nativeImage, ipcMain } from "electron";
 import { join } from "path";
 import { readFileSync, writeFileSync } from "fs";
 
 // Read version from package.json (bundled into the app)
 const appVersion = app.getVersion(); // electron-builder sets this from package.json
 import { registerIpcHandlers } from "./ipc-handlers";
+import { NodeConnectionManager } from "./node-connection";
 
 // --- Dev mode detection & isolation ---
 const isDev = !app.isPackaged;
@@ -22,6 +23,10 @@ if (process.platform === "win32") {
 let mainWindow: BrowserWindow | null = null;
 let nextWindowId = 0;
 let isQuitting = false;
+const nodeConnection = new NodeConnectionManager();
+
+// Track active session key per window (windowId → sessionKey)
+const windowSessionKeys = new Map<number, string>();
 
 // --- Window state persistence ---
 
@@ -79,6 +84,7 @@ function boundsVisible(bounds: Electron.Rectangle): boolean {
 interface CreateWindowOpts {
   windowId?: number;
   bounds?: Electron.Rectangle;
+  sessionKey?: string;
 }
 
 function createWindow(opts?: CreateWindowOpts): BrowserWindow {
@@ -137,10 +143,19 @@ function createWindow(opts?: CreateWindowOpts): BrowserWindow {
   const rendererUrl = process.env.ELECTRON_RENDERER_URL;
   console.log("[main] ELECTRON_RENDERER_URL:", rendererUrl);
 
+  // Append session query param if duplicating a session (#170)
+  const sessionParam = opts?.sessionKey ? `session=${encodeURIComponent(opts.sessionKey)}` : "";
+
   if (rendererUrl) {
-    win.loadURL(rendererUrl);
+    const separator = rendererUrl.includes("?") ? "&" : "?";
+    win.loadURL(sessionParam ? `${rendererUrl}${separator}${sessionParam}` : rendererUrl);
   } else {
-    win.loadFile(join(__dirname, "../renderer/index.html"));
+    const htmlPath = join(__dirname, "../renderer/index.html");
+    if (sessionParam) {
+      win.loadFile(htmlPath, { query: { session: opts!.sessionKey! } });
+    } else {
+      win.loadFile(htmlPath);
+    }
   }
 
   // Persist window states on move/resize (debounced) so dev crashes don't lose state
@@ -281,7 +296,18 @@ app.whenReady().then(() => {
   }
 
   registerProtocol();
-  registerIpcHandlers();
+  registerIpcHandlers(nodeConnection);
+
+  // IPC: renderer reports its active session key (#170)
+  ipcMain.on("session:update", (event, sessionKey: string) => {
+    // Find the windowId for the sender
+    for (const [wid, win] of windowMap) {
+      if (!win.isDestroyed() && win.webContents === event.sender) {
+        windowSessionKeys.set(wid, sessionKey);
+        break;
+      }
+    }
+  });
 
   // Restore previous windows, or create a fresh one
   const savedStates = loadWindowStates();
@@ -324,7 +350,21 @@ app.whenReady().then(() => {
         {
           label: "New Window",
           accelerator: "CmdOrCtrl+N",
-          click: () => createWindow(),
+          click: () => {
+            // Duplicate current session in new window (#170)
+            const focused = BrowserWindow.getFocusedWindow();
+            let sessionKey: string | undefined;
+            if (focused) {
+              // Find the windowId for the focused window
+              for (const [wid, win] of windowMap) {
+                if (win === focused) {
+                  sessionKey = windowSessionKeys.get(wid);
+                  break;
+                }
+              }
+            }
+            createWindow(sessionKey ? { sessionKey } : undefined);
+          },
         },
         { role: "close" },
       ],

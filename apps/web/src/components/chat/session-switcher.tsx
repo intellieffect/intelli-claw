@@ -25,6 +25,9 @@ import {
   parseSessionKey,
   sessionDisplayName,
   type GatewaySession,
+  isTopicClosed,
+  getCleanLabel,
+  isTopicSession,
 } from "@/lib/gateway/session-utils";
 import {
   isSessionHidden,
@@ -32,7 +35,12 @@ import {
   unhideSession,
   getHiddenSessions,
 } from "@/lib/gateway/hidden-sessions";
+import { getTopicHistory, type TopicEntry } from "@/lib/gateway/topic-store";
 import type { Session } from "@/lib/gateway/protocol";
+import {
+  computeVisualRange,
+  getSelectedKeysFromRange,
+} from "@/lib/visual-select";
 
 // ---- Type icon per session type ----
 
@@ -102,6 +110,8 @@ export interface SessionSwitcherProps {
   onDelete?: (key: string) => Promise<void>;
   onReset?: (key: string) => Promise<void>;
   onHide?: (key: string) => void;
+  onCloseTopic?: (key: string) => Promise<void>;
+  onReopenTopic?: (key: string) => Promise<void>;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   /** Portal target — palette centers inside this element instead of viewport */
@@ -117,6 +127,8 @@ export function SessionSwitcher({
   onDelete,
   onReset,
   onHide,
+  onCloseTopic,
+  onReopenTopic,
   open: controlledOpen,
   onOpenChange,
   portalContainer,
@@ -143,6 +155,12 @@ export function SessionSwitcher({
   const [editLabel, setEditLabel] = useState("");
   const [actionBusy, setActionBusy] = useState(false);
   const [visibleCount, setVisibleCount] = useState(40);
+  const [topicSummaries, setTopicSummaries] = useState<Record<string, string>>({});
+
+  // Vim visual select mode
+  const [visualMode, setVisualMode] = useState(false);
+  const [visualAnchor, setVisualAnchor] = useState<number | null>(null);
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
 
   const searchRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -192,6 +210,11 @@ export function SessionSwitcher({
     return sorted.filter((s) => hiddenSet.has(s.key)).length;
   }, [sorted, hiddenSet]);
 
+  // Separate closed topics
+  const closedTopics = useMemo(() => {
+    return sorted.filter((s) => isTopicClosed(s));
+  }, [sorted]);
+
   const filtered = useMemo(() => {
     // Hide cron and subagent sessions from the list (unless explicitly searched)
     const isSystemSearch = search.toLowerCase().includes("cron") || search.toLowerCase().includes("subagent");
@@ -200,6 +223,8 @@ export function SessionSwitcher({
       if (!isSystemSearch && (parsed.type === "cron" || parsed.type === "subagent")) return false;
       // Hide hidden sessions unless showHidden is on
       if (!showHidden && hiddenSet.has(s.key)) return false;
+      // Hide closed topics from the main list
+      if (isTopicClosed(s)) return false;
       return true;
     });
     if (!search.trim()) return visible;
@@ -234,11 +259,31 @@ export function SessionSwitcher({
       setEditingKey(null);
       setSelectedIndex(0);
       setVisibleCount(40); // progressive render for performance
+      setVisualMode(false);
+      setVisualAnchor(null);
+      setSelectedKeys(new Set());
       setTimeout(() => searchRef.current?.focus(), 16);
       // warm up list after first paint
       setTimeout(() => setVisibleCount(120), 60);
+
+      // Load topic summaries for closed topics
+      (async () => {
+        const summaryMap: Record<string, string> = {};
+        for (const s of closedTopics) {
+          try {
+            const entries = await getTopicHistory(s.key);
+            const withSummary = entries.find((e: TopicEntry) => e.summary);
+            if (withSummary?.summary) {
+              summaryMap[s.key] = withSummary.summary;
+            }
+          } catch { /* ignore */ }
+        }
+        if (Object.keys(summaryMap).length > 0) {
+          setTopicSummaries(summaryMap);
+        }
+      })();
     }
-  }, [open]);
+  }, [open, closedTopics]);
 
   // Global Escape key listener (works even when palette div has no focus)
   useEffect(() => {
@@ -266,24 +311,102 @@ export function SessionSwitcher({
     });
   }, [selectedIndex]);
 
+  // Update visual selection when cursor moves in visual mode
+  const updateVisualSelection = useCallback(
+    (newIndex: number) => {
+      if (visualAnchor === null) return;
+      const { start, end } = computeVisualRange(visualAnchor, newIndex);
+      setSelectedKeys(getSelectedKeysFromRange(filtered, start, end));
+    },
+    [visualAnchor, filtered],
+  );
+
   // Keyboard navigation
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (editingKey) return; // let inline edit handle keys
 
+      // Don't handle vim keys when search input is focused (except Escape)
+      const isSearchFocused = searchRef.current === document.activeElement;
+
       // +1 for "new conversation" item at the end
       const totalItems = filtered.length + 1;
+
+      const moveDown = () => {
+        isKeyboardNav.current = true;
+        setSelectedIndex((prev) => {
+          const next = (prev + 1) % totalItems;
+          if (visualMode && visualAnchor !== null) {
+            const { start, end } = computeVisualRange(visualAnchor, next);
+            setSelectedKeys(getSelectedKeysFromRange(filtered, start, end));
+          }
+          return next;
+        });
+      };
+
+      const moveUp = () => {
+        isKeyboardNav.current = true;
+        setSelectedIndex((prev) => {
+          const next = (prev - 1 + totalItems) % totalItems;
+          if (visualMode && visualAnchor !== null) {
+            const { start, end } = computeVisualRange(visualAnchor, next);
+            setSelectedKeys(getSelectedKeysFromRange(filtered, start, end));
+          }
+          return next;
+        });
+      };
 
       switch (e.key) {
         case "ArrowDown":
           e.preventDefault();
-          isKeyboardNav.current = true;
-          setSelectedIndex((i) => (i + 1) % totalItems);
+          moveDown();
           break;
         case "ArrowUp":
           e.preventDefault();
-          isKeyboardNav.current = true;
-          setSelectedIndex((i) => (i - 1 + totalItems) % totalItems);
+          moveUp();
+          break;
+        case "j":
+          if (isSearchFocused) return;
+          e.preventDefault();
+          moveDown();
+          break;
+        case "k":
+          if (isSearchFocused) return;
+          e.preventDefault();
+          moveUp();
+          break;
+        case "v":
+          if (isSearchFocused) return;
+          e.preventDefault();
+          if (!visualMode) {
+            // Enter visual mode
+            setVisualMode(true);
+            setVisualAnchor(selectedIndex);
+            if (selectedIndex < filtered.length) {
+              setSelectedKeys(new Set([filtered[selectedIndex].key]));
+            }
+          } else {
+            // Exit visual mode, keep selection
+            setVisualMode(false);
+            setVisualAnchor(null);
+          }
+          break;
+        case "d":
+          if (isSearchFocused) return;
+          if (selectedKeys.size > 0 && onDelete) {
+            e.preventDefault();
+            const keysToDelete = [...selectedKeys];
+            const count = keysToDelete.length;
+            if (!confirm(`${count}개 세션을 삭제하시겠습니까?`)) return;
+            setVisualMode(false);
+            setVisualAnchor(null);
+            setSelectedKeys(new Set());
+            (async () => {
+              for (const key of keysToDelete) {
+                await onDelete(key);
+              }
+            })();
+          }
           break;
         case "Enter":
           e.preventDefault();
@@ -297,11 +420,18 @@ export function SessionSwitcher({
           break;
         case "Escape":
           e.preventDefault();
-          setOpen(false);
+          if (visualMode) {
+            // Exit visual mode + clear selection
+            setVisualMode(false);
+            setVisualAnchor(null);
+            setSelectedKeys(new Set());
+          } else {
+            setOpen(false);
+          }
           break;
       }
     },
-    [editingKey, filtered, selectedIndex, onSelect, onNew, setOpen],
+    [editingKey, filtered, selectedIndex, onSelect, onNew, setOpen, visualMode, visualAnchor, onDelete, updateVisualSelection],
   );
 
   // Actions
@@ -374,7 +504,7 @@ export function SessionSwitcher({
             <>
               <strong className="font-semibold">{currentParsed.agentId}</strong>
               {currentParsed.type === "thread" && (
-                <span className="text-muted-foreground"> / 새 세션</span>
+                <span className="text-muted-foreground"> / 새 토픽</span>
               )}
             </>
           ) : "세션 선택"}
@@ -469,13 +599,18 @@ export function SessionSwitcher({
                 const isSelected = selectedIndex === index;
                 const isHidden = hiddenSet.has(session.key);
                 const isMain = parsed.type === "main";
+                const isVisualSelected = selectedKeys.has(session.key);
 
                 return (
                   <div
                     key={session.key}
                     data-session-item
                     className={`group mx-1 flex items-center gap-3 rounded-lg px-3 py-2.5 min-h-[44px] transition-colors ${
-                      isSelected ? "bg-muted/70" : "hover:bg-muted"
+                      isVisualSelected
+                        ? "bg-primary/15 ring-1 ring-primary/30"
+                        : isSelected
+                          ? "bg-muted/70"
+                          : "hover:bg-muted"
                     } ${isHidden ? "opacity-50" : ""}`}
                     onMouseMove={() => {
                       if (!isKeyboardNav.current && selectedIndex !== index) setSelectedIndex(index);
@@ -558,8 +693,21 @@ export function SessionSwitcher({
                           isSelected ? "flex" : "hidden group-hover:flex"
                         }`}
                       >
-                        {/* Hide / Unhide button (not for main sessions) */}
-                        {!isMain && onHide && (
+                        {/* Close topic button (for topic sessions only) */}
+                        {!isMain && onCloseTopic && isTopicSession(session.key) && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onCloseTopic(session.key);
+                            }}
+                            className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+                            title="토픽 닫기"
+                          >
+                            <EyeOff size={12} />
+                          </button>
+                        )}
+                        {/* Hide / Unhide button (not for main sessions, not for topics with close) */}
+                        {!isMain && onHide && !(onCloseTopic && isTopicSession(session.key)) && (
                           isHidden ? (
                             <button
                               onClick={(e) => {
@@ -680,27 +828,104 @@ export function SessionSwitcher({
                   ↵
                 </kbd>
               </div>
+
+              {/* Closed topics section */}
+              {closedTopics.length > 0 && onReopenTopic && (
+                <>
+                  <div className="mx-4 mt-3 mb-1 flex items-center gap-2 text-xs text-muted-foreground">
+                    <EyeOff size={12} />
+                    <span>닫힌 토픽 ({closedTopics.length})</span>
+                  </div>
+                  {closedTopics.map((session) => {
+                    const parsed = parseSessionKey(session.key);
+                    const cleanLabel = getCleanLabel(session) || sessionDisplayName(session);
+                    const summary = topicSummaries[session.key];
+                    return (
+                      <div
+                        key={`closed-${session.key}`}
+                        className="group mx-1 flex items-center gap-3 rounded-lg px-3 py-2 opacity-60 hover:opacity-100 transition-opacity"
+                      >
+                        <SessionTypeIcon type={parsed.type} />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="truncate text-sm text-foreground">{cleanLabel}</span>
+                            <span className="rounded-md bg-red-900/30 border border-red-700/40 px-1.5 py-0.5 text-[9px] font-medium text-red-400">
+                              닫힘
+                            </span>
+                          </div>
+                          {summary && (
+                            <div className="mt-0.5 truncate text-xs text-muted-foreground/70 italic">
+                              {summary}
+                            </div>
+                          )}
+                          {session.updatedAt && (
+                            <div className="mt-0.5 text-xs text-muted-foreground flex items-center gap-0.5">
+                              <Clock size={10} />
+                              {relativeTime(session.updatedAt)}
+                            </div>
+                          )}
+                        </div>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onReopenTopic(session.key);
+                          }}
+                          className="shrink-0 rounded-md bg-zinc-800 px-2 py-1 text-[11px] text-zinc-300 hover:bg-zinc-700 hover:text-white transition opacity-0 group-hover:opacity-100"
+                        >
+                          다시 열기
+                        </button>
+                      </div>
+                    );
+                  })}
+                </>
+              )}
             </div>
 
             {/* Footer hint (desktop only) */}
             {!isMobile && (
               <div className="flex items-center gap-3 border-t border-border px-4 py-2 text-[10px] text-muted-foreground">
-                <span className="flex items-center gap-1">
-                  <kbd className="rounded border border-border px-1">↑↓</kbd>
-                  이동
-                </span>
-                <span className="flex items-center gap-1">
-                  <kbd className="rounded border border-border px-1">↵</kbd>
-                  선택
-                </span>
-                <span className="flex items-center gap-1">
-                  <kbd className="rounded border border-border px-1">R</kbd>
-                  이름변경
-                </span>
-                <span className="flex items-center gap-1">
-                  <kbd className="rounded border border-border px-1">esc</kbd>
-                  닫기
-                </span>
+                {visualMode ? (
+                  <>
+                    <span className="rounded bg-primary/20 px-1.5 py-0.5 font-medium text-primary">
+                      VISUAL
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <kbd className="rounded border border-border px-1">j/k</kbd>
+                      범위 선택
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <kbd className="rounded border border-border px-1">d</kbd>
+                      삭제 ({selectedKeys.size})
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <kbd className="rounded border border-border px-1">v</kbd>
+                      확정
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <kbd className="rounded border border-border px-1">esc</kbd>
+                      취소
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span className="flex items-center gap-1">
+                      <kbd className="rounded border border-border px-1">j/k</kbd>
+                      이동
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <kbd className="rounded border border-border px-1">↵</kbd>
+                      선택
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <kbd className="rounded border border-border px-1">v</kbd>
+                      비주얼
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <kbd className="rounded border border-border px-1">esc</kbd>
+                      닫기
+                    </span>
+                  </>
+                )}
               </div>
             )}
           </div>

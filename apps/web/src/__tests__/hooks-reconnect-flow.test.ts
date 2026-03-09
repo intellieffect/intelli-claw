@@ -46,6 +46,7 @@ vi.mock("@intelli-claw/shared", async () => {
 vi.mock("@/lib/gateway/message-store", () => ({
   saveMessages: vi.fn().mockResolvedValue(undefined),
   getLocalMessages: vi.fn().mockResolvedValue([]),
+  getRecentLocalMessages: vi.fn().mockResolvedValue([]),
   backfillFromApi: vi.fn().mockResolvedValue([]),
   isBackfillDone: vi.fn().mockReturnValue(true),
   runMessageStoreMigration: vi.fn(),
@@ -240,7 +241,7 @@ describe("Reconnect flow", () => {
     if (stored) {
       const parsed = JSON.parse(stored);
       expect(parsed.content).toContain("Must not lose this");
-      expect(parsed.v).toBe(1);
+      expect(parsed.v).toBe(2);
     }
   });
 

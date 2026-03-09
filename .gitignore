@@ -13,6 +13,13 @@ release/
 .env.*.local
 !.env.example
 
+# Firebase service files (contain API keys)
+google-services.json
+GoogleService-Info.plist
+
+# npm (this is a pnpm monorepo)
+package-lock.json
+
 # turbo
 .turbo/
 

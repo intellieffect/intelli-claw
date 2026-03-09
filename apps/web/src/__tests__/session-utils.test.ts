@@ -49,7 +49,7 @@ describe("sessionDisplayName", () => {
 
   it("generates name for thread session", () => {
     expect(sessionDisplayName({ key: "agent:alpha:main:thread:18833" })).toBe(
-      "alpha 스레드 #18833"
+      "alpha 토픽 #18833"
     );
   });
 

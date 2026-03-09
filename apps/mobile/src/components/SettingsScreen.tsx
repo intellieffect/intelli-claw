@@ -96,7 +96,7 @@ export default function SettingsScreen() {
               className="h-12 px-4 bg-background border border-border rounded-xl text-[15px] text-foreground mb-4"
               value={url}
               onChangeText={setUrl}
-              placeholder="wss://your-gateway:18789"
+              placeholder="wss://100.107.218.100:18789"
               placeholderTextColor="#444444"
               autoCapitalize="none"
               autoCorrect={false}

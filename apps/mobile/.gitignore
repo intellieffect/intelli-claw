@@ -12,7 +12,7 @@ android/
 .env.local
 
 # EAS
-eas.json
+# eas.json must be committed for EAS Build
 
 # Metro
 .metro-health-check*

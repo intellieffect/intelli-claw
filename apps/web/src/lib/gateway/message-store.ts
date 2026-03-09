@@ -10,6 +10,12 @@ const DB_NAME = "intelli-claw-messages";
 const DB_VERSION = 1;
 const STORE_NAME = "messages";
 
+export interface ReplyToData {
+  id: string;
+  content: string;
+  role: string;
+}
+
 export interface StoredMessage {
   /** Composite key: sessionKey + id */
   sessionKey: string;
@@ -21,6 +27,7 @@ export interface StoredMessage {
   attachments?: unknown[];
   oldSessionId?: string;
   newSessionId?: string;
+  replyTo?: ReplyToData;
   /** #156: Why the session was reset */
   resetReason?: string;
 }
@@ -55,11 +62,23 @@ export async function saveMessages(
   messages: StoredMessage[],
 ): Promise<void> {
   if (!sessionKey || messages.length === 0) return;
+  // #169: Validate sessionKey on every message to prevent cross-session contamination.
+  // Messages whose sessionKey doesn't match the target are silently dropped with a warning.
+  const validated = messages.filter((msg) => {
+    if (msg.sessionKey && msg.sessionKey !== sessionKey) {
+      console.warn(
+        `[message-store] session mismatch: dropping msg ${msg.id} (msg.sessionKey="${msg.sessionKey}" != target="${sessionKey}")`,
+      );
+      return false;
+    }
+    return true;
+  });
+  if (validated.length === 0) return;
   const db = await openDB();
   return new Promise<void>((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, "readwrite");
     const store = tx.objectStore(STORE_NAME);
-    for (const msg of messages) {
+    for (const msg of validated) {
       store.put({ ...msg, sessionKey });
     }
     tx.oncomplete = () => {
@@ -100,6 +119,40 @@ export async function getLocalMessages(
   });
 }
 
+/**
+ * Get the most recent N messages for a session key (fast cache-first load).
+ * Uses the byTimestamp index with a reverse cursor to avoid loading all messages.
+ */
+export async function getRecentLocalMessages(
+  sessionKey: string,
+  limit = 100,
+): Promise<StoredMessage[]> {
+  if (!sessionKey) return [];
+  const db = await openDB();
+  return new Promise<StoredMessage[]>((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, "readonly");
+    const index = tx.objectStore(STORE_NAME).index("byTimestamp");
+    const range = IDBKeyRange.bound([sessionKey], [sessionKey, "\uffff"]);
+    const results: StoredMessage[] = [];
+    const req = index.openCursor(range, "prev");
+    req.onsuccess = () => {
+      const cursor = req.result;
+      if (cursor && results.length < limit) {
+        results.push(cursor.value as StoredMessage);
+        cursor.continue();
+      } else {
+        db.close();
+        results.reverse(); // oldest first
+        resolve(results);
+      }
+    };
+    req.onerror = () => {
+      db.close();
+      reject(req.error);
+    };
+  });
+}
+
 /** Clear all messages for a session key */
 export async function clearMessages(sessionKey: string): Promise<void> {
   const db = await openDB();
@@ -129,7 +182,7 @@ export async function clearMessages(sessionKey: string): Promise<void> {
 // --- One-time migration: clear corrupted data (#5536-v2) ---
 
 const MIGRATION_KEY = "intelli-claw-msg-migration";
-const MIGRATION_VERSION = 2; // bump to force re-migration (v2: #121 dedup fix)
+const MIGRATION_VERSION = 3; // bump to force re-migration (v3: #169 session isolation fix)
 
 /**
  * One-time migration to purge potentially corrupted IndexedDB message data.
@@ -161,7 +214,7 @@ export function runMessageStoreMigration(): void {
             // Also clear backfill markers so sessions get re-backfilled
             localStorage.removeItem("intelli-claw-backfill-done");
           }
-          console.log("[AWF] Message store migration complete — cleared corrupted data (#5536-v2)");
+          console.log("[AWF] Message store migration complete — cleared corrupted data (#169-v3)");
         };
         tx.onerror = () => db.close();
       } catch {

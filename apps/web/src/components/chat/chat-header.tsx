@@ -2,15 +2,15 @@
 import { useMemo, useRef, useEffect, useState, useCallback } from "react";
 import {
   MessageSquare, Plus, X, Pin, Zap,
-  MessageCircle, Bot, Settings, History, Trash2,
+  MessageCircle, Bot, Settings,
 } from "lucide-react";
-import { parseSessionKey } from "@/lib/gateway/session-utils";
+import { parseSessionKey, isTopicClosed, getCleanLabel } from "@/lib/gateway/session-utils";
 import { isSessionHidden, hideSession } from "@/lib/gateway/hidden-sessions";
 import type { Agent, Session } from "@/lib/gateway/protocol";
 import type { AgentStatus } from "@/lib/gateway/hooks";
 import { AgentAvatar } from "@/components/ui/agent-avatar";
 import { cn } from "@/lib/utils";
-import { getTopicCount } from "@/lib/gateway/topic-store";
+
 
 // --- Types ---
 
@@ -30,8 +30,6 @@ interface ChatHeaderProps {
   onHideSession?: (key: string) => void;
   onRenameSession?: (key: string, label: string) => void;
   onOpenSessionManager?: () => void;
-  onOpenTopicHistory?: () => void;
-  onClearMessages?: () => void;
 }
 
 // --- Constants ---
@@ -52,7 +50,7 @@ const TYPE_ICONS: Record<string, React.ReactNode> = {
 function sessionTabLabel(session: SessionEntry): string {
   // 1. User-set or auto-generated label
   if (session.label && typeof session.label === "string") {
-    const label = session.label as string;
+    const label = getCleanLabel({ label: session.label as string }) || (session.label as string);
     const slashIdx = label.indexOf("/");
     const clean = slashIdx > 0 && slashIdx < 16 ? label.slice(slashIdx + 1) : label;
     return clean.length > 28 ? `${clean.slice(0, 26)}…` : clean;
@@ -80,7 +78,7 @@ function sessionTabLabel(session: SessionEntry): string {
   };
   const chanTag = parsed.channel ? `${CHAN[parsed.channel] || parsed.channel} · ` : "";
   if (parsed.type === "main") return `${chanTag}메인`;
-  if (parsed.type === "thread") return `${chanTag}스레드 #${(parsed.detail || "").slice(0, 6)}`;
+  if (parsed.type === "thread") return `${chanTag}토픽 #${(parsed.detail || "").slice(0, 6)}`;
   if (parsed.type === "subagent") return `서브 #${(parsed.detail || "").slice(0, 6)}`;
   if (parsed.type === "cron") return `크론 ${parsed.detail || ""}`;
   return parsed.type;
@@ -112,7 +110,7 @@ function deriveTopic(
   messages: Array<Record<string, unknown>>
 ): string | null {
   if (session?.label && typeof session.label === "string") {
-    const label = session.label as string;
+    const label = getCleanLabel({ label: session.label as string }) || (session.label as string);
     const slashIdx = label.indexOf("/");
     if (slashIdx > 0 && slashIdx < 16) return label.slice(slashIdx + 1);
     return label;
@@ -131,23 +129,6 @@ function deriveTopic(
 
 // --- Main Component ---
 
-/** Format agent status for display */
-function formatAgentStatus(status?: AgentStatus): { text: string; dotColor: string } | null {
-  if (!status || status.phase === "idle") return null;
-  switch (status.phase) {
-    case "thinking":
-      return { text: "생각 중…", dotColor: "bg-yellow-400" };
-    case "writing":
-      return { text: "작성 중…", dotColor: "bg-green-400" };
-    case "tool":
-      return { text: `${status.toolName}`, dotColor: "bg-blue-400" };
-    case "waiting":
-      return { text: "응답 대기 중", dotColor: "bg-zinc-500" };
-    default:
-      return null;
-  }
-}
-
 export function ChatHeader({
   sessionKey,
   agents,
@@ -160,20 +141,10 @@ export function ChatHeader({
   onHideSession,
   onRenameSession,
   onOpenSessionManager,
-  onOpenTopicHistory,
-  onClearMessages,
 }: ChatHeaderProps) {
   const [confirmDeleteKey, setConfirmDeleteKey] = useState<string | null>(null);
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [editLabel, setEditLabel] = useState("");
-  const [topicCount, setTopicCount] = useState(0);
-  
-
-  // Load topic count for current session key
-  useEffect(() => {
-    if (!sessionKey) { setTopicCount(0); return; }
-    getTopicCount(sessionKey).then(setTopicCount).catch(() => setTopicCount(0));
-  }, [sessionKey]);
 
   const parsed = sessionKey ? parseSessionKey(sessionKey) : null;
   const agent = parsed ? agents.find((a) => a.id === parsed.agentId) : undefined;
@@ -192,6 +163,8 @@ export function ChatHeader({
         if (p.type !== "main" && p.type !== "thread") return false;
         // Hide hidden sessions from tabs (main is always visible)
         if (p.type !== "main" && isSessionHidden(s.key as string)) return false;
+        // Hide closed topics from tab bar
+        if (s.label && typeof s.label === "string" && isTopicClosed({ label: s.label })) return false;
         return true;
       })
       .sort((a, b) => {
@@ -208,8 +181,6 @@ export function ChatHeader({
 
   // Show all sessions (no active/idle split)
   const activeSessions = allAgentSessions;
-
-  const sessionType = !parsed ? "" : parsed.type === "main" ? "Main" : parsed.type === "thread" ? "Thread" : parsed.type === "subagent" ? "Sub-agent" : parsed.type === "cron" ? "Cron" : parsed.type === "a2a" ? "A2A" : "";
 
   const topic = useMemo(() => deriveTopic(session, messages), [session, messages]);
 
@@ -362,51 +333,11 @@ export function ChatHeader({
             <Settings size={12} />
           </button>
         )}
-        <span className="rounded-md bg-zinc-800 px-2 py-0.5 text-[10px] font-medium text-zinc-500 uppercase tracking-wide">
-          {sessionType}
-        </span>
-        {topicCount > 1 && onOpenTopicHistory && (
-          <button
-            onClick={onOpenTopicHistory}
-            className="flex items-center gap-1 rounded-md bg-amber-900/20 border border-amber-600/20 px-2 py-0.5 text-[10px] font-medium text-amber-500 hover:bg-amber-900/40 hover:border-amber-500/40 transition"
-            title="대화 이력 보기 (리셋 기록)"
-          >
-            <History size={10} />
-            <span>대화 {topicCount}</span>
-          </button>
+        {session && isTopicClosed({ label: session.label as string | undefined }) && (
+          <span className="rounded-md bg-red-900/30 border border-red-700/40 px-2 py-0.5 text-[10px] font-medium text-red-400">
+            닫힘
+          </span>
         )}
-        {onClearMessages && (
-          <button
-            onClick={onClearMessages}
-            className="flex items-center gap-1 rounded-md bg-zinc-800/50 border border-zinc-700/30 px-1.5 py-0.5 text-[10px] font-medium text-zinc-400 hover:bg-red-900/30 hover:border-red-500/30 hover:text-red-400 transition"
-            title="채팅 비우기"
-          >
-            <Trash2 size={10} />
-          </button>
-        )}
-        {(() => {
-          const status = formatAgentStatus(agentStatus);
-          if (!status) return null;
-          const isAnimating = agentStatus?.phase !== "waiting";
-          return (
-            <span className="flex items-center gap-1.5 ml-1">
-              <span className="relative flex h-2 w-2">
-                {isAnimating && (
-                  <span className={cn("absolute inline-flex h-full w-full animate-ping rounded-full opacity-75", status.dotColor)} />
-                )}
-                <span className={cn("relative inline-flex h-2 w-2 rounded-full", status.dotColor)} />
-              </span>
-              <span className={cn(
-                "text-[11px] font-medium",
-                agentStatus?.phase === "waiting" ? "text-zinc-500" : "text-zinc-300"
-              )}>
-                {status.text}
-              </span>
-            </span>
-          );
-        })()}
-
-
       </div>
 
       {/* Session tabs */}

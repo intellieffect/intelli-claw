@@ -29,7 +29,6 @@ describe("session continuity (#49, #143)", () => {
 
     const state = resolveInitialSessionState({
       windowPrefix: "w1:",
-
       defaultAgentId: "iclaw",
       getItem: (k) => store.get(k) ?? null,
     });
@@ -46,7 +45,6 @@ describe("session continuity (#49, #143)", () => {
 
     const state = resolveInitialSessionState({
       windowPrefix: "w1:",
-
       defaultAgentId: "default",
       getItem: (k) => store.get(k) ?? null,
     });
@@ -62,7 +60,6 @@ describe("session continuity (#49, #143)", () => {
 
     const state = resolveInitialSessionState({
       windowPrefix: "w9:",
-
       defaultAgentId: "iclaw",
       getItem: (k) => store.get(k) ?? null,
     });

@@ -45,6 +45,7 @@ const mockGetLocalMessages = vi.fn().mockResolvedValue([]);
 vi.mock("@/lib/gateway/message-store", () => ({
   saveMessages: vi.fn().mockResolvedValue(undefined),
   getLocalMessages: (...args: any[]) => mockGetLocalMessages(...args),
+  getRecentLocalMessages: (...args: any[]) => mockGetLocalMessages(...args),
   backfillFromApi: vi.fn().mockResolvedValue([]),
   isBackfillDone: vi.fn().mockReturnValue(true),
   runMessageStoreMigration: vi.fn(),
@@ -273,7 +274,9 @@ describe("Merge pipeline", () => {
   });
 
   it("queue dedup: stale queue items matching history are removed from localStorage", async () => {
-    const queueKey = "awf:queue:test:agent";
+    // #142: queueStorageKey now includes windowStoragePrefix()
+    const { windowStoragePrefix } = await import("@/lib/utils");
+    const queueKey = `awf:${windowStoragePrefix()}queue:test:agent`;
     mockLocal.setItem(
       queueKey,
       JSON.stringify([
@@ -324,6 +327,9 @@ describe("Merge pipeline", () => {
     });
 
     const { result, rerender } = renderHook(() => useChat(sessionKey));
+
+    // Allow cache-first getLocalMessages to resolve (returns []) and chat.history to be called
+    await act(async () => { vi.advanceTimersByTime(10); });
 
     // The loadHistory for agent-a is now pending...
     // Switch session

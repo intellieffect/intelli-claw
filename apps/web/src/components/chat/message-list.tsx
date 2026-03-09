@@ -4,11 +4,11 @@ import {
   User, Bot, Clock, X, Copy, Check, ArrowDown, Download,
   FileText, Music, Video, File, Image as ImageIcon,
   FileSpreadsheet, FileCode, FileArchive, FileAudio, FileVideo,
-  RefreshCw, History, Loader2, Reply,
+  RefreshCw, History, Loader2, Reply, ChevronDown,
 } from "lucide-react";
 import { MarkdownRenderer, MarkdownFilePreview } from "./markdown-renderer";
 import { ToolCallCard } from "./tool-call-card";
-import { HIDDEN_REPLY_RE, canBeReplyTarget, type DisplayMessage, type DisplayAttachment, type AgentStatus } from "@/lib/gateway/hooks";
+import { HIDDEN_REPLY_RE, canBeReplyTarget, stripTrailingControlTokens, type DisplayMessage, type DisplayAttachment, type AgentStatus, type SystemInjectedType } from "@/lib/gateway/hooks";
 import { AgentAvatar } from "@/components/ui/agent-avatar";
 
 import { blobDownload, forceDownloadUrl } from "@/lib/utils/download";
@@ -105,11 +105,6 @@ function AssistantImage({ src, fileName }: { src: string; fileName: string }) {
   );
 }
 
-/** Strip task-memo HTML comments from display text */
-const TASK_MEMO_STRIP_RE = /\s*<!--\s*task-memo:\s*\{[\s\S]*?\}\s*-->\s*/g;
-export function stripTaskMemo(text: string): string {
-  return text.replace(TASK_MEMO_STRIP_RE, "").trimEnd();
-}
 
 export function MessageList({
   messages,
@@ -128,7 +123,7 @@ export function MessageList({
   onCancelQueued?: (id: string) => void;
   agentId?: string;
   agentStatus?: AgentStatus;
-  onLoadPreviousContext?: () => void;
+  onLoadPreviousContext?: () => void | Promise<void>;
   onOpenTopicHistory?: () => void;
   onReply?: (msg: DisplayMessage) => void;
 }) {
@@ -150,10 +145,16 @@ export function MessageList({
 
   // Filter messages for display, then paginate
   const displayMessages = useMemo(() => {
-    return messages.filter((msg) => {
-      if (msg.content && HIDDEN_REPLY_RE.test(msg.content.trim())) return false;
-      return msg.role === "session-boundary" || msg.content || msg.toolCalls.length > 0 || msg.streaming || (msg.attachments && msg.attachments.length > 0);
-    });
+    return messages
+      .map((msg) => {
+        // Strip trailing control tokens from stored messages (e.g. "본문\n\nREPLY_SKIP")
+        const cleaned = msg.content ? stripTrailingControlTokens(msg.content) : msg.content;
+        return cleaned !== msg.content ? { ...msg, content: cleaned } : msg;
+      })
+      .filter((msg) => {
+        if (msg.content && HIDDEN_REPLY_RE.test(msg.content.trim())) return false;
+        return msg.role === "session-boundary" || msg.content || msg.toolCalls.length > 0 || msg.streaming || (msg.attachments && msg.attachments.length > 0);
+      });
   }, [messages]);
 
   const hasMore = displayMessages.length > visibleCount;
@@ -179,6 +180,21 @@ export function MessageList({
     });
   }, [hasMore, loadingMore]);
 
+  // Auto-load when "load more" sentinel enters viewport
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) loadMore();
+      },
+      { root: containerRef.current, threshold: 0 },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [loadMore]);
+
   // Detect if user has scrolled up from bottom
   const handleScroll = useCallback(() => {
     const el = containerRef.current;
@@ -186,12 +202,7 @@ export function MessageList({
     // Consider "at bottom" if within 80px of the bottom
     const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
     setUserScrolledUp(!atBottom);
-
-    // Load more messages when scrolled to top
-    if (el.scrollTop < 100 && hasMore && !loadingMore) {
-      loadMore();
-    }
-  }, [hasMore, loadingMore, loadMore]);
+  }, []);
 
   // Re-evaluate scroll position when container is resized
   // (e.g. textarea height change, mobile keyboard appear/disappear)
@@ -272,7 +283,7 @@ export function MessageList({
     const codeToKey: Record<string, string> = {
       KeyJ: "j", KeyK: "k", KeyH: "h", KeyL: "l",
       KeyG: "g", KeyI: "i", KeyY: "y", KeyD: "d", KeyU: "u",
-      KeyV: "v", KeyO: "o", Space: " ",
+      KeyV: "v", KeyO: "o", KeyR: "r", Space: " ",
     };
 
     const normalizeKey = (e: KeyboardEvent): string => {
@@ -380,15 +391,19 @@ export function MessageList({
         return;
       }
 
-      // k → previous message
+      // k → previous message (auto-loads more when reaching top)
       if (key === "k" && !e.shiftKey) {
         e.preventDefault();
         if (navigableIndices.length === 0) return;
         setFocusedIdx((prev) => {
           if (prev === null) return navigableIndices[navigableIndices.length - 1];
           const curPos = navigableIndices.indexOf(prev);
-          const nextPos = Math.max(curPos - 1, 0);
-          return navigableIndices[nextPos];
+          if (curPos <= 0) {
+            // Already at the top — trigger load more
+            loadMore();
+            return navigableIndices[0];
+          }
+          return navigableIndices[curPos - 1];
         });
         return;
       }
@@ -402,7 +417,7 @@ export function MessageList({
           const msg = visibleMessages[i];
           if (!msg?.content) return "";
           const prefix = msg.role === "user" ? "You" : "Agent";
-          return prefix + ": " + stripTaskMemo(msg.content);
+          return prefix + ": " + msg.content;
         }).filter(Boolean).join("\n\n");
         if (text) copyToClipboard(text);
         return;
@@ -435,6 +450,32 @@ export function MessageList({
         }
       }
 
+      // r → reply to most recent assistant message (or focused message) + enter insert mode
+      if (key === "r" && !e.shiftKey) {
+        e.preventDefault();
+        if (onReply) {
+          // If a message is focused, reply to that; otherwise find the last assistant message
+          let targetMsg: DisplayMessage | undefined;
+          if (focusedIdx !== null) {
+            targetMsg = visibleMessages[focusedIdx];
+          } else {
+            // Find last assistant message that can be a reply target
+            for (let i = visibleMessages.length - 1; i >= 0; i--) {
+              if (visibleMessages[i].role === "assistant" && canBeReplyTarget(visibleMessages[i])) {
+                targetMsg = visibleMessages[i];
+                break;
+              }
+            }
+          }
+          if (targetMsg && canBeReplyTarget(targetMsg)) {
+            onReply(targetMsg);
+            setFocusedIdx(null);
+            document.dispatchEvent(new CustomEvent("focus-chat-input"));
+          }
+        }
+        return;
+      }
+
       // i → enter insert mode (focus input)
       if (key === "i" && !e.shiftKey) {
         e.preventDefault();
@@ -445,7 +486,7 @@ export function MessageList({
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [scrollToBottom, scrollToTop, navigableIndices, focusedIdx, visibleMessages]);
+  }, [scrollToBottom, scrollToTop, navigableIndices, focusedIdx, visibleMessages, onReply, loadMore]);
 
   if (loading) {
     return (
@@ -469,21 +510,13 @@ export function MessageList({
     <div className="relative flex-1 min-h-0">
     <div ref={containerRef} onScroll={handleScroll} className="h-full overflow-y-auto overflow-x-hidden px-[3%] pt-3 pb-8 md:px-[5%] lg:px-[7%] md:pt-4 md:pb-12" style={{ WebkitOverflowScrolling: "touch" }}>
       <div className="mx-auto max-w-[1200px] space-y-3 md:space-y-4">
-        {/* Load more indicator */}
+        {/* Load-more sentinel — auto-loads when scrolled into view */}
         {hasMore && (
-          <div className="flex justify-center py-3">
-            <button
-              onClick={loadMore}
-              disabled={loadingMore}
-              className="flex items-center gap-2 rounded-lg border border-zinc-700/50 bg-zinc-800/60 px-4 py-2 text-xs text-zinc-400 transition hover:bg-zinc-700/60 hover:text-zinc-300 disabled:opacity-50"
-            >
-              {loadingMore ? (
-                <Loader2 size={14} className="animate-spin" />
-              ) : (
-                <History size={14} />
-              )}
-              이전 메시지 불러오기 ({displayMessages.length - visibleCount}개 남음)
-            </button>
+          <div ref={sentinelRef} className="flex justify-center py-3">
+            <div className="flex items-center gap-2 text-xs text-zinc-500">
+              <Loader2 size={14} className="animate-spin" />
+              이전 메시지 불러오는 중...
+            </div>
           </div>
         )}
         {visibleMessages
@@ -537,16 +570,57 @@ export function MessageList({
   );
 }
 
+/** Collapsible system message for compaction summaries and memory flush (#187) */
+function CollapsibleSystemMessage({ content, systemType }: { content: string; systemType: SystemInjectedType }) {
+  const [expanded, setExpanded] = useState(false);
+  const label = systemType === "compaction" ? "Compaction Summary" : "Memory Flush";
+
+  return (
+    <div className="max-w-[90%] rounded-lg border border-zinc-700/50 bg-zinc-800/30 text-xs text-muted-foreground">
+      <button
+        onClick={() => setExpanded((v) => !v)}
+        className="flex w-full items-center gap-2 px-3 py-2 text-left transition hover:bg-zinc-700/30"
+      >
+        <ChevronDown
+          size={12}
+          className={`shrink-0 transition-transform ${expanded ? "" : "-rotate-90"}`}
+        />
+        <span className="font-medium text-zinc-400">{label}</span>
+      </button>
+      {expanded && (
+        <div className="border-t border-zinc-700/40 px-3 py-2 prose prose-sm prose-invert max-w-none">
+          <MarkdownRenderer content={content} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SessionBoundary({
   reason,
   onLoadContext,
   onViewHistory,
 }: {
   reason?: string;
-  onLoadContext?: () => void;
+  onLoadContext?: () => void | Promise<void>;
   onViewHistory?: () => void;
 }) {
   const label = resetReasonLabel((reason || "unknown") as ResetReason);
+  const [bridgeSent, setBridgeSent] = useState(false);
+  const [sending, setSending] = useState(false);
+
+  const handleLoadContext = useCallback(async () => {
+    if (bridgeSent || sending || !onLoadContext) return;
+    setSending(true);
+    try {
+      await onLoadContext();
+      setBridgeSent(true);
+    } catch {
+      // 실패 시 재시도 가능하도록 상태 유지
+    } finally {
+      setSending(false);
+    }
+  }, [onLoadContext, bridgeSent, sending]);
 
   return (
     <div className="flex items-center gap-3 py-3">
@@ -559,11 +633,32 @@ function SessionBoundary({
         <div className="flex items-center gap-2">
           {onLoadContext && (
             <button
-              onClick={onLoadContext}
-              className="flex items-center gap-1 rounded-md border border-amber-600/30 bg-amber-900/20 px-2.5 py-1 text-[10px] text-amber-400 transition hover:bg-amber-900/40 hover:border-amber-500/50"
+              onClick={handleLoadContext}
+              disabled={bridgeSent || sending}
+              className={`flex items-center gap-1 rounded-md border px-2.5 py-1 text-[10px] transition ${
+                bridgeSent
+                  ? "border-emerald-600/30 bg-emerald-900/20 text-emerald-400 cursor-default"
+                  : sending
+                    ? "border-amber-600/30 bg-amber-900/20 text-amber-400/60 cursor-wait"
+                    : "border-amber-600/30 bg-amber-900/20 text-amber-400 hover:bg-amber-900/40 hover:border-amber-500/50"
+              }`}
             >
-              <RefreshCw size={10} />
-              이전 맥락 불러오기
+              {bridgeSent ? (
+                <>
+                  <Check size={10} />
+                  맥락 전송됨
+                </>
+              ) : sending ? (
+                <>
+                  <Loader2 size={10} className="animate-spin" />
+                  전송 중...
+                </>
+              ) : (
+                <>
+                  <RefreshCw size={10} />
+                  이전 맥락 불러오기
+                </>
+              )}
             </button>
           )}
           {onViewHistory && (
@@ -632,38 +727,54 @@ function CopyButton({ text }: { text: string }) {
   return (
     <button
       onClick={handleCopy}
-      className="rounded p-1 text-muted-foreground opacity-60 sm:opacity-0 transition group-hover:opacity-100 hover:bg-white/10 hover:text-accent-foreground active:scale-90"
+      className="rounded p-0.5 text-muted-foreground/40 transition hover:text-muted-foreground hover:bg-white/10 active:scale-90"
       title="복사"
     >
-      {copied ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+      {copied ? <Check size={11} className="text-emerald-400" /> : <Copy size={11} />}
     </button>
   );
 }
 
 
-/** Reply quote block shown above message content */
-function ReplyQuoteBlock({ replyTo }: { replyTo: { id: string; content: string; role: string } }) {
+/** Reply quote block shown above message content — click to scroll to original */
+function ReplyQuoteBlock({ replyTo, allMessages }: { replyTo: { id: string; content: string; role: string }; allMessages?: DisplayMessage[] }) {
   const roleLabel = replyTo.role === "user" ? "나" : "에이전트";
+
+  const handleClick = useCallback(() => {
+    // Find the original message element by scanning data-msg-id attributes
+    const target = document.querySelector(`[data-msg-id="${CSS.escape(replyTo.id)}"]`) as HTMLElement | null;
+    if (target) {
+      target.scrollIntoView({ behavior: "smooth", block: "center" });
+      // Highlight animation
+      target.classList.add("reply-highlight");
+      setTimeout(() => target.classList.remove("reply-highlight"), 1500);
+    }
+  }, [replyTo.id]);
+
   return (
-    <div className="mb-1.5 flex items-start gap-1.5 rounded-lg border-l-2 border-primary/40 bg-primary/5 px-2.5 py-1.5 text-xs text-muted-foreground">
+    <button
+      type="button"
+      onClick={handleClick}
+      className="mb-1.5 flex w-full items-start gap-1.5 rounded-lg border-l-2 border-primary/40 bg-primary/5 px-2.5 py-1.5 text-left text-xs text-muted-foreground transition hover:bg-primary/10 cursor-pointer"
+    >
       <Reply size={12} className="mt-0.5 shrink-0 rotate-180 text-primary/60" />
       <div className="min-w-0">
         <span className="font-medium text-primary/80">{roleLabel}</span>
         <p className="mt-0.5 truncate">{replyTo.content || "(내용 없음)"}</p>
       </div>
-    </div>
+    </button>
   );
 }
 
-/** Reply button shown on hover */
+/** Reply button — always visible with subtle styling */
 function ReplyButton({ onClick }: { onClick: () => void }) {
   return (
     <button
       onClick={(e) => { e.stopPropagation(); onClick(); }}
-      className="rounded p-1 text-muted-foreground opacity-0 transition group-hover:opacity-60 hover:!opacity-100 hover:bg-white/10 hover:text-accent-foreground active:scale-90"
+      className="rounded p-0.5 text-muted-foreground/40 transition hover:text-muted-foreground hover:bg-white/10 active:scale-90"
       title="답장"
     >
-      <Reply size={12} />
+      <Reply size={11} />
     </button>
   );
 }
@@ -675,19 +786,23 @@ const MessageBubble = React.memo(React.forwardRef<HTMLDivElement, { message: Dis
   const isQueued = message.queued;
   const time = formatTime(message.timestamp);
 
-  // System messages: centered, muted style
+  // System messages: centered, muted style — collapsible for compaction/memory-flush (#187)
   if (isSystem) {
     return (
       <div ref={ref} className="flex justify-center py-1">
-        <div className="max-w-[90%] rounded-lg border border-border/50 bg-muted/30 px-4 py-2 text-center text-xs text-muted-foreground">
-          <MarkdownRenderer content={message.content} />
-        </div>
+        {message.systemType === "compaction" || message.systemType === "memory-flush" ? (
+          <CollapsibleSystemMessage content={message.content} systemType={message.systemType} />
+        ) : (
+          <div className="max-w-[90%] rounded-lg border border-border/50 bg-muted/30 px-4 py-2 text-center text-xs text-muted-foreground">
+            <MarkdownRenderer content={message.content} />
+          </div>
+        )}
       </div>
     );
   }
 
   return (
-    <div ref={ref} className={`group flex gap-3 ${isUser ? "justify-end" : ""} `}>
+    <div ref={ref} data-msg-id={message.id} className={`group flex gap-3 transition-colors duration-500 ${isUser ? "justify-end" : ""} [&.reply-highlight]:bg-primary/10 [&.reply-highlight]:rounded-xl`}>
       {/* Action buttons for user messages (left of bubble) */}
       {isUser && (
         <div className="flex items-start gap-0.5 pt-2">
@@ -862,15 +977,14 @@ const MessageBubble = React.memo(React.forwardRef<HTMLDivElement, { message: Dis
               </div>
             )}
             {message.content && (() => {
-              const cleaned = stripTaskMemo(message.content);
-              return cleaned ? <MarkdownRenderer content={cleaned} /> : null;
+              return message.content ? <MarkdownRenderer content={message.content} /> : null;
             })()}
             {message.streaming && (
               <span className="inline-block h-4 w-1.5 animate-pulse rounded-sm bg-primary" />
             )}
             {!message.streaming && message.content && (
               <div className="mt-1 flex items-center gap-2">
-                <CopyButton text={stripTaskMemo(message.content)} />
+                <CopyButton text={message.content} />
                 {onReply && canBeReplyTarget(message) && (
                   <ReplyButton onClick={() => onReply(message)} />
                 )}
