@@ -16,7 +16,7 @@ import {
 } from "@intelli-claw/shared";
 import { ExpoCryptoAdapter } from "../src/adapters/crypto";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { mmkvStorage } from "../src/adapters/storage";
+import { mmkvStorage, loadStorageCache } from "../src/adapters/storage";
 import { SessionContext } from "../src/stores/sessionStore";
 import { ChatStateProvider } from "../src/stores/ChatStateProvider";
 import { useDeepLink } from "../src/hooks/useDeepLink";
@@ -31,7 +31,7 @@ function loadGatewayConfig(): GatewayConfig {
     const saved = mmkvStorage.getString(GATEWAY_CONFIG_STORAGE_KEY);
     if (saved) {
       const parsed = JSON.parse(saved) as Partial<GatewayConfig>;
-      if (parsed.url && parsed.token) return parsed as GatewayConfig;
+      if (parsed.url !== undefined) return { url: parsed.url!, token: parsed.token ?? "" } as GatewayConfig;
     }
   } catch {
     /* ignore */
@@ -44,7 +44,13 @@ function loadGatewayConfig(): GatewayConfig {
 }
 
 function saveConfig(url: string, token: string): void {
-  mmkvStorage.set(GATEWAY_CONFIG_STORAGE_KEY, JSON.stringify({ url, token }));
+  const data = JSON.stringify({ url, token });
+  mmkvStorage.set(GATEWAY_CONFIG_STORAGE_KEY, data);
+  // Verify in-memory cache persistence
+  const stored = mmkvStorage.getString(GATEWAY_CONFIG_STORAGE_KEY);
+  if (stored !== data) {
+    console.warn("[GW] Config save verification failed — stored value does not match");
+  }
 }
 
 // --- Root Layout ---
@@ -63,8 +69,15 @@ function DeepLinkHandler({ children }: { children: React.ReactNode }) {
 const ACTIVE_SESSION_KEY = "intelli-claw:activeSessionKey";
 
 export default function RootLayout() {
-  const config = loadGatewayConfig();
+  const [cacheReady, setCacheReady] = useState(false);
   const [activeSessionKey, setActiveSessionKeyRaw] = useState<string | null>(null);
+
+  // Pre-load AsyncStorage → memCache before reading gateway config
+  useEffect(() => {
+    loadStorageCache([GATEWAY_CONFIG_STORAGE_KEY]).then(() => setCacheReady(true));
+  }, []);
+
+  const config = cacheReady ? loadGatewayConfig() : null;
 
   // Restore persisted session on mount
   useEffect(() => {
@@ -82,6 +95,17 @@ export default function RootLayout() {
   const openSessionPicker = useCallback(() => {
     _openSessionPicker?.();
   }, []);
+
+  // Wait for storage cache before rendering GatewayProvider
+  if (!config) {
+    return (
+      <GestureHandlerRootView className="flex-1">
+        <SafeAreaProvider>
+          <StatusBar style="auto" />
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    );
+  }
 
   return (
     <GestureHandlerRootView className="flex-1">

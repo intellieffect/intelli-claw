@@ -67,7 +67,7 @@ export function loadGatewayConfig(): GatewayConfig {
     const saved = localStorage.getItem(GATEWAY_CONFIG_STORAGE_KEY);
     if (saved) {
       const parsed = JSON.parse(saved) as Partial<GatewayConfig>;
-      if (parsed.url && parsed.token) return parsed as GatewayConfig;
+      if (parsed.url !== undefined) return { url: parsed.url!, token: parsed.token ?? "" } as GatewayConfig;
     }
   } catch { /* ignore */ }
   return {
@@ -77,7 +77,13 @@ export function loadGatewayConfig(): GatewayConfig {
 }
 
 function saveConfig(url: string, token: string): void {
-  localStorage.setItem(GATEWAY_CONFIG_STORAGE_KEY, JSON.stringify({ url, token }));
+  const data = JSON.stringify({ url, token });
+  localStorage.setItem(GATEWAY_CONFIG_STORAGE_KEY, data);
+  // Verify persistence
+  const stored = localStorage.getItem(GATEWAY_CONFIG_STORAGE_KEY);
+  if (stored !== data) {
+    console.warn("[GW] Config save verification failed — stored value does not match");
+  }
 }
 
 // --- Web GatewayProvider (wraps shared with localStorage persistence) ---
