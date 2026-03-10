@@ -687,8 +687,11 @@ export function useChat(sessionKey?: string) {
   const pendingHistoryReloadRef = useRef(false);
   const reconnectSafetyRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const finalizedEventKeysRef = useRef<Set<string>>(new Set());
-  // #155: Track recently finalized stream IDs so loadHistory can skip duplicates
+  // #155 / #218: Track recently finalized stream messages so loadHistory can skip duplicates.
+  // Store both ID and normalized content for robust matching even when gateway
+  // returns slightly different content (e.g. after mergeConsecutiveAssistant).
   const finalizedStreamIdsRef = useRef<Set<string>>(new Set());
+  const finalizedStreamContentRef = useRef<Map<string, { contentKey: string; ts: number }>>(new Map());
   const messagesRef = useRef<DisplayMessage[]>([]);
   // Throttle streaming UI updates to once per animation frame
   const streamRafRef = useRef<number | null>(null);
@@ -945,6 +948,7 @@ export function useChat(sessionKey?: string) {
         runIdRef.current = null;
         finalizedEventKeysRef.current.clear();
         finalizedStreamIdsRef.current.clear();
+        finalizedStreamContentRef.current.clear();
         abortedRef.current = false;
 
       }
@@ -1340,19 +1344,45 @@ export function useChat(sessionKey?: string) {
       }
       mergedMsgs = mergeLiveStreamingIntoHistory(mergedMsgs, liveStreaming);
 
-      // #155: Remove finalized stream messages that now have a gateway equivalent.
+      // #155 / #218: Remove finalized stream messages that now have a gateway equivalent.
       // After finalizeActiveStream, both the finalized msg (stream-...) and the
       // gateway version (hist-N) can coexist. Remove the stream version if
       // a gateway message with matching content already exists.
+      //
+      // #218 enhancement: Also use prefix + timestamp proximity matching to catch
+      // cases where mergeConsecutiveAssistant produces slightly different content
+      // (e.g. tool-call text blocks included/excluded).
       if (finalizedStreamIdsRef.current.size > 0 && dedupedHistMsgs.length > 0) {
         const gwContentKeys = new Set(
           dedupedHistMsgs.map((m) => `${m.role}:${normalizeContentForDedup(m.content)}`),
         );
+        // #218: Build gateway entries with prefix + timestamp for fuzzy matching
+        const gwEntries = dedupedHistMsgs.map((m) => ({
+          role: m.role,
+          contentKey: normalizeContentForDedup(m.content),
+          ts: new Date(m.timestamp).getTime(),
+        }));
         mergedMsgs = mergedMsgs.filter((m) => {
           if (!finalizedStreamIdsRef.current.has(m.id)) return true;
-          // Keep if no gateway equivalent exists (gateway hasn't caught up yet)
+          // Exact content match
           const key = `${m.role}:${normalizeContentForDedup(m.content)}`;
-          return !gwContentKeys.has(key);
+          if (gwContentKeys.has(key)) return false;
+          // #218: Fuzzy match — same role, close timestamp (< 30s), and content
+          // shares a meaningful prefix (first 80 chars). Catches tool-call merge
+          // discrepancies where gateway content differs slightly from streaming.
+          const finalized = finalizedStreamContentRef.current.get(m.id);
+          if (finalized) {
+            const prefix = finalized.contentKey.slice(0, 80);
+            if (prefix.length >= 20) {
+              const fuzzyMatch = gwEntries.some((g) =>
+                g.role === m.role &&
+                Math.abs(g.ts - finalized.ts) < 30_000 &&
+                g.contentKey.slice(0, 80) === prefix
+              );
+              if (fuzzyMatch) return false;
+            }
+          }
+          return true;
         });
       }
 
@@ -1632,10 +1662,21 @@ export function useChat(sessionKey?: string) {
         }]).catch(() => {});
       }
 
-      // #155: Record finalized stream ID so loadHistory won't re-add it
+      // #155 / #218: Record finalized stream ID + content so loadHistory won't re-add it.
+      // Content is stored for robust matching when gateway returns slightly different
+      // content after mergeConsecutiveAssistant (tool-call boundaries differ).
       finalizedStreamIdsRef.current.add(finalId);
-      // Auto-expire after 30s to prevent unbounded growth
-      setTimeout(() => finalizedStreamIdsRef.current.delete(finalId), 30_000);
+      const finalContentKey = normalizeContentForDedup(finalContent);
+      finalizedStreamContentRef.current.set(finalId, {
+        contentKey: finalContentKey,
+        ts: Date.now(),
+      });
+      // Auto-expire after 60s (increased from 30s — #218: slow loadHistory could
+      // arrive after TTL expiry, re-introducing the duplicate).
+      setTimeout(() => {
+        finalizedStreamIdsRef.current.delete(finalId);
+        finalizedStreamContentRef.current.delete(finalId);
+      }, 60_000);
 
       streamBuf.current = null;
       runIdRef.current = null;
