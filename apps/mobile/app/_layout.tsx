@@ -19,6 +19,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { mmkvStorage } from "../src/adapters/storage";
 import { SessionContext } from "../src/stores/sessionStore";
 import { ChatStateProvider } from "../src/stores/ChatStateProvider";
+import { useDeepLink } from "../src/hooks/useDeepLink";
 
 // Initialize crypto adapter (must be called once before gateway connects)
 initCryptoAdapter(new ExpoCryptoAdapter());
@@ -53,6 +54,12 @@ let _openSessionPicker: (() => void) | null = null;
 export function registerSessionPicker(fn: () => void) { _openSessionPicker = fn; }
 export function unregisterSessionPicker() { _openSessionPicker = null; }
 
+/** Inner component that uses hooks requiring GatewayProvider context */
+function DeepLinkHandler({ children }: { children: React.ReactNode }) {
+  useDeepLink();
+  return <>{children}</>;
+}
+
 const ACTIVE_SESSION_KEY = "intelli-claw:activeSessionKey";
 
 export default function RootLayout() {
@@ -85,10 +92,12 @@ export default function RootLayout() {
             token={config.token}
             onConfigChange={saveConfig}
           >
-            <ChatStateProvider>
-              <StatusBar style="auto" />
-              <Slot />
-            </ChatStateProvider>
+            <DeepLinkHandler>
+              <ChatStateProvider>
+                <StatusBar style="auto" />
+                <Slot />
+              </ChatStateProvider>
+            </DeepLinkHandler>
           </GatewayProvider>
         </SessionContext.Provider>
       </SafeAreaProvider>
