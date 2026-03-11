@@ -553,8 +553,8 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
           "| `/model` | 현재 모델 표시 |",
           "| `/model <name>` | 모델 변경 |",
           "| `/clear` | 채팅 표시 비우기 |",
-          "| `/new` | 새 토픽 생성 |",
-          "| `/reset` | 세션 초기화 |",
+          "| `/new` | 세션 리셋 (현재 토픽 유지, 대화 초기화) |",
+          "| `/reset` | 세션 리셋 (`/new`와 동일) |",
           "| `/reasoning <level>` | 추론 레벨 변경 |",
           "| `/stop` | 스트리밍 중단 |",
         ];
@@ -597,12 +597,8 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
       // Use sendCommand instead of sendMessage to avoid force-setting streaming=true.
       // If gateway starts an agent run, event handlers set streaming naturally.
 
-      // /new → open topic name dialog; /reset → gateway command
-      if (trimmed === "/new") {
-        setTopicNameDialogOpen(true);
-        return;
-      }
-      if (trimmed === "/reset" || trimmed.startsWith("/new ") || trimmed.startsWith("/reset ")) {
+      // /new, /reset → gateway session reset command
+      if (trimmed === "/new" || trimmed === "/reset" || trimmed.startsWith("/new ") || trimmed.startsWith("/reset ")) {
         addLocalMessage(text, "user");
         sendCommand(text);
         refreshSessions();

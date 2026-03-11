@@ -14,8 +14,8 @@ export interface BuiltinCommand {
 
 export const BUILTIN_COMMANDS: BuiltinCommand[] = [
   { name: "stop", description: "스트리밍 중단", emoji: "⏹️", immediate: true },
-  { name: "new", description: "새 세션 시작", emoji: "✨", immediate: true },
-  { name: "reset", description: "현재 세션 리셋", emoji: "🔄", immediate: true },
+  { name: "new", description: "세션 리셋 (현재 토픽 유지, 대화 초기화)", emoji: "✨", immediate: true },
+  { name: "reset", description: "세션 리셋 (/new와 동일)", emoji: "🔄", immediate: true },
   { name: "status", description: "세션 상태 확인 (토큰, 모델 등)", emoji: "📊", immediate: true },
   { name: "reasoning", description: "추론 모드 토글", emoji: "🧠", immediate: true },
   { name: "model", description: "모델 변경 (예: /model opus)", emoji: "🤖" },

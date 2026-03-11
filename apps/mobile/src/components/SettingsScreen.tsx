@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { View, Text, TextInput, Pressable, ScrollView, Alert } from "react-native";
 import { useGateway } from "@intelli-claw/shared";
 import Constants from "expo-constants";
+import { QRScanner } from "./QRScanner";
 
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
@@ -59,6 +60,7 @@ export default function SettingsScreen() {
   const [showDebug, setShowDebug] = useState(false);
   const [, forceUpdate] = useState(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [qrScannerOpen, setQrScannerOpen] = useState(false);
 
   // Track state changes in debug log
   useEffect(() => {
@@ -143,6 +145,12 @@ export default function SettingsScreen() {
             >
               <Text className="text-[15px] font-medium text-card-foreground/80">연결 설정 변경</Text>
             </Pressable>
+            <Pressable
+              className="mt-2 py-3 rounded-xl bg-primary/20 items-center active:opacity-80"
+              onPress={() => setQrScannerOpen(true)}
+            >
+              <Text className="text-[15px] font-medium text-primary">QR로 연결</Text>
+            </Pressable>
           </>
         )}
       </Section>
@@ -185,6 +193,19 @@ export default function SettingsScreen() {
           </View>
         )}
       </Pressable>
+
+      {/* QR Scanner */}
+      <QRScanner
+        visible={qrScannerOpen}
+        onClose={() => setQrScannerOpen(false)}
+        onScanned={({ url: scannedUrl, token: scannedToken }) => {
+          pushLog(`QR scan → ${scannedUrl}`);
+          updateConfig(scannedUrl, scannedToken);
+          setUrl(scannedUrl);
+          setToken(scannedToken);
+          Alert.alert("연결됨", "QR 코드에서 읽은 Gateway 설정이 적용되었습니다. 재연결 중...");
+        }}
+      />
     </ScrollView>
   );
 }

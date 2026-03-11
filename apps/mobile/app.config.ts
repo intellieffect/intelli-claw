@@ -15,6 +15,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     googleServicesFile: "./GoogleService-Info.plist",
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
+      NSCameraUsageDescription: "QR 코드를 스캔하여 Gateway에 연결하기 위해 카메라 접근이 필요합니다.",
     },
   },
   android: {
@@ -29,6 +30,12 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     "expo-secure-store",
     "expo-font",
     "@react-native-firebase/app",
+    [
+      "expo-camera",
+      {
+        cameraPermission: "QR 코드를 스캔하여 Gateway에 연결하기 위해 카메라 접근이 필요합니다.",
+      },
+    ],
   ],
   experiments: {
     typedRoutes: true,
