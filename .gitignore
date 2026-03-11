@@ -34,6 +34,9 @@ public/agents/*.jpg
 *.swp
 *.swo
 
+# Claude Code worktrees
+.claude/worktrees/
+
 # local dev
 .mcp.json
 .playwright-mcp/

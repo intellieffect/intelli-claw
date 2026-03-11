@@ -67,7 +67,11 @@ export function loadGatewayConfig(): GatewayConfig {
     const saved = localStorage.getItem(GATEWAY_CONFIG_STORAGE_KEY);
     if (saved) {
       const parsed = JSON.parse(saved) as Partial<GatewayConfig>;
-      if (parsed.url && parsed.token) return parsed as GatewayConfig;
+      // Trust localStorage if: (a) URL is non-default (user explicitly configured), or (b) token is set.
+      // Stale entries with default URL + empty token should fall through to env vars.
+      if (parsed.url && (parsed.token || parsed.url !== DEFAULT_GATEWAY_URL)) {
+        return { url: parsed.url, token: parsed.token ?? "" } as GatewayConfig;
+      }
     }
   } catch { /* ignore */ }
   return {
@@ -77,7 +81,13 @@ export function loadGatewayConfig(): GatewayConfig {
 }
 
 function saveConfig(url: string, token: string): void {
-  localStorage.setItem(GATEWAY_CONFIG_STORAGE_KEY, JSON.stringify({ url, token }));
+  const data = JSON.stringify({ url, token });
+  localStorage.setItem(GATEWAY_CONFIG_STORAGE_KEY, data);
+  // Verify persistence
+  const stored = localStorage.getItem(GATEWAY_CONFIG_STORAGE_KEY);
+  if (stored !== data) {
+    console.warn("[GW] Config save verification failed — stored value does not match");
+  }
 }
 
 // --- Web GatewayProvider (wraps shared with localStorage persistence) ---
@@ -148,22 +158,59 @@ export function useSessions() {
   const [loading, setLoading] = useState(false);
   const lastRefreshAtRef = useRef(0);
   const trackedSessionIdsRef = useRef<Map<string, string>>(new Map());
+  /** Preserve user-set labels across session resets (#216) */
+  const preservedLabelsRef = useRef<Map<string, string>>(new Map());
 
   const fetchSessions = useCallback(async () => {
     if (!client || state !== "connected") return;
     setLoading(true);
     try {
       const res = await client.request<{ sessions: Array<Record<string, unknown>> }>("sessions.list", { limit: 200 });
-      const mapped = (res?.sessions || []).map((s) => ({
-        key: String(s.key || ""),
-        agentId: undefined,
-        agentName: undefined,
-        title: s.label ? String(s.label) : undefined,
-        lastMessage: undefined,
-        updatedAt: typeof s.updatedAt === "number" ? new Date(s.updatedAt).toISOString() : undefined,
-        messageCount: undefined,
-        ...s,
-      })) as Session[];
+
+      // #216: Detect session resets and preserve labels BEFORE updating UI state.
+      // This ensures the UI never flashes an empty/wrong label on reset.
+      const labelsToRestore = new Map<string, string>();
+
+      for (const s of res?.sessions || []) {
+        const key = String(s.key || "");
+        const newSessionId = s.sessionId ? String(s.sessionId) : undefined;
+        if (!key || !newSessionId) continue;
+
+        const serverLabel = s.label ? String(s.label) : undefined;
+        const oldSessionId = trackedSessionIdsRef.current.get(key);
+
+        // Track non-empty labels so we can restore them if a reset clears them
+        if (serverLabel) {
+          preservedLabelsRef.current.set(key, serverLabel);
+        }
+
+        if (oldSessionId && oldSessionId !== newSessionId) {
+          // Session reset detected — check if label needs preservation
+          const previousLabel = preservedLabelsRef.current.get(key);
+          if (previousLabel && !serverLabel) {
+            labelsToRestore.set(key, previousLabel);
+          }
+        }
+      }
+
+      const mapped = (res?.sessions || []).map((s) => {
+        const key = String(s.key || "");
+        // #216: If a reset cleared the label, use the preserved one for UI
+        const restoredLabel = labelsToRestore.get(key);
+        const effectiveLabel = s.label ? String(s.label) : restoredLabel || undefined;
+        return {
+          key,
+          agentId: undefined,
+          agentName: undefined,
+          title: effectiveLabel,
+          lastMessage: undefined,
+          updatedAt: typeof s.updatedAt === "number" ? new Date(s.updatedAt).toISOString() : undefined,
+          messageCount: undefined,
+          ...s,
+          // Override the spread's label with our preserved one
+          ...(restoredLabel && !s.label ? { label: restoredLabel } : {}),
+        };
+      }) as Session[];
       setSessions(mapped);
       lastRefreshAtRef.current = Date.now();
 
@@ -177,7 +224,7 @@ export function useSessions() {
 
         if (oldSessionId && oldSessionId !== newSessionId) {
           console.log(`[AWF] Session reset detected: ${key} ${oldSessionId.slice(0, 8)} → ${newSessionId.slice(0, 8)}`);
-          const label = s.label ? String(s.label) : undefined;
+          const serverLabel = s.label ? String(s.label) : undefined;
           const totalTokens = typeof s.totalTokens === "number" ? s.totalTokens : undefined;
           const contextTokens = typeof s.contextTokens === "number" ? s.contextTokens : undefined;
           const percentUsed = typeof s.percentUsed === "number" ? s.percentUsed : undefined;
@@ -192,8 +239,15 @@ export function useSessions() {
             lastActiveAt,
           });
 
+          // #216: Preserve user-set label across session resets.
+          const labelToKeep = labelsToRestore.get(key) || serverLabel;
+          if (labelsToRestore.has(key)) {
+            // Server cleared the label — restore it on the gateway
+            client.request("sessions.patch", { key, label: labelsToRestore.get(key)! }).catch(() => {});
+          }
+
           markSessionEnded(key, oldSessionId, { totalTokens }).catch(() => {});
-          trackSessionId(key, newSessionId, { label }).catch(() => {});
+          trackSessionId(key, newSessionId, { label: labelToKeep }).catch(() => {});
           emitSessionReset({ key, oldSessionId, newSessionId, reason });
         } else if (!oldSessionId) {
           const existing = await getCurrentSessionId(key);

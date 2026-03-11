@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
-import { Wifi, Key, Fingerprint, Server, Copy, Check, RotateCcw, Save, Monitor } from "lucide-react";
+import { Wifi, Key, Fingerprint, Server, Copy, Check, RotateCcw, Save, Monitor, Smartphone } from "lucide-react";
 import { useGateway, GATEWAY_CONFIG_STORAGE_KEY, DEFAULT_GATEWAY_URL } from "@/lib/gateway/hooks";
 import { clearDeviceIdentity, getOrCreateDevice } from "@/lib/gateway/device-identity";
 import { getSetupGuide, classifyError } from "@/lib/gateway/setup-guide";
 import { STATUS_CONFIG } from "@/components/chat/connection-status";
 import { useNodeStatus } from "@/lib/hooks/use-node-status";
+import { MobileConnect } from "@/components/settings/mobile-connect";
 
 interface ConnectionSettingsProps {
   open: boolean;
@@ -20,6 +21,7 @@ export function ConnectionSettings({ open, onClose }: ConnectionSettingsProps) {
   const [deviceId, setDeviceId] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [mobileConnectOpen, setMobileConnectOpen] = useState(false);
 
   // Load current values when opening
   useEffect(() => {
@@ -273,6 +275,17 @@ export function ConnectionSettings({ open, onClose }: ConnectionSettingsProps) {
           </div>
         </div>
 
+        {/* Mobile Connect */}
+        <div className="border-b border-zinc-800 px-4 py-3">
+          <button
+            onClick={() => setMobileConnectOpen(true)}
+            className="flex w-full items-center justify-center gap-2 rounded-md bg-zinc-800 py-2 text-[12px] text-zinc-300 hover:bg-zinc-700 hover:text-zinc-100 transition-colors"
+          >
+            <Smartphone size={12} />
+            모바일 연결 (QR / Deep Link)
+          </button>
+        </div>
+
         {/* Actions */}
         <div className="flex gap-2 px-4 py-3">
           <button
@@ -291,6 +304,9 @@ export function ConnectionSettings({ open, onClose }: ConnectionSettingsProps) {
           </button>
         </div>
       </div>
+
+      {/* Mobile Connect Modal */}
+      <MobileConnect open={mobileConnectOpen} onClose={() => setMobileConnectOpen(false)} />
     </div>
   );
 }
