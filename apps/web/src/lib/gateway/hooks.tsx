@@ -67,7 +67,11 @@ export function loadGatewayConfig(): GatewayConfig {
     const saved = localStorage.getItem(GATEWAY_CONFIG_STORAGE_KEY);
     if (saved) {
       const parsed = JSON.parse(saved) as Partial<GatewayConfig>;
-      if (parsed.url !== undefined) return { url: parsed.url!, token: parsed.token ?? "" } as GatewayConfig;
+      // Trust localStorage if: (a) URL is non-default (user explicitly configured), or (b) token is set.
+      // Stale entries with default URL + empty token should fall through to env vars.
+      if (parsed.url && (parsed.token || parsed.url !== DEFAULT_GATEWAY_URL)) {
+        return { url: parsed.url, token: parsed.token ?? "" } as GatewayConfig;
+      }
     }
   } catch { /* ignore */ }
   return {
