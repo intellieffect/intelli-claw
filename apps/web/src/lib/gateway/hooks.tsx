@@ -17,6 +17,7 @@ import type {
   ChatMessage,
   ToolCall,
 } from "@intelli-claw/shared";
+import { extractThinking, type ThinkingBlock } from "@intelli-claw/shared";
 
 // Re-export everything from shared for backward compatibility
 export {
@@ -558,6 +559,8 @@ export interface DisplayMessage {
   replyTo?: ReplyTo;
   /** #187: Type of system-injected message (for distinct rendering) */
   systemType?: SystemInjectedType;
+  /** #222: Thinking/reasoning blocks from extended thinking models */
+  thinkingBlocks?: import("@intelli-claw/shared").ThinkingBlock[];
 }
 
 /**
@@ -1103,14 +1106,30 @@ export function useChat(sessionKey?: string) {
         .map((m, i) => {
           let textContent = '';
           const imgAttachments: DisplayAttachment[] = [];
+          let thinkingBlocks: ThinkingBlock[] | undefined;
 
           if (typeof m.content === 'string') {
-            textContent = m.content;
+            // #222: Extract <think> tags from string content
+            const extracted = extractThinking(m.content);
+            textContent = extracted.visibleText;
+            if (extracted.thinkingBlocks.length > 0) {
+              thinkingBlocks = extracted.thinkingBlocks;
+            }
           } else if (Array.isArray(m.content)) {
             const parts = m.content as Array<Record<string, unknown>>;
             const hasToolUse = parts.some(p => p.type === 'tool_use');
+
+            // #222: Extract thinking blocks from content array
+            const thinkingExtracted = extractThinking(parts as Array<{ type: string; text?: string }>);
+            if (thinkingExtracted.thinkingBlocks.length > 0) {
+              thinkingBlocks = thinkingExtracted.thinkingBlocks;
+            }
+
             for (const p of parts) {
-              if (p.type === 'text' && typeof p.text === 'string') {
+              if (p.type === 'thinking') {
+                // Already captured by extractThinking above — skip
+                continue;
+              } else if (p.type === 'text' && typeof p.text === 'string') {
                 if (hasToolUse && m.role === 'assistant') {
                   const text = (p.text as string).trim();
                   // Keep text blocks with markdown images/media even if short
@@ -1190,6 +1209,7 @@ export function useChat(sessionKey?: string) {
             toolCalls: m.toolCalls || [],
             attachments: allAttachments.length > 0 ? allAttachments : undefined,
             systemType: systemType ?? undefined,
+            thinkingBlocks,
           };
         })
         .filter((m) => {
@@ -1652,6 +1672,12 @@ export function useChat(sessionKey?: string) {
         finalAttachments = extracted.attachments.length > 0 ? extracted.attachments : undefined;
       }
 
+      // #222: Extract thinking blocks from finalized content
+      const thinkingExtracted = extractThinking(finalContent);
+      finalContent = thinkingExtracted.visibleText;
+      const finalThinkingBlocks = thinkingExtracted.thinkingBlocks.length > 0
+        ? thinkingExtracted.thinkingBlocks : undefined;
+
       if (HIDDEN_REPLY_RE.test(finalContent.trim())) {
         setMessages((prev) => prev.filter((m) => m.id !== finalId));
       } else {
@@ -1665,6 +1691,7 @@ export function useChat(sessionKey?: string) {
               toolCalls: finalTools,
               streaming: false,
               attachments: finalAttachments || next[idx].attachments,
+              thinkingBlocks: finalThinkingBlocks,
             };
             return next;
           }
@@ -1678,6 +1705,7 @@ export function useChat(sessionKey?: string) {
               toolCalls: finalTools,
               streaming: false,
               attachments: finalAttachments,
+              thinkingBlocks: finalThinkingBlocks,
             },
           ];
         });
@@ -1783,17 +1811,24 @@ export function useChat(sessionKey?: string) {
             curContent = ext.cleanedText;
             curAttachments = ext.attachments.length > 0 ? ext.attachments : undefined;
           }
-          if (shouldSuppressStreamingPreview(curContent)) {
+          // #222: Extract <think> tags from streaming content
+          const thinkingExtracted = extractThinking(curContent);
+          const streamVisibleText = thinkingExtracted.visibleText;
+          const streamThinkingBlocks = thinkingExtracted.thinkingBlocks.length > 0
+            ? thinkingExtracted.thinkingBlocks : undefined;
+          // Use visible text for suppression check (thinking-only content should still show)
+          if (shouldSuppressStreamingPreview(streamVisibleText) && !streamThinkingBlocks) {
             setMessages((prev) => prev.filter((m) => m.id !== curSnap.id));
           } else {
             setMessages((prev) => {
               const existing = prev.findIndex((m) => m.id === curSnap.id);
               const prevAttachments = existing >= 0 ? prev[existing].attachments : undefined;
               const msg: DisplayMessage = {
-                id: curSnap.id, role: "assistant", content: curContent,
+                id: curSnap.id, role: "assistant", content: streamVisibleText,
                 timestamp: new Date().toISOString(),
                 toolCalls: Array.from(curSnap.toolCalls.values()),
                 streaming: true, attachments: curAttachments ?? prevAttachments,
+                thinkingBlocks: streamThinkingBlocks,
               };
               if (existing >= 0) { const next = [...prev]; next[existing] = msg; return next; }
               return [...prev, msg];

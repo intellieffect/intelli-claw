@@ -90,3 +90,8 @@ export type { PlatformAPI, MediaInfo, ShowcaseFileEntry } from "./adapters/platf
 
 // --- Utils ---
 export { cn } from "./utils/index";
+export {
+  extractThinking,
+  type ThinkingBlock,
+  type ExtractedContent,
+} from "./utils/extract-thinking";

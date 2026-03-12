@@ -4,8 +4,9 @@ import {
   User, Bot, Clock, X, Copy, Check, ArrowDown, Download,
   FileText, Music, Video, File, Image as ImageIcon,
   FileSpreadsheet, FileCode, FileArchive, FileAudio, FileVideo,
-  RefreshCw, History, Loader2, Reply, ChevronDown,
+  RefreshCw, History, Loader2, Reply, ChevronDown, ChevronRight,
 } from "lucide-react";
+import type { ThinkingBlock } from "@intelli-claw/shared";
 import { MarkdownRenderer, MarkdownFilePreview } from "./markdown-renderer";
 import { ToolCallCard } from "./tool-call-card";
 import { HIDDEN_REPLY_RE, canBeReplyTarget, stripTrailingControlTokens, type DisplayMessage, type DisplayAttachment, type AgentStatus, type SystemInjectedType } from "@/lib/gateway/hooks";
@@ -153,7 +154,7 @@ export function MessageList({
       })
       .filter((msg) => {
         if (msg.content && HIDDEN_REPLY_RE.test(msg.content.trim())) return false;
-        return msg.role === "session-boundary" || msg.content || msg.toolCalls.length > 0 || msg.streaming || (msg.attachments && msg.attachments.length > 0);
+        return msg.role === "session-boundary" || msg.content || msg.toolCalls.length > 0 || msg.streaming || (msg.attachments && msg.attachments.length > 0) || (msg.thinkingBlocks && msg.thinkingBlocks.length > 0);
       });
   }, [messages]);
 
@@ -596,6 +597,53 @@ function CollapsibleSystemMessage({ content, systemType }: { content: string; sy
   );
 }
 
+/** #222: Collapsible thinking/reasoning block for extended thinking models */
+function ThinkingBlockDisplay({ blocks, streaming }: { blocks: ThinkingBlock[]; streaming?: boolean }) {
+  // Auto-expand during streaming, default collapsed otherwise
+  const [expanded, setExpanded] = useState(!!streaming);
+
+  // Keep expanded while streaming, auto-collapse when streaming ends
+  const prevStreaming = useRef(streaming);
+  useEffect(() => {
+    if (prevStreaming.current && !streaming) {
+      // Streaming just ended — collapse
+      setExpanded(false);
+    }
+    prevStreaming.current = streaming;
+  }, [streaming]);
+
+  const combinedText = blocks.map((b) => b.text).join("\n\n");
+
+  return (
+    <div className="mb-2">
+      <button
+        onClick={() => setExpanded((v) => !v)}
+        className="flex items-center gap-1.5 text-xs text-muted-foreground/70 transition hover:text-muted-foreground"
+      >
+        {expanded ? (
+          <ChevronDown size={12} className="shrink-0" />
+        ) : (
+          <ChevronRight size={12} className="shrink-0" />
+        )}
+        <span className="font-medium italic">Reasoning</span>
+        {streaming && (
+          <span className="ml-1 inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-yellow-400" />
+        )}
+      </button>
+      {expanded && (
+        <div className="mt-1.5 border-l-2 border-muted-foreground/20 pl-3">
+          <div className="text-sm italic text-muted-foreground/70 whitespace-pre-wrap break-words">
+            {combinedText}
+            {streaming && (
+              <span className="inline-block h-3 w-1 animate-pulse rounded-sm bg-muted-foreground/40 ml-0.5" />
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SessionBoundary({
   reason,
   onLoadContext,
@@ -915,6 +963,10 @@ const MessageBubble = React.memo(React.forwardRef<HTMLDivElement, { message: Dis
           <div>
             {/* Reply quote block */}
             {message.replyTo && <ReplyQuoteBlock replyTo={message.replyTo} />}
+            {/* #222: Thinking/reasoning blocks */}
+            {message.thinkingBlocks && message.thinkingBlocks.length > 0 && (
+              <ThinkingBlockDisplay blocks={message.thinkingBlocks} streaming={message.streaming} />
+            )}
             {message.toolCalls.length > 0 && (
               <div className="mb-2">
                 {message.toolCalls.map((tc) => (
@@ -1016,6 +1068,7 @@ export function messageBubbleAreEqual(
     && pm.role === nm.role
     && (pm.toolCalls?.length ?? 0) === (nm.toolCalls?.length ?? 0)
     && (pm.attachments?.length ?? 0) === (nm.attachments?.length ?? 0)
+    && (pm.thinkingBlocks?.length ?? 0) === (nm.thinkingBlocks?.length ?? 0)
     && prev.focused === next.focused
     && prev.selected === next.selected
     && prev.agentId === next.agentId
