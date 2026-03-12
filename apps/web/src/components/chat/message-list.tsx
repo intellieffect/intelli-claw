@@ -10,6 +10,7 @@ import { MarkdownRenderer, MarkdownFilePreview } from "./markdown-renderer";
 import { ToolCallCard } from "./tool-call-card";
 import { HIDDEN_REPLY_RE, canBeReplyTarget, stripTrailingControlTokens, type DisplayMessage, type DisplayAttachment, type AgentStatus, type SystemInjectedType } from "@/lib/gateway/hooks";
 import { AgentAvatar } from "@/components/ui/agent-avatar";
+import { groupMessages } from "@intelli-claw/shared";
 
 import { blobDownload, forceDownloadUrl } from "@/lib/utils/download";
 import { formatTime } from "@/lib/utils/format-time";
@@ -519,38 +520,62 @@ export function MessageList({
             </div>
           </div>
         )}
-        {visibleMessages
-          .map((msg, idx, arr) => {
-            if (msg.role === "session-boundary") {
+        {(() => {
+          // Group consecutive same-role messages (#224)
+          const groups = groupMessages(visibleMessages);
+          let flatIdx = 0; // tracks position in the flat visibleMessages array
+          return groups.map((group) => {
+            const startIdx = flatIdx;
+            const groupElements = group.messages.map((msg, posInGroup) => {
+              const idx = startIdx + posInGroup;
+              const isFirst = posInGroup === 0;
+              const isLast = posInGroup === group.messages.length - 1;
+
+              if (msg.role === "session-boundary") {
+                return (
+                  <SessionBoundary
+                    key={msg.id}
+                    reason={(msg as DisplayMessage).resetReason}
+                    onLoadContext={onLoadPreviousContext}
+                    onViewHistory={onOpenTopicHistory}
+                  />
+                );
+              }
+
               return (
-                <SessionBoundary
+                <MessageBubble
                   key={msg.id}
-                  reason={msg.resetReason}
-                  onLoadContext={onLoadPreviousContext}
-                  onViewHistory={onOpenTopicHistory}
+                  ref={(el) => {
+                    if (el) bubbleRefs.current.set(idx, el);
+                    else bubbleRefs.current.delete(idx);
+                  }}
+                  message={msg as DisplayMessage}
+                  showAvatar={isFirst}
+                  showTimestamp={isLast}
+                  onCancel={(msg as DisplayMessage).queued ? onCancelQueued : undefined}
+                  agentId={agentId}
+                  agentStatus={(msg as DisplayMessage).streaming ? agentStatus : undefined}
+                  focused={focusedIdx === idx}
+                  selected={selectedIndices.has(idx)}
+                  onReply={onReply}
                 />
               );
+            });
+            flatIdx = startIdx + group.messages.length;
+
+            // Single-message groups (system, session-boundary, tool-call): no wrapper needed
+            if (group.messages.length === 1) {
+              return groupElements[0];
             }
-            const prevRole = idx > 0 ? arr[idx - 1].role : null;
-            const showAvatar = msg.role !== "assistant" || prevRole !== "assistant";
+
+            // Multi-message group: wrap in a tight-spacing container
             return (
-              <MessageBubble
-                key={msg.id}
-                ref={(el) => {
-                  if (el) bubbleRefs.current.set(idx, el);
-                  else bubbleRefs.current.delete(idx);
-                }}
-                message={msg}
-                showAvatar={showAvatar}
-                onCancel={msg.queued ? onCancelQueued : undefined}
-                agentId={agentId}
-                agentStatus={msg.streaming ? agentStatus : undefined}
-                focused={focusedIdx === idx}
-                selected={selectedIndices.has(idx)}
-                onReply={onReply}
-              />
+              <div key={group.firstMessageId} className="flex flex-col gap-1">
+                {groupElements}
+              </div>
             );
-          })}
+          });
+        })()}
         {streaming && !messages.some(m => m.streaming) && <ThinkingIndicator agentId={agentId} />}
         <div ref={bottomRef} />
       </div>
@@ -779,8 +804,8 @@ function ReplyButton({ onClick }: { onClick: () => void }) {
   );
 }
 
-const MessageBubble = React.memo(React.forwardRef<HTMLDivElement, { message: DisplayMessage; showAvatar?: boolean; onCancel?: (id: string) => void; agentId?: string; agentStatus?: AgentStatus; focused?: boolean; selected?: boolean; onReply?: (msg: DisplayMessage) => void }>(
-  function MessageBubble({ message, showAvatar = true, onCancel, agentId, agentStatus, focused, selected, onReply }, ref) {
+const MessageBubble = React.memo(React.forwardRef<HTMLDivElement, { message: DisplayMessage; showAvatar?: boolean; showTimestamp?: boolean; onCancel?: (id: string) => void; agentId?: string; agentStatus?: AgentStatus; focused?: boolean; selected?: boolean; onReply?: (msg: DisplayMessage) => void }>(
+  function MessageBubble({ message, showAvatar = true, showTimestamp = true, onCancel, agentId, agentStatus, focused, selected, onReply }, ref) {
   const isUser = message.role === "user";
   const isSystem = message.role === "system";
   const isQueued = message.queued;
@@ -890,7 +915,7 @@ const MessageBubble = React.memo(React.forwardRef<HTMLDivElement, { message: Dis
             {message.content && message.content === "(첨부 파일)" && !message.attachments?.length && (
               <p className={`whitespace-pre-wrap break-words text-sm ${isQueued ? "opacity-70" : ""}`}>{message.content}</p>
             )}
-            {time && !isQueued && (
+            {showTimestamp && time && !isQueued && (
               <div className="mt-1 text-right text-[10px] text-zinc-400">{time}</div>
             )}
             {isQueued && (
@@ -988,7 +1013,7 @@ const MessageBubble = React.memo(React.forwardRef<HTMLDivElement, { message: Dis
                 {onReply && canBeReplyTarget(message) && (
                   <ReplyButton onClick={() => onReply(message)} />
                 )}
-                {time && <span className="text-[10px] text-zinc-500">{time}</span>}
+                {showTimestamp && time && <span className="text-[10px] text-zinc-500">{time}</span>}
               </div>
             )}
           </div>
@@ -1006,8 +1031,8 @@ const MessageBubble = React.memo(React.forwardRef<HTMLDivElement, { message: Dis
 
 /** React.memo comparator for MessageBubble — exported for testing */
 export function messageBubbleAreEqual(
-  prev: { message: DisplayMessage; showAvatar?: boolean; agentId?: string; agentStatus?: AgentStatus; focused?: boolean; selected?: boolean },
-  next: { message: DisplayMessage; showAvatar?: boolean; agentId?: string; agentStatus?: AgentStatus; focused?: boolean; selected?: boolean },
+  prev: { message: DisplayMessage; showAvatar?: boolean; showTimestamp?: boolean; agentId?: string; agentStatus?: AgentStatus; focused?: boolean; selected?: boolean },
+  next: { message: DisplayMessage; showAvatar?: boolean; showTimestamp?: boolean; agentId?: string; agentStatus?: AgentStatus; focused?: boolean; selected?: boolean },
 ): boolean {
   const pm = prev.message, nm = next.message;
   return pm.id === nm.id
@@ -1020,5 +1045,6 @@ export function messageBubbleAreEqual(
     && prev.selected === next.selected
     && prev.agentId === next.agentId
     && prev.agentStatus?.phase === next.agentStatus?.phase
-    && prev.showAvatar === next.showAvatar;
+    && prev.showAvatar === next.showAvatar
+    && prev.showTimestamp === next.showTimestamp;
 }
