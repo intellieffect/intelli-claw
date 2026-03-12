@@ -31,6 +31,17 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     "expo-router",
     "expo-secure-store",
     "expo-font",
+    [
+      "expo-build-properties",
+      {
+        ios: {
+          useFrameworks: "static",
+          extraPods: [
+            { name: "GoogleUtilities", modular_headers: true },
+          ],
+        },
+      },
+    ],
     "@react-native-firebase/app",
     [
       "expo-camera",

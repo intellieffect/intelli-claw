@@ -13,9 +13,10 @@ release/
 .env.*.local
 !.env.example
 
-# Firebase service files (contain API keys)
-google-services.json
-GoogleService-Info.plist
+# Firebase service files — client config only (no server keys), safe for public repos.
+# These must be tracked for EAS local builds to work.
+# google-services.json
+# GoogleService-Info.plist
 
 # npm (this is a pnpm monorepo)
 package-lock.json
@@ -42,3 +43,7 @@ public/agents/*.jpg
 .playwright-mcp/
 playwright-report/
 certificates/
+
+# Reference repos
+openclaw-ref/
+openclaw-config
