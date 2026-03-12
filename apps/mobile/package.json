@@ -25,7 +25,6 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "expo": "~54.0.33",
-    "expo-barcode-scanner": "^13.0.1",
     "expo-build-properties": "^55.0.9",
     "expo-camera": "^55.0.9",
     "expo-clipboard": "~8.0.8",
