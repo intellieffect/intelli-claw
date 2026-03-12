@@ -27,6 +27,10 @@ initCryptoAdapter(new ExpoCryptoAdapter());
 // --- Config persistence ---
 
 function loadGatewayConfig(): GatewayConfig {
+  const extra = Constants.expoConfig?.extra;
+  const envUrl = (extra?.gatewayUrl as string) || "";
+  const envToken = (extra?.gatewayToken as string) || "";
+
   try {
     const saved = mmkvStorage.getString(GATEWAY_CONFIG_STORAGE_KEY);
     if (saved) {
@@ -34,16 +38,21 @@ function loadGatewayConfig(): GatewayConfig {
       // Trust storage if: (a) URL is non-default (user explicitly configured), or (b) token is set.
       // Stale entries with default URL + empty token should fall through to env/extra vars.
       if (parsed.url && (parsed.token || parsed.url !== DEFAULT_GATEWAY_URL)) {
+        // If env var provides a specific (non-default) URL that differs from storage,
+        // the deployment target changed — env var wins and stale storage is cleared.
+        if (envUrl && envUrl !== DEFAULT_GATEWAY_URL && envUrl !== parsed.url) {
+          mmkvStorage.delete(GATEWAY_CONFIG_STORAGE_KEY);
+          return { url: envUrl, token: envToken } as GatewayConfig;
+        }
         return { url: parsed.url, token: parsed.token ?? "" } as GatewayConfig;
       }
     }
   } catch {
     /* ignore */
   }
-  const extra = Constants.expoConfig?.extra;
   return {
-    url: (extra?.gatewayUrl as string) || DEFAULT_GATEWAY_URL,
-    token: (extra?.gatewayToken as string) || "",
+    url: envUrl || DEFAULT_GATEWAY_URL,
+    token: envToken,
   };
 }
 
