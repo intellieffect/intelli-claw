@@ -59,8 +59,8 @@ if [ "$SKIP_BUILD" = false ]; then
   info "Starting iOS production build..."
   echo ""
 
-  # Interactive mode for Apple credentials (2FA may be needed)
-  eas build --platform ios --profile production
+  # Use --non-interactive to allow headless execution (credentials already on EAS server)
+  eas build --platform ios --profile production --non-interactive
 
   ok "Build complete"
   echo ""
@@ -71,7 +71,7 @@ if [ "$BUILD_ONLY" = false ]; then
   info "Submitting to TestFlight..."
   echo ""
 
-  eas submit --platform ios --latest
+  eas submit --platform ios --latest --non-interactive
 
   ok "Submitted to TestFlight"
   echo ""
