@@ -33,6 +33,42 @@ const MAX_RECONNECT_ATTEMPTS = 20;
 const PING_INTERVAL = 25_000;
 const PONG_TIMEOUT = 10_000;
 
+/**
+ * Non-recoverable auth error detail codes (#228).
+ * When the gateway returns one of these, reconnecting won't help —
+ * the user must take action (fix token, pair device, etc.).
+ */
+const NON_RECOVERABLE_AUTH_DETAIL_CODES: ReadonlySet<string> = new Set([
+  "AUTH_TOKEN_MISSING",
+  "AUTH_TOKEN_MISMATCH",
+  "AUTH_PASSWORD_MISSING",
+  "AUTH_PASSWORD_MISMATCH",
+  "AUTH_RATE_LIMITED",
+  "PAIRING_REQUIRED",
+  "DEVICE_IDENTITY_REQUIRED",
+]);
+
+/**
+ * Extract the detail code from an error's details object.
+ * Gateway auth errors carry `{ details: { code: "AUTH_TOKEN_MISSING" } }`.
+ */
+function readErrorDetailCode(error: ErrorShape | null | undefined): string | null {
+  if (!error?.details || typeof error.details !== "object" || Array.isArray(error.details)) {
+    return null;
+  }
+  const code = (error.details as { code?: unknown }).code;
+  return typeof code === "string" && code.trim().length > 0 ? code : null;
+}
+
+/**
+ * Check whether an error represents a non-recoverable auth failure (#228).
+ * Returns true if the error's detail code is in the non-recoverable set.
+ */
+export function isNonRecoverableAuthError(error: ErrorShape | null | undefined): boolean {
+  const code = readErrorDetailCode(error);
+  return code !== null && NON_RECOVERABLE_AUTH_DETAIL_CODES.has(code);
+}
+
 export class GatewayClient {
   private ws: WebSocket | null = null;
   private url: string;
@@ -49,7 +85,8 @@ export class GatewayClient {
   private pingIds = new Set<string>();
   private intentionalClose = false;
   private wasConnected = false;
-  private networkCleanup: (() => void) | null = null;
+  /** Whether browser event listeners (online, visibilitychange) are registered (#226) */
+  private listenersRegistered = false;
   public mainSessionKey = "";
   public serverVersion = "";
   public serverCommit = "";
@@ -57,15 +94,28 @@ export class GatewayClient {
   public canvasHostUrl = "";
   private options: GatewayClientOptions;
 
+  /** Last connect error — used by handleClose to decide if reconnect is appropriate (#228) */
+  private lastConnectError: ErrorShape | null = null;
+
+  /** Last sequence number seen from gateway event frames (#227) */
+  private lastSeq: number | null = null;
+
+  /**
+   * Bound handler for the "online" window event (#226).
+   * Stored as an arrow-function instance field so the same reference
+   * is used for both addEventListener and removeEventListener.
+   */
   private handleOnline = (): void => {
-    // Network came back — if we're disconnected (not intentionally), reconnect immediately
     if (this.state === "disconnected" && !this.intentionalClose && this.wasConnected) {
       this.clearReconnect();
-      this.reconnectAttempt = 0; // reset — network change is a fresh start
+      this.reconnectAttempt = 0;
       this.connect();
     }
   };
 
+  /**
+   * Bound handler for the "visibilitychange" document event (#226).
+   */
   private handleVisibilityChange = (): void => {
     if (
       typeof document !== "undefined" &&
@@ -98,9 +148,10 @@ export class GatewayClient {
     if (this.ws && this.state !== "disconnected") return;
     this.intentionalClose = false;
     this.lastError = null;
-    this.setupNetworkListeners();
+    this.lastConnectError = null;
     this.setState("connecting");
-    this.addBrowserListeners();
+    // Register browser event listeners once (#226 — deduplicated)
+    this.setupBrowserListeners();
 
     try {
       this.ws = new WebSocket(this.url);
@@ -118,8 +169,7 @@ export class GatewayClient {
     this.clearReconnect();
     this.clearAuthTimer();
     this.stopPing();
-    this.teardownNetworkListeners();
-    this.removeBrowserListeners();
+    this.teardownBrowserListeners();
     if (this.ws) {
       this.ws.onclose = null;
       this.ws.close();
@@ -183,6 +233,10 @@ export class GatewayClient {
   }
 
   private handleOpen(): void {
+    // Reset sequence tracking on new connection (#227)
+    this.lastSeq = null;
+    this.lastConnectError = null;
+
     this.setState("authenticating");
     this.clearAuthTimer();
     this.authTimer = setTimeout(() => {
@@ -298,6 +352,21 @@ export class GatewayClient {
       return;
     }
 
+    // --- Sequence gap detection (#227) ---
+    const seq = typeof frame.seq === "number" ? frame.seq : null;
+    if (seq !== null) {
+      if (this.lastSeq !== null && seq > this.lastSeq + 1) {
+        // Emit synthetic gap event before the actual event
+        const gapFrame: EventFrame = {
+          type: "event",
+          event: "client.sequence_gap",
+          payload: { expected: this.lastSeq + 1, received: seq },
+        };
+        this.eventHandlers.forEach((h) => h(gapFrame));
+      }
+      this.lastSeq = seq;
+    }
+
     console.log("[AWF] Event:", frame.event, JSON.stringify(frame.payload).slice(0, 200));
     this.eventHandlers.forEach((h) => h(frame));
   }
@@ -314,13 +383,30 @@ export class GatewayClient {
       console.error("[AWF] Server error:", errObj?.code, errObj?.message, frame.error);
       if (errObj) {
         this.lastError = errObj;
+        // Track connect errors for non-recoverable auth classification (#228)
+        this.lastConnectError = errObj;
         this.stateHandlers.forEach((h) => h(this.state, this.lastError));
+
+        // Emit synthetic auth_failed event if non-recoverable (#228)
+        if (isNonRecoverableAuthError(errObj)) {
+          const authFailedFrame: EventFrame = {
+            type: "event",
+            event: "client.auth_failed",
+            payload: {
+              code: errObj.code,
+              message: errObj.message,
+              detailCode: readErrorDetailCode(errObj),
+            },
+          };
+          this.eventHandlers.forEach((h) => h(authFailedFrame));
+        }
       }
     }
 
     const payload = frame.payload as Record<string, unknown> | undefined;
     if (frame.ok && payload?.type === "hello-ok") {
       this.clearAuthTimer();
+      this.lastConnectError = null;
       const snapshot = payload.snapshot as Record<string, unknown> | undefined;
       const sessionDefaults = snapshot?.sessionDefaults as Record<string, unknown> | undefined;
       this.mainSessionKey = (sessionDefaults?.mainSessionKey as string) || "";
@@ -370,11 +456,17 @@ export class GatewayClient {
   private handleClose(): void {
     this.clearAuthTimer();
     this.stopPing();
+    const connectError = this.lastConnectError;
     this.ws = null;
     this.rejectAll("Connection closed");
     this.setState("disconnected");
 
     if (!this.intentionalClose) {
+      // Skip reconnect for non-recoverable auth errors (#228)
+      if (isNonRecoverableAuthError(connectError)) {
+        console.warn("[GW] Non-recoverable auth error, skipping reconnect:", readErrorDetailCode(connectError));
+        return;
+      }
       this.scheduleReconnect();
     }
   }
@@ -442,46 +534,35 @@ export class GatewayClient {
   }
 
   /**
-   * Listen for network/visibility changes to trigger reconnect (#119).
-   * On mobile, WiFi↔5G transitions and app backgrounding cause code 1006 closes.
+   * Register browser event listeners for network/visibility reconnect (#226).
+   * Uses stable instance-field handlers so the same reference is used for
+   * both addEventListener and removeEventListener — guaranteeing proper cleanup.
+   * Only registers once; subsequent connect() calls skip if already registered.
    */
-  private setupNetworkListeners(): void {
-    if (this.networkCleanup) return; // already set up
-    const handleOnline = () => {
-      if (this.state === "disconnected" && !this.intentionalClose) {
-        console.log("[GW] Network online — triggering reconnect");
-        this.reconnectAttempt = 0; // Reset backoff on network change
-        this.clearReconnect();
-        this.connect();
-      }
-    };
-    const handleVisibility = () => {
-      if (typeof document !== "undefined" && document.visibilityState === "visible") {
-        if (this.state === "disconnected" && !this.intentionalClose) {
-          console.log("[GW] Page visible — triggering reconnect");
-          this.reconnectAttempt = 0;
-          this.clearReconnect();
-          this.connect();
-        }
-      }
-    };
-    const hasWindowEvents = typeof window !== "undefined" && typeof window.addEventListener === "function";
-    const hasDocumentEvents = typeof document !== "undefined" && typeof document.addEventListener === "function";
-    if (hasWindowEvents) {
-      window.addEventListener("online", handleOnline);
+  private setupBrowserListeners(): void {
+    if (this.listenersRegistered) return;
+    if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
+      window.addEventListener("online", this.handleOnline);
     }
-    if (hasDocumentEvents) {
-      document.addEventListener("visibilitychange", handleVisibility);
+    if (typeof document !== "undefined" && typeof document.addEventListener === "function") {
+      document.addEventListener("visibilitychange", this.handleVisibilityChange);
     }
-    this.networkCleanup = () => {
-      if (hasWindowEvents) window.removeEventListener("online", handleOnline);
-      if (hasDocumentEvents) document.removeEventListener("visibilitychange", handleVisibility);
-    };
+    this.listenersRegistered = true;
   }
 
-  private teardownNetworkListeners(): void {
-    this.networkCleanup?.();
-    this.networkCleanup = null;
+  /**
+   * Remove browser event listeners (#226).
+   * Uses the same handler references that were registered in setupBrowserListeners.
+   */
+  private teardownBrowserListeners(): void {
+    if (!this.listenersRegistered) return;
+    if (typeof window !== "undefined" && typeof window.removeEventListener === "function") {
+      window.removeEventListener("online", this.handleOnline);
+    }
+    if (typeof document !== "undefined" && typeof document.removeEventListener === "function") {
+      document.removeEventListener("visibilitychange", this.handleVisibilityChange);
+    }
+    this.listenersRegistered = false;
   }
 
   private clearReconnect(): void {
@@ -504,32 +585,5 @@ export class GatewayClient {
       p.reject(new Error(reason));
     });
     this.pending.clear();
-  }
-
-  // --- Browser event listeners for mobile reconnection ---
-
-  private browserListenersAdded = false;
-
-  private addBrowserListeners(): void {
-    if (this.browserListenersAdded) return;
-    if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
-      window.addEventListener("online", this.handleOnline);
-      window.addEventListener("offline", () => {}); // reserved for future offline handling
-    }
-    if (typeof document !== "undefined" && typeof document.addEventListener === "function") {
-      document.addEventListener("visibilitychange", this.handleVisibilityChange);
-    }
-    this.browserListenersAdded = true;
-  }
-
-  private removeBrowserListeners(): void {
-    if (!this.browserListenersAdded) return;
-    if (typeof window !== "undefined" && typeof window.removeEventListener === "function") {
-      window.removeEventListener("online", this.handleOnline);
-    }
-    if (typeof document !== "undefined" && typeof document.removeEventListener === "function") {
-      document.removeEventListener("visibilitychange", this.handleVisibilityChange);
-    }
-    this.browserListenersAdded = false;
   }
 }
