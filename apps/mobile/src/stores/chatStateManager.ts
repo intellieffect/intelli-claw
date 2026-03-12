@@ -358,6 +358,7 @@ export class ChatStateManager {
       this.mutate(sessionKey, (s) => {
         s.streaming = false;
         s.agentStatus = { phase: "idle" };
+        s.runId = null;
 
         if (s.streamBuf) {
           const finalId = s.streamBuf.id;
@@ -392,6 +393,7 @@ export class ChatStateManager {
       this.mutate(sessionKey, (s) => {
         s.streaming = false;
         s.agentStatus = { phase: "idle" };
+        s.runId = null;
 
         if (s.streamBuf) {
           const finalId = s.streamBuf.id;
@@ -426,6 +428,7 @@ export class ChatStateManager {
       this.mutate(sessionKey, (s) => {
         s.streaming = false;
         s.agentStatus = { phase: "idle" };
+        s.runId = null;
 
         if (s.streamBuf) {
           const errId = s.streamBuf.id;
@@ -483,6 +486,7 @@ export class ChatStateManager {
         this.mutate(sessionKey, (s) => {
           s.streaming = false;
           s.agentStatus = { phase: "idle" };
+          s.runId = null;
           if (s.streamBuf) {
             const finalId = s.streamBuf.id;
             s.messages = s.messages.map((m) =>
