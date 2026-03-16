@@ -1,9 +1,10 @@
 {
   "expo": {
-    "name": "intelli-claw",
+    "name": "iClaw",
     "slug": "intelli-claw",
     "version": "0.1.0",
     "orientation": "portrait",
+    "icon": "./assets/icon.png",
     "scheme": "intelli-claw",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
@@ -16,7 +17,8 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#ffffff"
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#1a1a2e"
       },
       "package": "com.intelliclaw.mobile"
     },

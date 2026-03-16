@@ -2,10 +2,11 @@ import { ExpoConfig, ConfigContext } from "expo/config";
 
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
-  name: "intelli-claw",
+  name: "iClaw",
   slug: "intelli-claw",
   version: "0.1.0",
   orientation: "portrait",
+  icon: "./assets/icon.png",
   scheme: "intelli-claw",
   userInterfaceStyle: "automatic",
   newArchEnabled: true,
@@ -20,7 +21,8 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   },
   android: {
     adaptiveIcon: {
-      backgroundColor: "#ffffff",
+      foregroundImage: "./assets/adaptive-icon.png",
+      backgroundColor: "#1a1a2e",
     },
     package: "com.intellieffect.intelliclaw",
     googleServicesFile: "./google-services.json",
@@ -29,6 +31,17 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     "expo-router",
     "expo-secure-store",
     "expo-font",
+    [
+      "expo-build-properties",
+      {
+        ios: {
+          useFrameworks: "static",
+          extraPods: [
+            { name: "GoogleUtilities", modular_headers: true },
+          ],
+        },
+      },
+    ],
     "@react-native-firebase/app",
     [
       "expo-camera",

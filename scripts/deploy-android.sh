@@ -67,7 +67,7 @@ if [ "$SKIP_BUILD" = false ]; then
   info "Starting Android production build..."
   echo ""
 
-  eas build --platform android --profile production
+  eas build --platform android --profile production --non-interactive
 
   ok "Build complete"
   echo ""

@@ -63,6 +63,9 @@ import { getTopicHistory } from "./topic-store";
 // --- Web Config Persistence ---
 
 export function loadGatewayConfig(): GatewayConfig {
+  const envUrl = import.meta.env.VITE_GATEWAY_URL || "";
+  const envToken = import.meta.env.VITE_GATEWAY_TOKEN || "";
+
   try {
     const saved = localStorage.getItem(GATEWAY_CONFIG_STORAGE_KEY);
     if (saved) {
@@ -70,13 +73,19 @@ export function loadGatewayConfig(): GatewayConfig {
       // Trust localStorage if: (a) URL is non-default (user explicitly configured), or (b) token is set.
       // Stale entries with default URL + empty token should fall through to env vars.
       if (parsed.url && (parsed.token || parsed.url !== DEFAULT_GATEWAY_URL)) {
+        // If env var provides a specific (non-default) URL that differs from localStorage,
+        // the deployment target changed — env var wins and stale localStorage is cleared.
+        if (envUrl && envUrl !== DEFAULT_GATEWAY_URL && envUrl !== parsed.url) {
+          localStorage.removeItem(GATEWAY_CONFIG_STORAGE_KEY);
+          return { url: envUrl, token: envToken } as GatewayConfig;
+        }
         return { url: parsed.url, token: parsed.token ?? "" } as GatewayConfig;
       }
     }
   } catch { /* ignore */ }
   return {
-    url: import.meta.env.VITE_GATEWAY_URL || DEFAULT_GATEWAY_URL,
-    token: import.meta.env.VITE_GATEWAY_TOKEN || "",
+    url: envUrl || DEFAULT_GATEWAY_URL,
+    token: envToken,
   };
 }
 
