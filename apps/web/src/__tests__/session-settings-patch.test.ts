@@ -184,6 +184,26 @@ describe("useSessionSettings — sessions.patch (#233)", () => {
       });
     });
 
+    it("falls back to chat directives when sessions.patch fails", async () => {
+      const { result } = renderHook(() => useSessionSettings("test-session"), { wrapper: Wrapper });
+      await waitFor(() => expect(result.current.session).not.toBeNull());
+
+      mockRequest.mockImplementation(async (method: string) => {
+        if (method === "sessions.patch") throw new Error("RPC not supported");
+        return {};
+      });
+
+      await act(async () => {
+        await result.current.patchSession({ thinkingLevel: "high", verboseLevel: "on" });
+      });
+
+      expect(mockRequest).toHaveBeenCalledWith("sessions.patch", {
+        key: "test-session", thinkingLevel: "high", verboseLevel: "on",
+      });
+      expect(mockRequest).toHaveBeenCalledWith("chat.send", { sessionKey: "test-session", body: "/think:high" });
+      expect(mockRequest).toHaveBeenCalledWith("chat.send", { sessionKey: "test-session", body: "/verbose on" });
+    });
+
     it("still supports model and label (backward compat)", async () => {
       const { result } = renderHook(() => useSessionSettings("test-session"), { wrapper: Wrapper });
       await waitFor(() => expect(result.current.session).not.toBeNull());
@@ -194,6 +214,53 @@ describe("useSessionSettings — sessions.patch (#233)", () => {
       await act(async () => { await result.current.patchSession({ model: "claude-3", label: "Chat" }); });
 
       expect(mockRequest).toHaveBeenCalledWith("sessions.patch", { key: "test-session", model: "claude-3", label: "Chat" });
+    });
+  });
+
+  describe("dual-failure", () => {
+    it("setThinking: sessions.patch + chat.send both fail without throwing", async () => {
+      const { result } = renderHook(() => useSessionSettings("test-session"), { wrapper: Wrapper });
+      await waitFor(() => expect(result.current.session).not.toBeNull());
+
+      const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+      mockRequest.mockRejectedValue(new Error("always fails"));
+
+      await act(async () => { await result.current.setThinking("high"); });
+
+      // Should not throw — error is logged
+      expect(consoleError).toHaveBeenCalledWith("[AWF] setThinking error:", expect.any(Error));
+      // Session state should remain unchanged
+      expect(result.current.session?.thinking).toBe("medium");
+      consoleError.mockRestore();
+    });
+
+    it("setVerbose: sessions.patch + chat.send both fail without throwing", async () => {
+      const { result } = renderHook(() => useSessionSettings("test-session"), { wrapper: Wrapper });
+      await waitFor(() => expect(result.current.session).not.toBeNull());
+
+      const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+      mockRequest.mockRejectedValue(new Error("always fails"));
+
+      await act(async () => { await result.current.setVerbose(true); });
+
+      expect(consoleError).toHaveBeenCalledWith("[AWF] setVerbose error:", expect.any(Error));
+      expect(result.current.session?.verbose).toBe(false);
+      consoleError.mockRestore();
+    });
+
+    it("patchSession: sessions.patch + chat.send both fail without throwing", async () => {
+      const { result } = renderHook(() => useSessionSettings("test-session"), { wrapper: Wrapper });
+      await waitFor(() => expect(result.current.session).not.toBeNull());
+
+      const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+      mockRequest.mockRejectedValue(new Error("always fails"));
+
+      await act(async () => {
+        await result.current.patchSession({ thinkingLevel: "high", verboseLevel: "on" });
+      });
+
+      expect(consoleError).toHaveBeenCalledWith("[AWF] patchSession fallback error:", expect.any(Error));
+      consoleError.mockRestore();
     });
   });
 

@@ -22,6 +22,9 @@ export interface ModelInfo {
 // Module-level cache for models (rarely changes)
 let _modelsCache: ModelInfo[] = [];
 
+export type ThinkingLevel = "low" | "medium" | "high";
+export type VerboseLevel = "on" | "off";
+
 export function useSessionSettings(sessionKey?: string) {
   const { client, state } = useGateway();
   const isConnected = state === "connected";
@@ -86,15 +89,27 @@ export function useSessionSettings(sessionKey?: string) {
 
   // Patch session (model/label/thinkingLevel/verboseLevel via sessions.patch)
   const patchSession = useCallback(
-    async (patch: { model?: string; label?: string; thinkingLevel?: string | null; verboseLevel?: string | null }) => {
+    async (patch: { model?: string; label?: string; thinkingLevel?: ThinkingLevel | null; verboseLevel?: VerboseLevel | null }) => {
       if (!client || !isConnected || !sessionKey) return;
       setLoading(true);
       try {
         await client.request("sessions.patch", { key: sessionKey, ...patch });
-        // Optimistic update
+        // Update local state on success
         setSession((prev) => (prev ? { ...prev, ...patch } : prev));
-      } catch (err) {
-        console.error("[AWF] sessions.patch error:", err);
+      } catch {
+        // Fallback: send chat directives for older gateways
+        try {
+          if (patch.thinkingLevel) {
+            await client.request("chat.send", { sessionKey, body: `/think:${patch.thinkingLevel}` });
+          }
+          if (patch.verboseLevel) {
+            await client.request("chat.send", { sessionKey, body: `/verbose ${patch.verboseLevel === "on" ? "on" : "off"}` });
+          }
+          // Update local state on success
+          setSession((prev) => (prev ? { ...prev, ...patch } : prev));
+        } catch (err) {
+          console.error("[AWF] patchSession fallback error:", err);
+        }
       } finally {
         setLoading(false);
       }
@@ -104,7 +119,7 @@ export function useSessionSettings(sessionKey?: string) {
 
   // Set thinking level via sessions.patch RPC (fallback: chat directive)
   const setThinking = useCallback(
-    async (level: string) => {
+    async (level: ThinkingLevel) => {
       if (!client || !isConnected || !sessionKey) return;
       setLoading(true);
       try {
@@ -112,7 +127,7 @@ export function useSessionSettings(sessionKey?: string) {
           key: sessionKey,
           thinkingLevel: level,
         });
-        // Optimistic update
+        // Update local state on success
         setSession((prev) => (prev ? { ...prev, thinking: level } : prev));
       } catch {
         // Fallback: send chat directive for older gateways
@@ -142,7 +157,7 @@ export function useSessionSettings(sessionKey?: string) {
           key: sessionKey,
           verboseLevel: enabled ? "on" : "off",
         });
-        // Optimistic update
+        // Update local state on success
         setSession((prev) => (prev ? { ...prev, verbose: enabled } : prev));
       } catch {
         // Fallback: send chat directive for older gateways

@@ -68,6 +68,8 @@ export {
   useSessionSettings,
   type SessionInfo,
   type ModelInfo,
+  type ThinkingLevel,
+  type VerboseLevel,
 } from "./hooks/use-session-settings";
 export {
   useCron,
