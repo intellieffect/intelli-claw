@@ -60,6 +60,24 @@ import {
 
 import { getTopicHistory } from "./topic-store";
 
+// --- Chat command utilities (#251) ---
+
+/** Check if user input is a stop/abort command. */
+export function isChatStopCommand(text: string): boolean {
+  const t = text.trim().toLowerCase();
+  if (!t) return false;
+  return t === "/stop" || t === "stop" || t === "abort" || t === "/abort";
+}
+
+/** Check if user input is a session reset command. Returns message text after command if present. */
+export function isChatResetCommand(text: string): { reset: boolean; message?: string } {
+  const t = text.trim();
+  if (!t) return { reset: false };
+  if (/^\/new(\s|$)/i.test(t)) return { reset: true, message: t.slice(4).trim() || undefined };
+  if (/^\/reset(\s|$)/i.test(t)) return { reset: true, message: t.slice(6).trim() || undefined };
+  return { reset: false };
+}
+
 // --- Web Config Persistence ---
 
 export function loadGatewayConfig(): GatewayConfig {
@@ -287,25 +305,29 @@ export function useSessions() {
     fetchSessions();
   }, [fetchSessions]);
 
+  // #250: Event-based session refresh — replace 15s polling with event-driven updates.
+  // Refresh on lifecycle start/end events AND chat final events.
   useEffect(() => {
     if (!client) return;
     const unsub = client.onEvent((frame) => {
-      if (frame.event !== "agent") return;
-      const raw = frame.payload as Record<string, unknown>;
-      const stream = raw.stream as string | undefined;
-      const data = raw.data as Record<string, unknown> | undefined;
-      if (stream === "lifecycle" && (data?.phase === "end" || data?.phase === "start")) {
-        refreshThrottled();
+      if (frame.event === "agent") {
+        const raw = frame.payload as Record<string, unknown>;
+        const stream = raw.stream as string | undefined;
+        const data = raw.data as Record<string, unknown> | undefined;
+        if (stream === "lifecycle" && (data?.phase === "end" || data?.phase === "start")) {
+          refreshThrottled();
+        }
+      } else if (frame.event === "chat") {
+        // Refresh sessions when a chat finalizes
+        const chatPayload = frame.payload as Record<string, unknown> | undefined;
+        const chatState = chatPayload?.state as string | undefined;
+        if (chatState === "final" || chatState === "aborted") {
+          refreshThrottled();
+        }
       }
     });
     return unsub;
   }, [client, refreshThrottled]);
-
-  useEffect(() => {
-    if (state !== "connected") return;
-    const id = setInterval(() => { refreshThrottled(); }, 15000);
-    return () => clearInterval(id);
-  }, [state, refreshThrottled]);
 
   const patchSession = useCallback((key: string, patch: Record<string, unknown>) => {
     setSessions((prev) => prev.map((s) => (s.key === key ? { ...s, ...patch } : s)));
@@ -339,7 +361,9 @@ const IMAGE_PLACEHOLDERS_DEDUP = new Set(["(image)", "(첨부 파일)", "(이미
 
 export function normalizeContentForDedup(content: string): string {
   // Keep normalization aligned across history merge + final dedup.
-  let normalized = content.replace(/\s+/g, " ").trim();
+  // #243: Strip MEDIA: markers before whitespace normalization so that
+  // streaming (already extracted) and inbound (raw) versions match.
+  let normalized = content.replace(/MEDIA:\S+/g, "").replace(/\s+/g, " ").trim();
 
   // Normalize gateway-injected timestamp prefix on user messages
   // e.g. "[2026-03-03 15:10:00+09:00] 질문" -> "질문"
@@ -348,6 +372,10 @@ export function normalizeContentForDedup(content: string): string {
   // Normalize bridge/system wrappers that may vary by source
   // e.g. "[System] ..." / "(System) ..." / "System: ..."
   normalized = normalized.replace(/^\s*(?:\[System\]|\(System\)|System:)\s*/i, "");
+
+  // #243: Normalize spacing after punctuation — prevents dedup failure
+  // when line breaks vs spaces differ between streaming and inbound
+  normalized = normalized.replace(/([.!?。])\s*/g, "$1 ").trim();
 
   if (IMAGE_PLACEHOLDERS_DEDUP.has(normalized)) return "(image)";
 
@@ -558,6 +586,8 @@ export interface DisplayMessage {
   replyTo?: ReplyTo;
   /** #187: Type of system-injected message (for distinct rendering) */
   systemType?: SystemInjectedType;
+  /** #242: True when this message represents an error/timeout notification */
+  isError?: boolean;
 }
 
 /**
@@ -720,6 +750,7 @@ export function useChat(sessionKey?: string) {
   const [messages, setMessagesRaw] = useState<DisplayMessage[]>([]);
   const [streaming, setStreaming] = useState(false);
   const streamingRef = useRef(false);
+  const sendingRef = useRef(false);
   const [replyingTo, setReplyingToState] = useState<ReplyTo | null>(null);
   const [loading, setLoading] = useState(false);
   const [agentStatus, setAgentStatus] = useState<AgentStatus>({ phase: "idle" });
@@ -867,6 +898,15 @@ export function useChat(sessionKey?: string) {
       clearPersistedPendingStream();
       setStreaming(false);
       setAgentStatusDebug({ phase: "idle" });
+      // #242: Show timeout feedback message to user
+      timeoutScoped.setMessages((prev) => [...prev, {
+        id: `timeout-${Date.now()}`,
+        role: "assistant" as const,
+        content: "⏳ 에이전트로부터 응답이 없습니다. 다시 시도해주세요.",
+        timestamp: new Date().toISOString(),
+        toolCalls: [],
+        isError: true,
+      }]);
     }, timeoutMs);
   }, [clearStreamingTimeout, clearPersistedPendingStream, createScopedUpdater]);
 
@@ -1032,7 +1072,11 @@ export function useChat(sessionKey?: string) {
   }, [state, streaming, clearStreamingTimeout, setAgentStatusDebug, persistPendingStream]);
 
   const loadHistory = useCallback(async () => {
-    if (!client || state !== "connected") return;
+    // #248: Check both hook state and client.state to handle timing race
+    // where the hook state hasn't settled to "connected" yet but client is ready
+    // #248: Check both hook state and client's internal state for timing race.
+    // TODO: Add public getter for client.state instead of `as any` cast.
+    if (!client || (state !== "connected" && (client as any).state !== "connected")) return;
     // #169: Capture guard version at start of async chain. If session switches
     // during any await, the scoped updater will reject the write.
     const scopedUpdate = createScopedUpdater();
@@ -1110,6 +1154,8 @@ export function useChat(sessionKey?: string) {
             const parts = m.content as Array<Record<string, unknown>>;
             const hasToolUse = parts.some(p => p.type === 'tool_use');
             for (const p of parts) {
+              // #249: Skip thinking content blocks — strip from display
+              if (p.type === 'thinking') continue;
               if (p.type === 'text' && typeof p.text === 'string') {
                 if (hasToolUse && m.role === 'assistant') {
                   const text = (p.text as string).trim();
@@ -1181,7 +1227,7 @@ export function useChat(sessionKey?: string) {
           const systemType = detectSystemInjectedType(m.role, rawContentStr);
 
           return {
-            id: `hist-${i}`,
+            id: `hist-${simpleHash(m.role + (m.timestamp || '') + (textContent || '').slice(0, 100))}`,
             role: (m.role === 'system' || systemType)
               ? 'system' as const
               : m.role as "user" | "assistant",
@@ -1707,6 +1753,117 @@ export function useChat(sessionKey?: string) {
     };
 
     const unsub = client.onEvent((frame: EventFrame) => {
+      // #250: Handle exec.approval events
+      if (frame.event === "exec.approval.requested") {
+        const payload = frame.payload as Record<string, unknown> | undefined;
+        console.log("[AWF] Exec approval requested:", payload);
+        return;
+      }
+      if (frame.event === "exec.approval.resolved") {
+        const payload = frame.payload as Record<string, unknown> | undefined;
+        console.log("[AWF] Exec approval resolved:", payload);
+        return;
+      }
+
+      // #244: Handle chat events (delta, final, error, aborted)
+      if (frame.event === "chat") {
+        const chatPayload = frame.payload as Record<string, unknown> | undefined;
+        if (!chatPayload) return;
+        const chatSessionKey = chatPayload.sessionKey as string | undefined;
+        if (chatSessionKey && chatSessionKey !== boundSessionKey) return;
+        if (boundSessionKey !== sessionKeyRef.current) return;
+
+        const chatState = chatPayload.state as string | undefined;
+
+        if (chatState === "delta") {
+          // Streaming text from chat event — extract text from message
+          const chatMsg = chatPayload.message as Record<string, unknown> | undefined;
+          if (chatMsg) {
+            let text = '';
+            if (typeof chatMsg.content === 'string') {
+              text = chatMsg.content;
+            } else if (Array.isArray(chatMsg.content)) {
+              const parts = chatMsg.content as Array<Record<string, unknown>>;
+              for (const p of parts) {
+                if (p.type === 'text' && typeof p.text === 'string') {
+                  text += p.text;
+                }
+              }
+            }
+            if (text) {
+              // Cancel reconnect safety timer — events are flowing
+              if (reconnectSafetyRef.current) { clearTimeout(reconnectSafetyRef.current); reconnectSafetyRef.current = null; }
+              setStreaming(true);
+              startStreamingTimeout("writing");
+              setAgentStatusDebug({ phase: "writing" });
+              if (!streamBuf.current) {
+                streamBuf.current = { id: `stream-${Date.now()}-${++streamIdCounter.current}`, content: "", toolCalls: new Map() };
+              }
+              // For delta state, the message may contain cumulative text
+              // If cumulative (length >= current), replace; otherwise append
+              if (text.length >= streamBuf.current.content.length) {
+                streamBuf.current.content = text;
+              } else {
+                streamBuf.current.content += text;
+              }
+              const snap = streamBuf.current;
+              if (!streamRafRef.current) {
+                streamRafRef.current = requestAnimationFrame(() => {
+                  streamRafRef.current = null;
+                  const curSnap = streamBuf.current;
+                  if (!curSnap) return;
+                  if (shouldSuppressStreamingPreview(curSnap.content)) {
+                    setMessages((prev) => prev.filter((m) => m.id !== curSnap.id));
+                  } else {
+                    setMessages((prev) => {
+                      const existing = prev.findIndex((m) => m.id === curSnap.id);
+                      const msg: DisplayMessage = {
+                        id: curSnap.id, role: "assistant", content: curSnap.content,
+                        timestamp: new Date().toISOString(),
+                        toolCalls: Array.from(curSnap.toolCalls.values()),
+                        streaming: true,
+                      };
+                      if (existing >= 0) { const next = [...prev]; next[existing] = msg; return next; }
+                      return [...prev, msg];
+                    });
+                  }
+                });
+              }
+              persistPendingStream();
+            }
+          }
+        } else if (chatState === "final") {
+          // Message complete — finalize stream and reload history
+          const saveKey = chatSessionKey || boundSessionKey;
+          finalizeActiveStream(undefined, saveKey);
+          // Reload history to get the definitive server version
+          loadHistory();
+        } else if (chatState === "error") {
+          // Error — stop streaming and show error
+          clearStreamingTimeout();
+          setStreaming(false);
+          setAgentStatusDebug({ phase: "idle" });
+          const errMsg = (chatPayload.errorMessage || "Chat error") as string;
+          if (streamBuf.current) {
+            const errId = streamBuf.current.id;
+            setMessages((prev) =>
+              prev.map((m) => m.id === errId
+                ? { ...m, content: m.content + `\n\n**Error:** ${errMsg}`, streaming: false }
+                : m)
+            );
+            streamBuf.current = null;
+          }
+          runIdRef.current = null;
+          clearPersistedPendingStream();
+          flushDeferredHistoryReload();
+        } else if (chatState === "aborted") {
+          // Aborted — preserve any streamed content and stop
+          const saveKey = chatSessionKey || boundSessionKey;
+          finalizeActiveStream(undefined, saveKey);
+        }
+        return;
+      }
+
       if (frame.event !== "agent") return;
       if (frame.seq != null) {
         if (frame.seq <= lastSeq) return;
@@ -1846,6 +2003,62 @@ export function useChat(sessionKey?: string) {
             return prev;
           });
           persistPendingStream();
+          // #244: Reload history after tool result to get latest state
+          loadHistory();
+        }
+      } else if (stream === "tool" && data) {
+        // #249: Alternative tool stream format — stream="tool" with data.phase
+        const phase = data.phase as string | undefined;
+        if (phase === "start") {
+          const callId = (data.toolCallId || data.callId || "") as string;
+          const name = (data.name || data.tool || "") as string;
+          setAgentStatusDebug({ phase: "tool", toolName: name });
+          const args = data.args as string | undefined;
+          if (!streamBuf.current) {
+            streamBuf.current = { id: `stream-${Date.now()}-${++streamIdCounter.current}`, content: "", toolCalls: new Map() };
+          }
+          streamBuf.current.toolCalls.set(callId, { callId, name, args, status: "running" });
+          const snapTool = streamBuf.current;
+          setMessages((prev) => {
+            const existing = prev.findIndex((m) => m.id === snapTool.id);
+            const msg: DisplayMessage = {
+              id: snapTool.id, role: "assistant", content: snapTool.content,
+              timestamp: new Date().toISOString(),
+              toolCalls: Array.from(snapTool.toolCalls.values()), streaming: true,
+            };
+            if (existing >= 0) { const next = [...prev]; next[existing] = msg; return next; }
+            return [...prev, msg];
+          });
+          persistPendingStream();
+        } else if (phase === "end" || phase === "result") {
+          const callId = (data.toolCallId || data.callId || "") as string;
+          const result = data.result as string | undefined;
+          setAgentStatusDebug({ phase: "thinking" });
+          if (streamBuf.current) {
+            const tc = streamBuf.current.toolCalls.get(callId);
+            if (tc) { tc.status = "done"; tc.result = result; }
+            const snapEnd = streamBuf.current;
+            setMessages((prev) => {
+              const existing = prev.findIndex((m) => m.id === snapEnd.id);
+              if (existing >= 0) {
+                const next = [...prev];
+                next[existing] = { ...next[existing], toolCalls: Array.from(snapEnd.toolCalls.values()) };
+                return next;
+              }
+              return prev;
+            });
+            persistPendingStream();
+            // #244: Reload history after tool result
+            loadHistory();
+          }
+        }
+      } else if (stream === "compaction" && data) {
+        // #249: Compaction event — log and update state
+        const status = data.status as string | undefined;
+        console.log(`[AWF] Compaction event: ${status}`, data);
+        // Reload history after compaction completes to get fresh messages
+        if (status === "completed" || status === "done") {
+          loadHistory();
         }
       } else if (stream === "inbound" && data) {
         // Messages from other surfaces/devices (Telegram, other tabs, etc.)
@@ -1863,6 +2076,13 @@ export function useChat(sessionKey?: string) {
         const role: "user" | "assistant" = rawRole === "assistant" || rawRole === "user"
           ? rawRole
           : isAgentSource ? "assistant" : "user";
+
+        // #243: Same-session assistant messages are already handled by the
+        // streaming handler — skip to prevent duplicates.
+        if (role === "assistant" && evSessionKey === boundSessionKey) {
+          return;
+        }
+
         // Debug: capture raw inbound data to diagnose agent-to-agent role attribution
         if (process.env.NODE_ENV !== "production") {
           console.debug("[AWF:INBOUND]", { rawRole, isAgentSource, role, surface: data.surface, source: data.source, provenance: data.inputProvenance, keys: Object.keys(data) });
@@ -1872,13 +2092,22 @@ export function useChat(sessionKey?: string) {
           const stripped = text.replace(/\n{1,2}(REPLY_SKIP|NO_REPLY|HEARTBEAT_OK)\s*$/g, "").trim();
           // Skip entirely if the message is purely a control token
           if (!stripped || HIDDEN_REPLY_RE.test(stripped)) return;
-          const cleanedText = role === "user" ? stripInboundMeta(stripped) : stripped;
+          let cleanedText = role === "user" ? stripInboundMeta(stripped) : stripped;
           const originDeviceId = data.deviceId as string | undefined;
           const timestamp = (data.timestamp as string) ?? new Date().toISOString();
 
           // Skip echo from our own device
           if (originDeviceId && originDeviceId === deviceIdRef.current) {
             return;
+          }
+
+          // #243: Extract MEDIA attachments from inbound assistant messages
+          // (safety net for cross-device/session messages)
+          let inboundAttachments: DisplayAttachment[] | undefined;
+          if (role === "assistant" && cleanedText.includes("MEDIA:")) {
+            const extracted = extractMediaAttachments(cleanedText);
+            cleanedText = extracted.cleanedText;
+            inboundAttachments = extracted.attachments.length > 0 ? extracted.attachments : undefined;
           }
 
           const inboundId = `inbound-${Date.now()}-${++streamIdCounter.current}`;
@@ -1905,6 +2134,7 @@ export function useChat(sessionKey?: string) {
               content: cleanedText,
               timestamp,
               toolCalls: [],
+              ...(inboundAttachments && { attachments: inboundAttachments }),
             }];
           });
         }
@@ -1966,10 +2196,11 @@ export function useChat(sessionKey?: string) {
     persistPendingStream,
     clearPersistedPendingStream,
     flushDeferredHistoryReload,
+    loadHistory,
   ]);
 
   // Message queue
-  const queueRef = useRef<{ id: string; text: string }[]>(
+  const queueRef = useRef<{ id: string; text: string; attachments?: DisplayAttachment[] }[]>(
     (() => {
       if (queueStorageKey && typeof window !== "undefined") {
         try { const saved = localStorage.getItem(queueStorageKey); return saved ? JSON.parse(saved) : []; }
@@ -1992,6 +2223,7 @@ export function useChat(sessionKey?: string) {
   const doSend = useCallback(
     async (text: string, msgId: string) => {
       if (!client || state !== "connected") return;
+      sendingRef.current = true;
       setMessages((prev) => prev.map((m) => (m.id === msgId ? { ...m, queued: false } : m)));
       setStreaming(true);
       startStreamingTimeout("thinking");
@@ -2007,15 +2239,27 @@ export function useChat(sessionKey?: string) {
             idempotencyKey,
             // Use the latest session key on retry to avoid new-session race (#50)
             sessionKey: sessionKeyRef.current || sessionKey,
+            deliver: false, // #247: Gateway delivers via event stream, not inline response
           });
+          sendingRef.current = false;
           return;
         } catch (err) {
           const isLast = attempt >= maxAttempts;
           if (isLast) {
             console.error("[AWF] chat.send error:", String(err));
+            sendingRef.current = false;
             clearStreamingTimeout();
             setStreaming(false);
             setAgentStatusDebug({ phase: "idle" });
+            // #242: Show error feedback message to user
+            setMessages((prev) => [...prev, {
+              id: `error-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+              role: "assistant" as const,
+              content: "⚠️ 메시지 전송에 실패했습니다. 다시 시도해주세요.",
+              timestamp: new Date().toISOString(),
+              toolCalls: [],
+              isError: true,
+            }]);
             return;
           }
           // Short retry window for immediate session-switch/bootstrap timing race.
@@ -2037,7 +2281,14 @@ export function useChat(sessionKey?: string) {
           setMessages((prev) => { resolve(prev.some((m) => m.id === next.id)); return prev; });
         });
         if (stillExists) {
-          await doSend(next.text, next.id);
+          try {
+            await doSend(next.text, next.id);
+          } catch {
+            // #245: Re-insert failed item at front of queue for retry
+            queueRef.current = [next, ...queueRef.current];
+            persistQueue();
+            break;
+          }
           await new Promise<void>((resolve) => {
             const start = Date.now();
             const check = () => {
@@ -2063,45 +2314,6 @@ export function useChat(sessionKey?: string) {
     setReplyingToState(null);
   }, []);
 
-  const sendMessage = useCallback(
-    (text: string, options?: { replyTo?: ReplyTo }) => {
-      if (!client || state !== "connected" || !text.trim()) return;
-      const msgId = `user-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-      const replyTo = options?.replyTo || replyingTo || undefined;
-      const userMsg: DisplayMessage = {
-        id: msgId, role: "user", content: text,
-        timestamp: new Date().toISOString(), toolCalls: [], queued: streaming,
-        replyTo,
-      };
-      setMessages((prev) => [...prev, userMsg]);
-      // Persist user message to local store (including replyTo for quote persistence)
-      saveLocalMessages(sessionKey, [{
-        sessionKey,
-        id: msgId,
-        role: "user",
-        content: text,
-        timestamp: userMsg.timestamp,
-        attachments: userMsg.attachments,
-        replyTo: replyTo,
-      }]).catch(() => {});
-      // Clear replyingTo after send
-      if (replyingTo) setReplyingToState(null);
-      if (streaming) { queueRef.current.push({ id: msgId, text }); persistQueue(); }
-      else { doSend(text, msgId); }
-    },
-    [client, state, streaming, doSend, replyingTo]
-  );
-
-  useEffect(() => {
-    if (!streaming && queueRef.current.length > 0) processQueue();
-  }, [streaming, processQueue]);
-
-  const cancelQueued = useCallback((msgId: string) => {
-    queueRef.current = queueRef.current.filter((q) => q.id !== msgId);
-    persistQueue();
-    setMessages((prev) => prev.filter((m) => m.id !== msgId));
-  }, [persistQueue]);
-
   const abort = useCallback(() => {
     // Immediately stop UI — don't await the RPC
     abortedRef.current = true;
@@ -2122,6 +2334,77 @@ export function useChat(sessionKey?: string) {
         .catch((err: unknown) => console.warn("[AWF] chat.abort failed:", String(err)));
     }
   }, [client, state, sessionKey, clearStreamingTimeout, clearPersistedPendingStream]);
+
+  const sendCommand = useCallback(
+    async (text: string) => {
+      if (!client || state !== "connected") return;
+      try {
+        await client.request("chat.send", {
+          message: text,
+          idempotencyKey: `awf-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          sessionKey,
+        });
+      } catch (err) { console.error("[AWF] command error:", String(err)); }
+    },
+    [client, state, sessionKey]
+  );
+
+  const sendMessage = useCallback(
+    (text: string, options?: { replyTo?: ReplyTo }) => {
+      if (!client || state !== "connected" || !text.trim()) return;
+
+      // #251: Intercept text-based stop/reset commands
+      if (isChatStopCommand(text)) {
+        abort();
+        return;
+      }
+      const resetCmd = isChatResetCommand(text);
+      if (resetCmd.reset) {
+        sendCommand("reset");
+        if (resetCmd.message) {
+          // Send the trailing message as a new message after reset
+          setTimeout(() => doSend(resetCmd.message!, `user-${Date.now()}-${Math.random().toString(36).slice(2)}`), 100);
+        }
+        return;
+      }
+
+      const msgId = `user-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const replyTo = options?.replyTo || replyingTo || undefined;
+      // #245: Queue when streaming OR when a send is still in-flight (race guard)
+      const shouldQueue = streaming || sendingRef.current;
+      const userMsg: DisplayMessage = {
+        id: msgId, role: "user", content: text,
+        timestamp: new Date().toISOString(), toolCalls: [], queued: shouldQueue,
+        replyTo,
+      };
+      setMessages((prev) => [...prev, userMsg]);
+      // Persist user message to local store (including replyTo for quote persistence)
+      saveLocalMessages(sessionKey, [{
+        sessionKey,
+        id: msgId,
+        role: "user",
+        content: text,
+        timestamp: userMsg.timestamp,
+        attachments: userMsg.attachments,
+        replyTo: replyTo,
+      }]).catch(() => {});
+      // Clear replyingTo after send
+      if (replyingTo) setReplyingToState(null);
+      if (shouldQueue) { queueRef.current.push({ id: msgId, text }); persistQueue(); }
+      else { doSend(text, msgId); }
+    },
+    [client, state, streaming, doSend, replyingTo, abort, sendCommand]
+  );
+
+  useEffect(() => {
+    if (!streaming && queueRef.current.length > 0) processQueue();
+  }, [streaming, processQueue]);
+
+  const cancelQueued = useCallback((msgId: string) => {
+    queueRef.current = queueRef.current.filter((q) => q.id !== msgId);
+    persistQueue();
+    setMessages((prev) => prev.filter((m) => m.id !== msgId));
+  }, [persistQueue]);
 
   const addUserMessage = useCallback((text: string, attachments?: DisplayAttachment[]) => {
     const msgId = `user-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -2154,20 +2437,6 @@ export function useChat(sessionKey?: string) {
   const clearMessages = useCallback(() => {
     setMessages([]);
   }, []);
-
-  const sendCommand = useCallback(
-    async (text: string) => {
-      if (!client || state !== "connected") return;
-      try {
-        await client.request("chat.send", {
-          message: text,
-          idempotencyKey: `awf-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-          sessionKey,
-        });
-      } catch (err) { console.error("[AWF] command error:", String(err)); }
-    },
-    [client, state, sessionKey]
-  );
 
   const buildContextSummary = useCallback((): string | null => {
     const relevant = messages

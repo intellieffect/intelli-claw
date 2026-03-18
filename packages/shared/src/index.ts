@@ -1,5 +1,5 @@
 // --- Gateway ---
-export { GatewayClient, type ConnectionState, type GatewayClientOptions, type InvokeHandler } from "./gateway/client";
+export { GatewayClient, isNonRecoverableAuthError, buildDeviceAuthPayload, type ConnectionState, type GatewayClientOptions, type InvokeHandler } from "./gateway/client";
 export { NodeGatewayClient } from "./gateway/node-client";
 export {
   makeReq,
