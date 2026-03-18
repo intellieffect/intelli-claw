@@ -78,27 +78,23 @@ function ResultPreview({ result }: { result: string }) {
     );
   }
 
-  // Preview: first 2 lines
-  const lines = formatted.split("\n");
-  const preview = lines.slice(0, 2).join("\n");
-  const hasMore = lines.length > 2 || formatted.length > INLINE_RESULT_LIMIT;
+  // Preview: first 2 lines (always has more since we're past INLINE_RESULT_LIMIT)
+  const preview = formatted.split("\n").slice(0, 2).join("\n");
 
   return (
     <div>
       <pre className={`overflow-y-auto overflow-x-hidden whitespace-pre-wrap break-all rounded bg-background p-2 text-muted-foreground font-mono text-xs ${showFull ? "max-h-40" : "max-h-[3.5em]"}`}>
         {showFull ? formatted : preview}
       </pre>
-      {hasMore && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            setShowFull(!showFull);
-          }}
-          className="mt-1 text-[11px] text-primary hover:underline"
-        >
-          {showFull ? "접기" : "더 보기"}
-        </button>
-      )}
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          setShowFull(!showFull);
+        }}
+        className="mt-1 text-[11px] text-primary hover:underline"
+      >
+        {showFull ? "접기" : "더 보기"}
+      </button>
     </div>
   );
 }

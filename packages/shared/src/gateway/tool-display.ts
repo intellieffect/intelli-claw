@@ -12,16 +12,11 @@ export type ToolDisplay = {
   iconName: string;
 };
 
-type ToolDisplayEntry = {
-  label: string;
-  iconName: string;
-};
-
 /**
  * Registry of known tool names → display info.
  * Keys are lowercase for case-insensitive lookup.
  */
-const TOOL_REGISTRY: Record<string, ToolDisplayEntry> = {
+const TOOL_REGISTRY: Record<string, ToolDisplay> = {
   // File reading
   read_file: { label: "Read File", iconName: "FileText" },
   read: { label: "Read", iconName: "FileText" },
