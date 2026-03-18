@@ -21,7 +21,9 @@ import {
   isHiddenMessage,
   stripInboundMeta,
   stripTrailingControlTokens,
+  shouldSuppressStreamingPreview,
   INTERNAL_PROMPT_RE,
+  createToolStreamRefs,
   resetAllStreamRefs,
   commitChatStreamToSegment,
   hasActiveStream,
@@ -32,18 +34,7 @@ import {
 // Re-export shared types for mobile consumers
 export type { DisplayMessage, AgentStatus } from "@intelli-claw/shared";
 
-// ─── 3-buffer streaming state (plain objects compatible with shared ToolStreamRefs) ───
-
-function createStreamRefs(): ToolStreamRefs {
-  return {
-    chatStream: { current: null },
-    chatStreamId: { current: null },
-    chatStreamStartedAt: { current: null },
-    chatStreamSegments: { current: [] },
-    toolStreamById: { current: new Map() },
-    toolStreamOrder: { current: [] },
-  };
-}
+// ─── 3-buffer streaming state (shared ToolStreamRefs) ───
 
 // ─── Internal state per session ───
 
@@ -67,7 +58,7 @@ function createDefaultState(): ChatState {
     streaming: false,
     agentStatus: { phase: "idle" },
     loading: false,
-    streamRefs: createStreamRefs(),
+    streamRefs: createToolStreamRefs(),
     runId: null,
     historyLoaded: false,
     lastAccessedAt: Date.now(),
@@ -277,6 +268,10 @@ export class ChatStateManager {
 
           const snapId = s.streamRefs.chatStreamId.current;
           const snapContent = buildStreamContent(s.streamRefs);
+
+          // Suppress transient control-token prefixes (e.g. "N", "NO_R")
+          if (shouldSuppressStreamingPreview(snapContent)) return;
+
           const snapTools = buildStreamToolCalls(s.streamRefs);
           const msg: DisplayMessage = {
             id: snapId,

@@ -18,8 +18,19 @@
 import type { ToolCall } from "./protocol";
 import type { ToolStreamRefs, ToolStreamEntry } from "./chat-stream-types";
 
-// Re-export types for convenience
-export type { ToolStreamRefs, ToolStreamEntry };
+// ── Factory ────────────────────────────────────────────────────────────
+
+/** Create a fresh ToolStreamRefs with all fields initialized. */
+export function createToolStreamRefs(): ToolStreamRefs {
+  return {
+    chatStream: { current: null },
+    chatStreamId: { current: null },
+    chatStreamStartedAt: { current: null },
+    chatStreamSegments: { current: [] },
+    toolStreamById: { current: new Map() },
+    toolStreamOrder: { current: [] },
+  };
+}
 
 // ── Core operations ────────────────────────────────────────────────────
 

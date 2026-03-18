@@ -3,7 +3,7 @@
  * inside the central ChatStateManager via useSyncExternalStore.
  */
 import { useEffect, useSyncExternalStore } from "react";
-import { useGateway } from "@intelli-claw/shared";
+import { useGateway, createToolStreamRefs } from "@intelli-claw/shared";
 import { useChatStateManager } from "../stores/ChatStateProvider";
 import type { ChatState } from "../stores/chatStateManager";
 
@@ -12,14 +12,7 @@ const DEFAULT_STATE: ChatState = {
   streaming: false,
   agentStatus: { phase: "idle" },
   loading: false,
-  streamRefs: {
-    chatStream: { current: null },
-    chatStreamId: { current: null },
-    chatStreamStartedAt: { current: null },
-    chatStreamSegments: { current: [] },
-    toolStreamById: { current: new Map() },
-    toolStreamOrder: { current: [] },
-  },
+  streamRefs: createToolStreamRefs(),
   runId: null,
   historyLoaded: false,
   lastAccessedAt: 0,

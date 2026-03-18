@@ -106,6 +106,7 @@ export {
   type ToolStreamRefs,
 } from "./gateway/chat-stream-types";
 export {
+  createToolStreamRefs,
   resetAllStreamRefs,
   commitChatStreamToSegment,
   hasActiveStream,
@@ -124,6 +125,8 @@ export {
   isChatResetCommand,
 } from "./gateway/chat-stream-core";
 export {
+  simpleHash,
+  attachmentFingerprint,
   normalizeContentForDedup,
   deduplicateMessages,
   mergeConsecutiveAssistant,

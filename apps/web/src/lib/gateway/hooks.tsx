@@ -40,6 +40,8 @@ import {
   shouldSuppressStreamingPreview,
   isChatStopCommand,
   isChatResetCommand,
+  simpleHash,
+  attachmentFingerprint,
   normalizeContentForDedup,
   deduplicateMessages,
   mergeConsecutiveAssistant,
@@ -76,6 +78,8 @@ export {
   shouldSuppressStreamingPreview,
   isChatStopCommand,
   isChatResetCommand,
+  simpleHash,
+  attachmentFingerprint,
   normalizeContentForDedup,
   deduplicateMessages,
   mergeConsecutiveAssistant,
@@ -109,8 +113,6 @@ import {
 } from "./message-store";
 
 import { getTopicHistory } from "./topic-store";
-
-// Chat command utilities moved to @intelli-claw/shared (chat-stream-core.ts)
 
 // --- Web Config Persistence ---
 
@@ -371,14 +373,10 @@ export function useSessions() {
 }
 
 // --- Helpers ---
-// stripInboundMeta moved to @intelli-claw/shared (chat-stream-core.ts)
 
 function stripTemplateVars(text: string): string {
   return text.replace(/\[\[[^\]]+\]\]\s*/g, "").trim();
 }
-
-// normalizeContentForDedup, deduplicateMessages, mergeConsecutiveAssistant
-// moved to @intelli-claw/shared (message-utils.ts)
 
 /**
  * Check if an inbound user message duplicates an existing optimistic message.
@@ -401,8 +399,6 @@ function isDuplicateOfOptimistic(
 }
 
 // --- useChat (web-specific: uses localStorage, platform, mime-types) ---
-
-// DisplayAttachment type moved to @intelli-claw/shared (chat-stream-types.ts)
 
 export function extractMediaAttachments(text: string): { cleanedText: string; attachments: DisplayAttachment[] } {
   const MEDIA_RE = /^MEDIA:(.+)$/gm;
@@ -431,8 +427,6 @@ export function extractMediaAttachments(text: string): { cleanedText: string; at
   return { cleanedText, attachments };
 }
 
-// ReplyTo, SystemInjectedType types moved to @intelli-claw/shared (chat-stream-types.ts)
-
 /**
  * Detect whether a message with the given role/content is a system-injected
  * message masquerading as a user message.
@@ -453,8 +447,6 @@ export function detectSystemInjectedType(role: string, content: string): SystemI
 
   return null;
 }
-
-// DisplayMessage interface moved to @intelli-claw/shared (chat-stream-types.ts)
 
 /**
  * During reconnect/history refresh, keep in-flight streaming messages visible
@@ -500,8 +492,6 @@ export function mergeLiveStreamingIntoHistory(
 export function shouldDeferHistoryReload(hasStreamingState: boolean): boolean {
   return hasStreamingState;
 }
-
-// shouldSuppressStreamingPreview moved to @intelli-claw/shared (chat-stream-core.ts)
 
 const PENDING_STREAM_SESSION_KEY_PREFIX = "awf:pending-stream:";
 const PENDING_STREAM_TTL_MS = 45_000;
@@ -560,9 +550,6 @@ export function finalEventKey(runId: string | null | undefined): string | null {
   if (!runId) return null;
   return `run:${runId}`;
 }
-
-// AgentStatus, HIDDEN_REPLY_RE, INTERNAL_PROMPT_RE, TRAILING_CONTROL_TOKEN_RE,
-// stripTrailingControlTokens moved to @intelli-claw/shared
 
 // --- Reply/Quote Helpers ---
 

@@ -24,7 +24,7 @@ const IMAGE_PLACEHOLDERS_DEDUP = new Set([
  * Fast non-cryptographic hash for dedup fingerprinting (#155).
  * DJB2 variant — deterministic, collision-resistant enough for UI dedup.
  */
-function simpleHash(str: string): string {
+export function simpleHash(str: string): string {
   let hash = 5381;
   for (let i = 0; i < str.length; i++) {
     hash = ((hash << 5) + hash + str.charCodeAt(i)) | 0;
@@ -77,7 +77,7 @@ export function normalizeContentForDedup(content: string): string {
  * while still matching optimistic vs server echo of the same image.
  * Returns empty string for messages with no attachments.
  */
-function attachmentFingerprint(attachments?: DisplayAttachment[]): string {
+export function attachmentFingerprint(attachments?: DisplayAttachment[]): string {
   if (!attachments || attachments.length === 0) return "";
   // Use count + sorted first 80 chars of each dataUrl/downloadUrl for identity
   const keys = attachments
