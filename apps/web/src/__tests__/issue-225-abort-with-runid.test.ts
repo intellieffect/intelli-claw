@@ -143,10 +143,10 @@ describe("chat.abort includes runId (#225)", () => {
       (c) => c[0] === "chat.abort",
     );
     expect(abortCalls).toHaveLength(1);
-    expect(abortCalls[0][1]).toEqual({
-      sessionKey: "test:agent",
-      runId: undefined,
-    });
+    expect(abortCalls[0][1]).toEqual(
+      expect.objectContaining({ sessionKey: "test:agent" }),
+    );
+    expect(abortCalls[0][1].runId).toBeUndefined();
   });
 
   it("runId is extracted from lifecycle.start event payload", async () => {

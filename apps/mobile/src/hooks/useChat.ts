@@ -63,9 +63,13 @@ export function useChat(sessionKey?: string) {
   // ─── Abort ───
   const abort = useCallback(async () => {
     if (!client || !sessionKey) return;
+    // Eagerly capture & clear runId before sending (matches web pattern, #225)
+    const runId = manager.clearRunId(sessionKey);
     try {
-      const runId = manager.getRunId(sessionKey);
-      await client.request("chat.abort", { sessionKey, runId });
+      await client.request("chat.abort", {
+        sessionKey,
+        runId: runId ?? undefined,
+      });
     } catch {
       // swallow abort errors
     }
