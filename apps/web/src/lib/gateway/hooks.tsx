@@ -339,7 +339,9 @@ const IMAGE_PLACEHOLDERS_DEDUP = new Set(["(image)", "(첨부 파일)", "(이미
 
 export function normalizeContentForDedup(content: string): string {
   // Keep normalization aligned across history merge + final dedup.
-  let normalized = content.replace(/\s+/g, " ").trim();
+  // #243: Strip MEDIA: markers before whitespace normalization so that
+  // streaming (already extracted) and inbound (raw) versions match.
+  let normalized = content.replace(/MEDIA:\S+/g, "").replace(/\s+/g, " ").trim();
 
   // Normalize gateway-injected timestamp prefix on user messages
   // e.g. "[2026-03-03 15:10:00+09:00] 질문" -> "질문"
@@ -348,6 +350,10 @@ export function normalizeContentForDedup(content: string): string {
   // Normalize bridge/system wrappers that may vary by source
   // e.g. "[System] ..." / "(System) ..." / "System: ..."
   normalized = normalized.replace(/^\s*(?:\[System\]|\(System\)|System:)\s*/i, "");
+
+  // #243: Normalize spacing after punctuation — prevents dedup failure
+  // when line breaks vs spaces differ between streaming and inbound
+  normalized = normalized.replace(/([.!?。])\s*/g, "$1 ").trim();
 
   if (IMAGE_PLACEHOLDERS_DEDUP.has(normalized)) return "(image)";
 
@@ -1863,6 +1869,13 @@ export function useChat(sessionKey?: string) {
         const role: "user" | "assistant" = rawRole === "assistant" || rawRole === "user"
           ? rawRole
           : isAgentSource ? "assistant" : "user";
+
+        // #243: Same-session assistant messages are already handled by the
+        // streaming handler — skip to prevent duplicates.
+        if (role === "assistant" && evSessionKey === boundSessionKey) {
+          return;
+        }
+
         // Debug: capture raw inbound data to diagnose agent-to-agent role attribution
         if (process.env.NODE_ENV !== "production") {
           console.debug("[AWF:INBOUND]", { rawRole, isAgentSource, role, surface: data.surface, source: data.source, provenance: data.inputProvenance, keys: Object.keys(data) });
@@ -1872,13 +1885,22 @@ export function useChat(sessionKey?: string) {
           const stripped = text.replace(/\n{1,2}(REPLY_SKIP|NO_REPLY|HEARTBEAT_OK)\s*$/g, "").trim();
           // Skip entirely if the message is purely a control token
           if (!stripped || HIDDEN_REPLY_RE.test(stripped)) return;
-          const cleanedText = role === "user" ? stripInboundMeta(stripped) : stripped;
+          let cleanedText = role === "user" ? stripInboundMeta(stripped) : stripped;
           const originDeviceId = data.deviceId as string | undefined;
           const timestamp = (data.timestamp as string) ?? new Date().toISOString();
 
           // Skip echo from our own device
           if (originDeviceId && originDeviceId === deviceIdRef.current) {
             return;
+          }
+
+          // #243: Extract MEDIA attachments from inbound assistant messages
+          // (safety net for cross-device/session messages)
+          let inboundAttachments: DisplayAttachment[] | undefined;
+          if (role === "assistant" && cleanedText.includes("MEDIA:")) {
+            const extracted = extractMediaAttachments(cleanedText);
+            cleanedText = extracted.cleanedText;
+            inboundAttachments = extracted.attachments.length > 0 ? extracted.attachments : undefined;
           }
 
           const inboundId = `inbound-${Date.now()}-${++streamIdCounter.current}`;
@@ -1905,6 +1927,7 @@ export function useChat(sessionKey?: string) {
               content: cleanedText,
               timestamp,
               toolCalls: [],
+              ...(inboundAttachments && { attachments: inboundAttachments }),
             }];
           });
         }
