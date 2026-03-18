@@ -50,6 +50,10 @@ export {
   type SessionGroup,
   type GatewaySession,
 } from "./gateway/session-utils";
+export {
+  resolveToolDisplay,
+  type ToolDisplay,
+} from "./gateway/tool-display";
 
 // --- Hooks ---
 export {

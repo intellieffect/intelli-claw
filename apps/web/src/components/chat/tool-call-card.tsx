@@ -1,7 +1,33 @@
 
 import { useState, useMemo } from "react";
-import { ChevronDown, ChevronRight, FileText, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  FileText,
+  FilePen,
+  FilePlus,
+  FileEdit,
+  Loader2,
+  CheckCircle2,
+  AlertCircle,
+  Terminal,
+  Search,
+  Globe,
+  FolderOpen,
+  Paperclip,
+  Cog,
+  Clock,
+  Bot,
+  PaintbrushVertical,
+  Smartphone,
+  Plug,
+  MessageSquare,
+  Wrench,
+  type LucideProps,
+} from "lucide-react";
+import type { ComponentType } from "react";
 import type { ToolCall } from "@/lib/gateway/protocol";
+import { resolveToolDisplay } from "@/lib/gateway/tool-display";
 import { SubagentCard, type SpawnAttachment, type SpawnReceipt } from "./subagent-card";
 
 /** Tools that spawn subagents */
@@ -10,8 +36,74 @@ const SPAWN_TOOLS = new Set(["sessions_spawn", "subagents"]);
 /** Tools for PDF analysis */
 const PDF_TOOLS = new Set(["pdf"]);
 
+/** Max characters for inline result display (no toggle needed) */
+const INLINE_RESULT_LIMIT = 100;
+
+/** Map icon name strings to Lucide React components */
+const ICON_MAP: Record<string, ComponentType<LucideProps>> = {
+  FileText,
+  FilePen,
+  FilePlus,
+  FileEdit,
+  Terminal,
+  Search,
+  Globe,
+  FolderOpen,
+  Paperclip,
+  Cog,
+  Clock,
+  Bot,
+  PaintbrushVertical,
+  Smartphone,
+  Plug,
+  MessageSquare,
+  Wrench,
+};
+
+/** Render a Lucide icon by name, falling back to Wrench */
+function ToolIcon({ name, size = 14, className }: { name: string; size?: number; className?: string }) {
+  const Icon = ICON_MAP[name] || Wrench;
+  return <Icon size={size} className={className} />;
+}
+
+/** Smart result preview: short results inline, long results with "show more" toggle */
+function ResultPreview({ result }: { result: string }) {
+  const [showFull, setShowFull] = useState(false);
+  const formatted = formatJson(result);
+  const isShort = formatted.length <= INLINE_RESULT_LIMIT;
+
+  if (isShort) {
+    return (
+      <span className="font-mono text-xs text-muted-foreground">{formatted}</span>
+    );
+  }
+
+  // Preview: first 2 lines (always has more since we're past INLINE_RESULT_LIMIT)
+  const preview = formatted.split("\n").slice(0, 2).join("\n");
+
+  return (
+    <div>
+      <pre className={`overflow-y-auto overflow-x-hidden whitespace-pre-wrap break-all rounded bg-background p-2 text-muted-foreground font-mono text-xs ${showFull ? "max-h-40" : "max-h-[3.5em]"}`}>
+        {showFull ? formatted : preview}
+      </pre>
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          setShowFull(!showFull);
+        }}
+        className="mt-1 text-[11px] text-primary hover:underline"
+      >
+        {showFull ? "접기" : "더 보기"}
+      </button>
+    </div>
+  );
+}
+
 export function ToolCallCard({ toolCall }: { toolCall: ToolCall }) {
   const [expanded, setExpanded] = useState(false);
+
+  // Resolve display info from registry
+  const display = useMemo(() => resolveToolDisplay(toolCall.name), [toolCall.name]);
 
   // Extract subagent info from sessions_spawn args/result
   const spawnInfo = useMemo(() => {
@@ -78,7 +170,8 @@ export function ToolCallCard({ toolCall }: { toolCall: ToolCall }) {
       >
         {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         {statusIcon}
-        <span className="font-mono text-xs text-foreground">{toolCall.name}</span>
+        <ToolIcon name={display.iconName} size={14} className="text-muted-foreground" />
+        <span className="text-xs text-foreground">{display.label}</span>
         {toolCall.status === "running" && (
           <span className="ml-auto text-xs text-muted-foreground">실행 중...</span>
         )}
@@ -97,9 +190,7 @@ export function ToolCallCard({ toolCall }: { toolCall: ToolCall }) {
           {toolCall.result && (
             <div>
               <div className="mb-1 text-muted-foreground">Result</div>
-              <pre className="max-h-40 overflow-y-auto overflow-x-hidden whitespace-pre-wrap break-all rounded bg-background p-2 text-muted-foreground">
-                {formatJson(toolCall.result)}
-              </pre>
+              <ResultPreview result={toolCall.result} />
             </div>
           )}
         </div>
