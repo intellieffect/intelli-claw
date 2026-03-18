@@ -71,6 +71,7 @@ export class ChatStateManager {
   private states = new Map<string, ChatState>();
   private subscribers = new Map<string, Set<() => void>>();
   private eventUnsub: (() => void) | null = null;
+  private boundClient: GatewayClient | null = null;
   private streamingTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private streamIdCounter = 0;
 
@@ -78,12 +79,14 @@ export class ChatStateManager {
 
   bind(client: GatewayClient): void {
     this.unbind();
+    this.boundClient = client;
     this.eventUnsub = client.onEvent((frame: EventFrame) => {
       this.handleEvent(frame);
     });
   }
 
   unbind(): void {
+    this.boundClient = null;
     if (this.eventUnsub) {
       this.eventUnsub();
       this.eventUnsub = null;
@@ -189,6 +192,17 @@ export class ChatStateManager {
     }
   }
 
+  /**
+   * Reload history for a session after stream finalization.
+   * Resets historyLoaded flag so loadHistory runs again with fresh data.
+   */
+  private reloadHistory(sessionKey: string): void {
+    if (!this.boundClient) return;
+    const state = this.getState(sessionKey);
+    state.historyLoaded = false;
+    this.loadHistory(this.boundClient, sessionKey);
+  }
+
   // ── Memory management ──
 
   /**
@@ -252,8 +266,30 @@ export class ChatStateManager {
       if (!chatSessionKey) return;
 
       if (chatState === "delta") {
-        const text = chatPayload.text as string | undefined;
+        // Extract text from payload.message (same structure as web).
+        // Gateway sends ContentPart[] or string — extract text parts, skip thinking.
+        const chatMsg = chatPayload.message as Record<string, unknown> | undefined;
+        let text = "";
+        if (chatMsg) {
+          if (typeof chatMsg.content === "string") {
+            text = chatMsg.content;
+          } else if (Array.isArray(chatMsg.content)) {
+            for (const p of chatMsg.content as Array<Record<string, unknown>>) {
+              if (p.type === "thinking") continue;
+              if (p.type === "text" && typeof p.text === "string") {
+                text += p.text;
+              }
+            }
+          }
+        }
+        // Fallback: some gateway versions send text at top level
+        if (!text && typeof chatPayload.text === "string") {
+          text = chatPayload.text as string;
+        }
         if (!text) return;
+
+        // Suppress transient control-token prefixes (e.g. "N", "NO_R")
+        if (shouldSuppressStreamingPreview(text)) return;
 
         this.mutate(chatSessionKey, (s) => {
           s.streaming = true;
@@ -263,15 +299,16 @@ export class ChatStateManager {
             s.streamRefs.chatStreamId.current = `stream-${Date.now()}-${++this.streamIdCounter}`;
             s.streamRefs.chatStreamStartedAt.current = Date.now();
           }
-          s.streamRefs.chatStream.current =
-            (s.streamRefs.chatStream.current || "") + text;
+
+          // Replace-only: chat delta carries cumulative text.
+          // Only accept if longer than current (ignore stale/shorter deltas).
+          const current = s.streamRefs.chatStream.current || "";
+          if (text.length >= current.length) {
+            s.streamRefs.chatStream.current = text;
+          }
 
           const snapId = s.streamRefs.chatStreamId.current;
           const snapContent = buildStreamContent(s.streamRefs);
-
-          // Suppress transient control-token prefixes (e.g. "N", "NO_R")
-          if (shouldSuppressStreamingPreview(snapContent)) return;
-
           const snapTools = buildStreamToolCalls(s.streamRefs);
           const msg: DisplayMessage = {
             id: snapId,
@@ -293,6 +330,8 @@ export class ChatStateManager {
         this.startStreamingTimeout(chatSessionKey);
       } else if (chatState === "final") {
         this.finalizeStream(chatSessionKey);
+        // Reload history to get the definitive server version (matching web)
+        this.reloadHistory(chatSessionKey);
       } else if (chatState === "error") {
         this.clearStreamingTimeout(chatSessionKey);
         const errMsg = String(
