@@ -22,6 +22,9 @@ export interface ModelInfo {
 // Module-level cache for models (rarely changes)
 let _modelsCache: ModelInfo[] = [];
 
+export type ThinkingLevel = "low" | "medium" | "high";
+export type VerboseLevel = "on" | "off";
+
 export function useSessionSettings(sessionKey?: string) {
   const { client, state } = useGateway();
   const isConnected = state === "connected";
@@ -84,17 +87,29 @@ export function useSessionSettings(sessionKey?: string) {
     fetchModels();
   }, [fetchSession, fetchModels]);
 
-  // Patch session (model/label only — fields supported by sessions.patch)
+  // Patch session (model/label/thinkingLevel/verboseLevel via sessions.patch)
   const patchSession = useCallback(
-    async (patch: { model?: string; label?: string }) => {
+    async (patch: { model?: string; label?: string; thinkingLevel?: ThinkingLevel | null; verboseLevel?: VerboseLevel | null }) => {
       if (!client || !isConnected || !sessionKey) return;
       setLoading(true);
       try {
         await client.request("sessions.patch", { key: sessionKey, ...patch });
-        // Optimistic update
+        // Update local state on success
         setSession((prev) => (prev ? { ...prev, ...patch } : prev));
-      } catch (err) {
-        console.error("[AWF] sessions.patch error:", err);
+      } catch {
+        // Fallback: send chat directives for older gateways
+        try {
+          if (patch.thinkingLevel) {
+            await client.request("chat.send", { sessionKey, body: `/think:${patch.thinkingLevel}` });
+          }
+          if (patch.verboseLevel) {
+            await client.request("chat.send", { sessionKey, body: `/verbose ${patch.verboseLevel === "on" ? "on" : "off"}` });
+          }
+          // Update local state on success
+          setSession((prev) => (prev ? { ...prev, ...patch } : prev));
+        } catch (err) {
+          console.error("[AWF] patchSession fallback error:", err);
+        }
       } finally {
         setLoading(false);
       }
@@ -102,20 +117,29 @@ export function useSessionSettings(sessionKey?: string) {
     [client, isConnected, sessionKey]
   );
 
-  // Set thinking level via chat directive (not sessions.patch)
+  // Set thinking level via sessions.patch RPC (fallback: chat directive)
   const setThinking = useCallback(
-    async (level: string) => {
+    async (level: ThinkingLevel) => {
       if (!client || !isConnected || !sessionKey) return;
       setLoading(true);
       try {
-        await client.request("chat.send", {
-          sessionKey,
-          body: `/think:${level}`,
+        await client.request("sessions.patch", {
+          key: sessionKey,
+          thinkingLevel: level,
         });
-        // Optimistic update
+        // Update local state on success
         setSession((prev) => (prev ? { ...prev, thinking: level } : prev));
-      } catch (err) {
-        console.error("[AWF] setThinking error:", err);
+      } catch {
+        // Fallback: send chat directive for older gateways
+        try {
+          await client.request("chat.send", {
+            sessionKey,
+            body: `/think:${level}`,
+          });
+          setSession((prev) => (prev ? { ...prev, thinking: level } : prev));
+        } catch (err) {
+          console.error("[AWF] setThinking error:", err);
+        }
       } finally {
         setLoading(false);
       }
@@ -123,20 +147,29 @@ export function useSessionSettings(sessionKey?: string) {
     [client, isConnected, sessionKey]
   );
 
-  // Set verbose via chat directive (not sessions.patch)
+  // Set verbose via sessions.patch RPC (fallback: chat directive)
   const setVerbose = useCallback(
     async (enabled: boolean) => {
       if (!client || !isConnected || !sessionKey) return;
       setLoading(true);
       try {
-        await client.request("chat.send", {
-          sessionKey,
-          body: `/verbose ${enabled ? "on" : "off"}`,
+        await client.request("sessions.patch", {
+          key: sessionKey,
+          verboseLevel: enabled ? "on" : "off",
         });
-        // Optimistic update
+        // Update local state on success
         setSession((prev) => (prev ? { ...prev, verbose: enabled } : prev));
-      } catch (err) {
-        console.error("[AWF] setVerbose error:", err);
+      } catch {
+        // Fallback: send chat directive for older gateways
+        try {
+          await client.request("chat.send", {
+            sessionKey,
+            body: `/verbose ${enabled ? "on" : "off"}`,
+          });
+          setSession((prev) => (prev ? { ...prev, verbose: enabled } : prev));
+        } catch (err) {
+          console.error("[AWF] setVerbose error:", err);
+        }
       } finally {
         setLoading(false);
       }
