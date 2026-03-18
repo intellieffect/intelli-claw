@@ -94,6 +94,41 @@ export type { StorageAdapter } from "./adapters/storage";
 export type { CryptoAdapter, CryptoKeyPairInfo } from "./adapters/crypto";
 export type { PlatformAPI, MediaInfo, ShowcaseFileEntry } from "./adapters/platform";
 
+// --- Chat Stream (shared streaming core) ---
+export {
+  type MutableRef,
+  type DisplayAttachment,
+  type ReplyTo,
+  type SystemInjectedType,
+  type DisplayMessage,
+  type AgentStatus,
+  type ToolStreamEntry,
+  type ToolStreamRefs,
+} from "./gateway/chat-stream-types";
+export {
+  resetAllStreamRefs,
+  commitChatStreamToSegment,
+  hasActiveStream,
+  buildStreamContent,
+  buildStreamToolCalls,
+} from "./gateway/tool-stream";
+export {
+  HIDDEN_REPLY_RE,
+  INTERNAL_PROMPT_RE,
+  TRAILING_CONTROL_TOKEN_RE,
+  stripTrailingControlTokens,
+  stripInboundMeta,
+  isHiddenMessage,
+  shouldSuppressStreamingPreview,
+  isChatStopCommand,
+  isChatResetCommand,
+} from "./gateway/chat-stream-core";
+export {
+  normalizeContentForDedup,
+  deduplicateMessages,
+  mergeConsecutiveAssistant,
+} from "./gateway/message-utils";
+
 // --- Utils ---
 export { cn } from "./utils/index";
 export {

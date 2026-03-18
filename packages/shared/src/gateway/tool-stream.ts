@@ -1,7 +1,7 @@
 /**
- * tool-stream.ts — OpenClaw 3-buffer streaming architecture for React
+ * tool-stream.ts — OpenClaw 3-buffer streaming architecture (platform-independent).
  *
- * Ported from OpenClaw's app-tool-stream.ts (Lit) to React refs.
+ * Ported from OpenClaw's app-tool-stream.ts (Lit) → React refs → shared.
  * Separates streaming state into three independent buffers:
  *   1. chatStream — current assistant text being streamed (replace-only)
  *   2. chatStreamSegments — committed text segments (frozen before tool calls)
@@ -10,39 +10,16 @@
  * The key insight: when a tool-start event arrives, the current chatStream
  * is committed to segments so it renders ABOVE the tool card. After the tool
  * completes, new chatStream text appears BELOW the tool card.
+ *
+ * Uses MutableRef<T> (= { current: T }) instead of React.MutableRefObject
+ * so both React refs and plain objects work.
  */
 
-import type { MutableRefObject } from "react";
-import type { ToolCall } from "@intelli-claw/shared";
+import type { ToolCall } from "./protocol";
+import type { ToolStreamRefs, ToolStreamEntry } from "./chat-stream-types";
 
-// ── Types ──────────────────────────────────────────────────────────────
-
-export type ToolStreamEntry = {
-  toolCallId: string;
-  runId?: string;
-  sessionKey?: string;
-  name: string;
-  args?: string;
-  output?: string;
-  startedAt: number;
-  updatedAt: number;
-};
-
-/** The 6-ref structure replacing the old single streamBuf ref. */
-export type ToolStreamRefs = {
-  /** Current in-flight assistant text (replace-only from chat delta). */
-  chatStream: MutableRefObject<string | null>;
-  /** ID of the streaming assistant message. */
-  chatStreamId: MutableRefObject<string | null>;
-  /** Timestamp when current chat stream started. */
-  chatStreamStartedAt: MutableRefObject<number | null>;
-  /** Committed text segments — frozen when a tool starts. */
-  chatStreamSegments: MutableRefObject<Array<{ text: string; ts: number }>>;
-  /** Tool calls indexed by toolCallId. */
-  toolStreamById: MutableRefObject<Map<string, ToolStreamEntry>>;
-  /** Ordered list of toolCallIds for display. */
-  toolStreamOrder: MutableRefObject<string[]>;
-};
+// Re-export types for convenience
+export type { ToolStreamRefs, ToolStreamEntry };
 
 // ── Core operations ────────────────────────────────────────────────────
 

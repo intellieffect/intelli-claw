@@ -9,7 +9,6 @@ import {
 } from "react";
 import { getMimeType } from "@/lib/mime-types";
 import { windowStoragePrefix } from "@/lib/utils";
-import { usePageVisibility } from "@/lib/hooks/use-page-visibility";
 import { validateMediaPath, sanitizeAttachmentPath } from "@/lib/platform/media-path";
 import { platform } from "@/lib/platform";
 import type {
@@ -17,19 +16,34 @@ import type {
   Session,
   ChatMessage,
   ToolCall,
-  ContentPart,
 } from "@intelli-claw/shared";
-import { extractThinking } from "@intelli-claw/shared";
 
 import {
   type ToolStreamRefs,
   type ToolStreamEntry,
+  type DisplayMessage,
+  type DisplayAttachment,
+  type AgentStatus,
+  type ReplyTo,
+  type SystemInjectedType,
   resetAllStreamRefs,
   commitChatStreamToSegment,
   hasActiveStream,
   buildStreamContent,
   buildStreamToolCalls,
-} from "./tool-stream";
+  HIDDEN_REPLY_RE,
+  INTERNAL_PROMPT_RE,
+  TRAILING_CONTROL_TOKEN_RE,
+  stripTrailingControlTokens,
+  stripInboundMeta,
+  isHiddenMessage,
+  shouldSuppressStreamingPreview,
+  isChatStopCommand,
+  isChatResetCommand,
+  normalizeContentForDedup,
+  deduplicateMessages,
+  mergeConsecutiveAssistant,
+} from "@intelli-claw/shared";
 
 // Re-export everything from shared for backward compatibility
 export {
@@ -42,6 +56,29 @@ export {
   DEFAULT_GATEWAY_URL,
   type GatewayConfig,
   type SessionResetEvent,
+} from "@intelli-claw/shared";
+
+// Re-export shared streaming types & utilities for backward compatibility
+export {
+  type DisplayMessage,
+  type DisplayAttachment,
+  type AgentStatus,
+  type ReplyTo,
+  type SystemInjectedType,
+  type ToolStreamRefs,
+  type ToolStreamEntry,
+  HIDDEN_REPLY_RE,
+  INTERNAL_PROMPT_RE,
+  TRAILING_CONTROL_TOKEN_RE,
+  stripTrailingControlTokens,
+  stripInboundMeta,
+  isHiddenMessage,
+  shouldSuppressStreamingPreview,
+  isChatStopCommand,
+  isChatResetCommand,
+  normalizeContentForDedup,
+  deduplicateMessages,
+  mergeConsecutiveAssistant,
 } from "@intelli-claw/shared";
 
 import {
@@ -73,66 +110,7 @@ import {
 
 import { getTopicHistory } from "./topic-store";
 
-// --- Chat command utilities (#251) ---
-
-/** Check if user input is a stop/abort command. */
-export function isChatStopCommand(text: string): boolean {
-  const t = text.trim().toLowerCase();
-  if (!t) return false;
-  return t === "/stop" || t === "stop" || t === "abort" || t === "/abort";
-}
-
-/** Check if user input is a session reset command. Returns message text after command if present. */
-export function isChatResetCommand(text: string): { reset: boolean; message?: string } {
-  const t = text.trim();
-  if (!t) return { reset: false };
-  if (/^\/new(\s|$)/i.test(t)) return { reset: true, message: t.slice(4).trim() || undefined };
-  if (/^\/reset(\s|$)/i.test(t)) return { reset: true, message: t.slice(6).trim() || undefined };
-  return { reset: false };
-}
-
-// --- Label Preservation (#216) ---
-
-export interface SessionLabelSnapshot {
-  key: string;
-  sessionId: string;
-  label?: string;
-}
-
-/**
- * Detect session resets and determine which labels need restoring.
- * Pure function extracted for testability (#216).
- *
- * @param trackedSessionIds - Previously known sessionIds per key
- * @param preservedLabels - Accumulated label cache (mutated in-place)
- * @param sessions - Current sessions from server
- * @returns labelsToRestore - Map of key → label to restore
- */
-export function detectLabelsToRestore(
-  trackedSessionIds: Map<string, string>,
-  preservedLabels: Map<string, string>,
-  sessions: SessionLabelSnapshot[],
-): Map<string, string> {
-  const labelsToRestore = new Map<string, string>();
-
-  for (const s of sessions) {
-    if (!s.key || !s.sessionId) continue;
-
-    if (s.label) {
-      preservedLabels.set(s.key, s.label);
-    }
-
-    const oldSessionId = trackedSessionIds.get(s.key);
-    if (oldSessionId && oldSessionId !== s.sessionId) {
-      const previousLabel = preservedLabels.get(s.key);
-      if (previousLabel && !s.label) {
-        labelsToRestore.set(s.key, previousLabel);
-      }
-    }
-  }
-
-  return labelsToRestore;
-}
+// Chat command utilities moved to @intelli-claw/shared (chat-stream-core.ts)
 
 // --- Web Config Persistence ---
 
@@ -240,7 +218,6 @@ export function useSessions() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(false);
   const lastRefreshAtRef = useRef(0);
-  const visible = usePageVisibility();
   const trackedSessionIdsRef = useRef<Map<string, string>>(new Map());
   /** Preserve user-set labels across session resets (#216) */
   const preservedLabelsRef = useRef<Map<string, string>>(new Map());
@@ -252,16 +229,30 @@ export function useSessions() {
       const res = await client.request<{ sessions: Array<Record<string, unknown>> }>("sessions.list", { limit: 200 });
 
       // #216: Detect session resets and preserve labels BEFORE updating UI state.
-      const sessionSnapshots: SessionLabelSnapshot[] = (res?.sessions || []).map((s) => ({
-        key: String(s.key || ""),
-        sessionId: s.sessionId ? String(s.sessionId) : "",
-        label: s.label ? String(s.label) : undefined,
-      }));
-      const labelsToRestore = detectLabelsToRestore(
-        trackedSessionIdsRef.current,
-        preservedLabelsRef.current,
-        sessionSnapshots,
-      );
+      // This ensures the UI never flashes an empty/wrong label on reset.
+      const labelsToRestore = new Map<string, string>();
+
+      for (const s of res?.sessions || []) {
+        const key = String(s.key || "");
+        const newSessionId = s.sessionId ? String(s.sessionId) : undefined;
+        if (!key || !newSessionId) continue;
+
+        const serverLabel = s.label ? String(s.label) : undefined;
+        const oldSessionId = trackedSessionIdsRef.current.get(key);
+
+        // Track non-empty labels so we can restore them if a reset clears them
+        if (serverLabel) {
+          preservedLabelsRef.current.set(key, serverLabel);
+        }
+
+        if (oldSessionId && oldSessionId !== newSessionId) {
+          // Session reset detected — check if label needs preservation
+          const previousLabel = preservedLabelsRef.current.get(key);
+          if (previousLabel && !serverLabel) {
+            labelsToRestore.set(key, previousLabel);
+          }
+        }
+      }
 
       const mapped = (res?.sessions || []).map((s) => {
         const key = String(s.key || "");
@@ -323,23 +314,10 @@ export function useSessions() {
           const existing = await getCurrentSessionId(key);
           if (!existing || existing !== newSessionId) {
             if (existing) {
-              // #216: On first poll after refresh, if session reset happened while offline,
-              // try to recover label from IndexedDB before marking the old session ended.
-              if (!serverLabel) {
-                try {
-                  const topics = await getTopicHistory(key);
-                  const prevTopic = topics.find((t) => t.sessionId === existing);
-                  if (prevTopic?.label) {
-                    labelsToRestore.set(key, prevTopic.label);
-                    preservedLabelsRef.current.set(key, prevTopic.label);
-                    client.request("sessions.patch", { key, label: prevTopic.label }).catch(() => {});
-                  }
-                } catch { /* best-effort */ }
-              }
               markSessionEnded(key, existing).catch(() => {});
             }
             trackSessionId(key, newSessionId, {
-              label: s.label ? String(s.label) : labelsToRestore.get(key),
+              label: s.label ? String(s.label) : undefined,
             }).catch(() => {});
           }
         }
@@ -385,14 +363,6 @@ export function useSessions() {
     return unsub;
   }, [client, refreshThrottled]);
 
-  // #260: Only run 15s polling when page is visible; refresh immediately on becoming visible
-  useEffect(() => {
-    if (state !== "connected" || !visible) return;
-    refreshThrottled();
-    const id = setInterval(() => { refreshThrottled(); }, 15000);
-    return () => clearInterval(id);
-  }, [state, visible, refreshThrottled]);
-
   const patchSession = useCallback((key: string, patch: Record<string, unknown>) => {
     setSessions((prev) => prev.map((s) => (s.key === key ? { ...s, ...patch } : s)));
   }, []);
@@ -401,171 +371,14 @@ export function useSessions() {
 }
 
 // --- Helpers ---
-
-export function stripInboundMeta(text: string): string {
-  let cleaned = text.replace(/Conversation info \(untrusted metadata\):\s*```json\s*\{[\s\S]*?\}\s*```\s*/g, "");
-  cleaned = cleaned.replace(/Sender \(untrusted metadata\):\s*```json\s*\{[\s\S]*?\}\s*```\s*/g, "");
-  cleaned = cleaned.replace(/OpenClaw runtime context \(internal\):[\s\S]*$/g, "");
-  // Only strip gateway-injected timestamp prefixes like [2024-01-15 10:30:45+09:00]
-  // Also handles day-prefixed format like [Sun 2026-03-08 10:45 GMT+9]
-  // Do NOT strip arbitrary bracketed text like [important], [TODO], etc. (#55)
-  cleaned = cleaned.replace(/^\[(?:\w{3}\s+)?\d{4}-\d{2}-\d{2}[\w\s\-:+]*\]\s*/g, "");
-  return cleaned.trim();
-}
+// stripInboundMeta moved to @intelli-claw/shared (chat-stream-core.ts)
 
 function stripTemplateVars(text: string): string {
   return text.replace(/\[\[[^\]]+\]\]\s*/g, "").trim();
 }
 
-/**
- * Image placeholder variants treated as equivalent for dedup (#115).
- * Optimistic UI may use "(첨부 파일)" while gateway stores "(image)".
- */
-const IMAGE_PLACEHOLDERS_DEDUP = new Set(["(image)", "(첨부 파일)", "(이미지)", ""]);
-
-export function normalizeContentForDedup(content: string): string {
-  // Keep normalization aligned across history merge + final dedup.
-  // #243: Strip MEDIA: markers before whitespace normalization so that
-  // streaming (already extracted) and inbound (raw) versions match.
-  let normalized = content.replace(/MEDIA:\S+/g, "").replace(/\s+/g, " ").trim();
-
-  // Normalize gateway-injected timestamp prefix on user messages
-  // e.g. "[2026-03-03 15:10:00+09:00] 질문" -> "질문"
-  normalized = normalized.replace(/^\[\d{4}-\d{2}-\d{2}[\w\s\-:+]*\]\s*/i, "");
-
-  // Normalize bridge/system wrappers that may vary by source
-  // e.g. "[System] ..." / "(System) ..." / "System: ..."
-  normalized = normalized.replace(/^\s*(?:\[System\]|\(System\)|System:)\s*/i, "");
-
-  // #243: Normalize spacing after punctuation — prevents dedup failure
-  // when line breaks vs spaces differ between streaming and inbound
-  normalized = normalized.replace(/([.!?。])\s*/g, "$1 ").trim();
-
-  if (IMAGE_PLACEHOLDERS_DEDUP.has(normalized)) return "(image)";
-
-  // #155: Use full content instead of truncating to 200 chars.
-  // Short messages use the normalized string directly.
-  // Long messages use a fast hash to keep comparison cost low
-  // while still distinguishing messages that share a 200-char prefix.
-  if (normalized.length <= 200) return normalized;
-  return `${normalized.slice(0, 120)}|H:${simpleHash(normalized)}|L:${normalized.length}`;
-}
-
-/**
- * Fast non-cryptographic hash for dedup fingerprinting (#155).
- * DJB2 variant — deterministic, collision-resistant enough for UI dedup.
- */
-function simpleHash(str: string): string {
-  let hash = 5381;
-  for (let i = 0; i < str.length; i++) {
-    hash = ((hash << 5) + hash + str.charCodeAt(i)) | 0;
-  }
-  return (hash >>> 0).toString(36);
-}
-
-/**
- * Deduplicate messages by role + normalized content + timestamp proximity.
- * Keeps the first occurrence (gateway messages should come first in the array).
- * Two messages are considered duplicates if they have the same role, similar
- * content (first 200 chars after normalization), and timestamps within 60s.
- * Image placeholder variants are normalized to prevent optimistic UI duplicates (#115).
- */
-/**
- * Build an attachment fingerprint for dedup comparison.
- * Uses attachment count + first dataUrl prefix (to distinguish different images)
- * while still matching optimistic vs server echo of the same image.
- * Returns empty string for messages with no attachments.
- */
-function attachmentFingerprint(attachments?: DisplayAttachment[]): string {
-  if (!attachments || attachments.length === 0) return "";
-  // Use count + sorted first 80 chars of each dataUrl/downloadUrl for identity
-  const keys = attachments
-    .map((a) => (a.dataUrl || a.downloadUrl || a.fileName || "").slice(0, 80))
-    .sort();
-  return `[${attachments.length}]${keys.join("|")}`;
-}
-
-export function deduplicateMessages<T extends { id: string; role: string; content: string; timestamp: string; attachments?: DisplayAttachment[] }>(
-  msgs: T[],
-): T[] {
-  const seen: Array<{ role: string; contentKey: string; attKey: string; ts: number }> = [];
-  return msgs.filter((m) => {
-    // Always keep session boundaries
-    if (m.role === "session-boundary") return true;
-    const contentKey = normalizeContentForDedup(m.content);
-    const attKey = attachmentFingerprint(m.attachments);
-    const ts = new Date(m.timestamp).getTime();
-    // For image placeholders (#115): if the current message OR a seen message
-    // has no attachments, it's likely an optimistic vs server echo mismatch.
-    // In that case, skip attachment comparison. If BOTH have attachments,
-    // still compare them to distinguish genuinely different images.
-    const isImagePlaceholder = IMAGE_PLACEHOLDERS_DEDUP.has(m.content.replace(/\s+/g, " ").trim());
-    const isDup = seen.some((s) => {
-      if (s.role !== m.role || s.contentKey !== contentKey) return false;
-      if (Math.abs(s.ts - ts) >= 60_000) return false;
-      // For image placeholders: skip att comparison if either side has no attachments
-      if (isImagePlaceholder && (!attKey || !s.attKey)) return true;
-      return s.attKey === attKey;
-    });
-    if (isDup) return false;
-    seen.push({ role: m.role, contentKey, attKey, ts });
-    return true;
-  });
-}
-
-/**
- * Merge consecutive assistant messages into a single message per turn (#189).
- *
- * Gateway chat.history returns a single agent turn as multiple assistant messages
- * (text segments between tool_use blocks), but streaming produces one merged message.
- * This ensures history matches streaming behavior, preventing duplicate display.
- */
-export function mergeConsecutiveAssistant(msgs: DisplayMessage[]): DisplayMessage[] {
-  if (msgs.length === 0) return [];
-  const result: DisplayMessage[] = [];
-  let accumulator: DisplayMessage | null = null;
-
-  for (const m of msgs) {
-    if (m.role === "assistant" && accumulator && accumulator.role === "assistant") {
-      // #255: Detect overlapping/cumulative content before merging.
-      // Gateway may return messages where each includes prior content (cumulative).
-      // Naive join("\n\n") would produce "A\n\nA B\n\nA B C" duplication.
-      const accTrimmed = accumulator.content.trimEnd();
-      const mTrimmed = m.content.trimEnd();
-      let mergedContent: string;
-      if (mTrimmed.startsWith(accTrimmed)) {
-        // New message is a superset of accumulator — use it directly
-        mergedContent = m.content;
-      } else if (accTrimmed.startsWith(mTrimmed)) {
-        // Accumulator already contains everything — keep it
-        mergedContent = accumulator.content;
-      } else {
-        // Truly separate content — join with separator
-        const parts = [accumulator.content, m.content].filter((s) => s.length > 0);
-        mergedContent = parts.join("\n\n");
-      }
-      accumulator = {
-        ...accumulator,
-        content: mergedContent,
-        toolCalls: [...accumulator.toolCalls, ...m.toolCalls],
-        attachments:
-          accumulator.attachments || m.attachments
-            ? [...(accumulator.attachments || []), ...(m.attachments || [])]
-            : undefined,
-        // #222: Merge thinking blocks from consecutive assistant messages
-        thinking:
-          accumulator.thinking || m.thinking
-            ? [...(accumulator.thinking || []), ...(m.thinking || [])]
-            : undefined,
-      };
-    } else {
-      if (accumulator) result.push(accumulator);
-      accumulator = { ...m };
-    }
-  }
-  if (accumulator) result.push(accumulator);
-  return result;
-}
+// normalizeContentForDedup, deduplicateMessages, mergeConsecutiveAssistant
+// moved to @intelli-claw/shared (message-utils.ts)
 
 /**
  * Check if an inbound user message duplicates an existing optimistic message.
@@ -589,13 +402,7 @@ function isDuplicateOfOptimistic(
 
 // --- useChat (web-specific: uses localStorage, platform, mime-types) ---
 
-export interface DisplayAttachment {
-  fileName: string;
-  mimeType: string;
-  dataUrl?: string;
-  downloadUrl?: string;
-  textContent?: string;
-}
+// DisplayAttachment type moved to @intelli-claw/shared (chat-stream-types.ts)
 
 export function extractMediaAttachments(text: string): { cleanedText: string; attachments: DisplayAttachment[] } {
   const MEDIA_RE = /^MEDIA:(.+)$/gm;
@@ -624,14 +431,7 @@ export function extractMediaAttachments(text: string): { cleanedText: string; at
   return { cleanedText, attachments };
 }
 
-export interface ReplyTo {
-  id: string;
-  content: string;
-  role: string;
-}
-
-/** Type of system-injected message detected from user-role content */
-export type SystemInjectedType = "compaction" | "memory-flush" | "generic";
+// ReplyTo, SystemInjectedType types moved to @intelli-claw/shared (chat-stream-types.ts)
 
 /**
  * Detect whether a message with the given role/content is a system-injected
@@ -654,27 +454,7 @@ export function detectSystemInjectedType(role: string, content: string): SystemI
   return null;
 }
 
-export interface DisplayMessage {
-  id: string;
-  role: "user" | "assistant" | "system" | "session-boundary";
-  content: string;
-  timestamp: string;
-  toolCalls: ToolCall[];
-  streaming?: boolean;
-  queued?: boolean;
-  attachments?: DisplayAttachment[];
-  oldSessionId?: string;
-  newSessionId?: string;
-  /** #156: Why the session was reset */
-  resetReason?: string;
-  replyTo?: ReplyTo;
-  /** #187: Type of system-injected message (for distinct rendering) */
-  systemType?: SystemInjectedType;
-  /** #242: True when this message represents an error/timeout notification */
-  isError?: boolean;
-  /** #222: Extracted thinking/reasoning blocks from the model */
-  thinking?: Array<{ text: string }>;
-}
+// DisplayMessage interface moved to @intelli-claw/shared (chat-stream-types.ts)
 
 /**
  * During reconnect/history refresh, keep in-flight streaming messages visible
@@ -721,16 +501,7 @@ export function shouldDeferHistoryReload(hasStreamingState: boolean): boolean {
   return hasStreamingState;
 }
 
-/**
- * Suppress short control-token prefixes during streaming to avoid transient
- * flashes like "N" or "NO" before hidden-message filtering fully resolves.
- */
-export function shouldSuppressStreamingPreview(text: string): boolean {
-  const t = text.trim();
-  if (!t) return false;
-  if (HIDDEN_REPLY_RE.test(t)) return true;
-  return /^(N|NO|NO_|NO_R|NO_RE|NO_REP|NO_REPL|NO_REPLY|H|HE|HEA|HEAR|HEART|HEARTB|HEARTBE|HEARTBEA|HEARTBEAT|HEARTBEAT_|HEARTBEAT_O|HEARTBEAT_OK|R|RE|REP|REPL|REPLY|REPLY_|REPLY_S|REPLY_SK|REPLY_SKI|REPLY_SKIP)$/i.test(t);
-}
+// shouldSuppressStreamingPreview moved to @intelli-claw/shared (chat-stream-core.ts)
 
 const PENDING_STREAM_SESSION_KEY_PREFIX = "awf:pending-stream:";
 const PENDING_STREAM_TTL_MS = 45_000;
@@ -790,31 +561,8 @@ export function finalEventKey(runId: string | null | undefined): string | null {
   return `run:${runId}`;
 }
 
-export type AgentStatus =
-  | { phase: "idle" }
-  | { phase: "thinking" }
-  | { phase: "writing" }
-  | { phase: "tool"; toolName: string }
-  | { phase: "waiting" };
-
-/**
- * Patterns for messages that should be hidden from the chat UI.
- * Used in both streaming completion, history load, and display-layer filtering.
- */
-export const HIDDEN_REPLY_RE = /^(NO_REPLY|REPLY_SKIP|HEARTBEAT_OK|NO_?)\s*$|Pre-compaction memory flush|^Read HEARTBEAT\.md|reply with NO_REPLY|Store durable memories now|(?:\[System\]|\(System\)|System:)\s*이전 세션이 컨텍스트 한도로 갱신|^이전 세션이 컨텍스트 한도로 갱신되었습니다\.\s*아래는 최근 대화 요약입니다\.|\[이전 세션 맥락\]/;
-
-/**
- * Internal orchestration messages that should be hidden from the main chat.
- * These are subagent task prompts, coordination messages, etc. injected by
- * the gateway into the session history as user messages.
- */
-export const INTERNAL_PROMPT_RE = /\[Subagent Context\]|\[Subagent Task\]|\[Request interrupted by user\]|You are running as a subagent/;
-
-/** Strip trailing control tokens from message content for display */
-export const TRAILING_CONTROL_TOKEN_RE = /\n{1,2}(REPLY_SKIP|NO_REPLY|HEARTBEAT_OK)\s*$/;
-export function stripTrailingControlTokens(text: string): string {
-  return text.replace(TRAILING_CONTROL_TOKEN_RE, "").trim();
-}
+// AgentStatus, HIDDEN_REPLY_RE, INTERNAL_PROMPT_RE, TRAILING_CONTROL_TOKEN_RE,
+// stripTrailingControlTokens moved to @intelli-claw/shared
 
 // --- Reply/Quote Helpers ---
 
@@ -823,18 +571,6 @@ export function truncateForPreview(content: string, maxLen = 100): string {
   const oneLine = content.replace(/\n/g, " ").trim();
   if (oneLine.length <= maxLen) return oneLine;
   return oneLine.slice(0, maxLen - 1) + "…";
-}
-
-/**
- * Extract thinking blocks from message content (#222).
- * Wraps extractThinking from shared, returning thinking array and any
- * accumulated thinking text (for streaming compatibility).
- */
-export function extractThinkingFromContent(
-  content: string | ContentPart[] | Array<Record<string, unknown>>,
-): { thinking: Array<{ text: string }>; cleanContent: string } {
-  const result = extractThinking(content as string | ContentPart[]);
-  return { thinking: result.thinking, cleanContent: result.cleanContent };
 }
 
 /** Check if a message can be used as a reply target */
@@ -875,8 +611,6 @@ export function useChat(sessionKey?: string) {
   const toolStreamByIdRef = useRef<Map<string, ToolStreamEntry>>(new Map());
   const toolStreamOrderRef = useRef<string[]>([]);
   const streamIdCounter = useRef(0);
-  /** #222: Accumulated thinking blocks during streaming */
-  const streamingThinkingRef = useRef<Array<{ text: string }>>([]);
 
   // Convenience handle to pass all 6 refs to tool-stream.ts utilities
   const streamRefsHandle = useRef<ToolStreamRefs>({
@@ -905,16 +639,13 @@ export function useChat(sessionKey?: string) {
   const pendingHistoryReloadRef = useRef(false);
   const reconnectSafetyRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const finalizedEventKeysRef = useRef<Set<string>>(new Set());
-  // #155 / #218: Track recently finalized stream messages so loadHistory can skip duplicates.
-  // Store both ID and normalized content for robust matching even when gateway
-  // returns slightly different content (e.g. after mergeConsecutiveAssistant).
+  // #155: Track recently finalized stream IDs so loadHistory can skip duplicates
   const finalizedStreamIdsRef = useRef<Set<string>>(new Set());
-  const finalizedStreamContentRef = useRef<Map<string, { contentKey: string; ts: number }>>(new Map());
   const messagesRef = useRef<DisplayMessage[]>([]);
   // Throttle streaming UI updates to once per animation frame
   const streamRafRef = useRef<number | null>(null);
   const pendingStreamUpdate = useRef<(() => void) | null>(null);
-
+  const sendContextBridgeRef = useRef<(() => Promise<void>) | null>(null);
   const buildContextSummaryRef = useRef<(() => string | null) | null>(null);
 
   // Stable per-tab device identifier for cross-device message dedup (#120)
@@ -1198,7 +929,6 @@ export function useChat(sessionKey?: string) {
         runIdRef.current = null;
         finalizedEventKeysRef.current.clear();
         finalizedStreamIdsRef.current.clear();
-        finalizedStreamContentRef.current.clear();
         abortedRef.current = false;
 
       }
@@ -1306,25 +1036,13 @@ export function useChat(sessionKey?: string) {
           let textContent = '';
           const imgAttachments: DisplayAttachment[] = [];
 
-          // #222: Extract thinking blocks from content
-          let thinkingBlocks: Array<{ text: string }> = [];
-
           if (typeof m.content === 'string') {
-            const extracted = extractThinkingFromContent(m.content);
-            thinkingBlocks = extracted.thinking;
-            textContent = extracted.thinking.length > 0
-              ? extracted.cleanContent
-              : m.content;
+            textContent = m.content;
           } else if (Array.isArray(m.content)) {
             const parts = m.content as Array<Record<string, unknown>>;
             const hasToolUse = parts.some(p => p.type === 'tool_use');
-
-            // Extract thinking blocks first
-            const extracted = extractThinkingFromContent(parts);
-            thinkingBlocks = extracted.thinking;
-
             for (const p of parts) {
-              // #222: Skip thinking — already extracted above
+              // #249: Skip thinking content blocks — strip from display
               if (p.type === 'thinking') continue;
               if (p.type === 'text' && typeof p.text === 'string') {
                 if (hasToolUse && m.role === 'assistant') {
@@ -1406,7 +1124,6 @@ export function useChat(sessionKey?: string) {
             toolCalls: m.toolCalls || [],
             attachments: allAttachments.length > 0 ? allAttachments : undefined,
             systemType: systemType ?? undefined,
-            thinking: thinkingBlocks.length > 0 ? thinkingBlocks : undefined,
           };
         })
         .filter((m) => {
@@ -1620,45 +1337,19 @@ export function useChat(sessionKey?: string) {
       }
       mergedMsgs = mergeLiveStreamingIntoHistory(mergedMsgs, liveStreaming);
 
-      // #155 / #218: Remove finalized stream messages that now have a gateway equivalent.
+      // #155: Remove finalized stream messages that now have a gateway equivalent.
       // After finalizeActiveStream, both the finalized msg (stream-...) and the
       // gateway version (hist-N) can coexist. Remove the stream version if
       // a gateway message with matching content already exists.
-      //
-      // #218 enhancement: Also use prefix + timestamp proximity matching to catch
-      // cases where mergeConsecutiveAssistant produces slightly different content
-      // (e.g. tool-call text blocks included/excluded).
       if (finalizedStreamIdsRef.current.size > 0 && dedupedHistMsgs.length > 0) {
         const gwContentKeys = new Set(
           dedupedHistMsgs.map((m) => `${m.role}:${normalizeContentForDedup(m.content)}`),
         );
-        // #218: Build gateway entries with prefix + timestamp for fuzzy matching
-        const gwEntries = dedupedHistMsgs.map((m) => ({
-          role: m.role,
-          contentKey: normalizeContentForDedup(m.content),
-          ts: new Date(m.timestamp).getTime(),
-        }));
         mergedMsgs = mergedMsgs.filter((m) => {
           if (!finalizedStreamIdsRef.current.has(m.id)) return true;
-          // Exact content match
+          // Keep if no gateway equivalent exists (gateway hasn't caught up yet)
           const key = `${m.role}:${normalizeContentForDedup(m.content)}`;
-          if (gwContentKeys.has(key)) return false;
-          // #218: Fuzzy match — same role, close timestamp (< 30s), and content
-          // shares a meaningful prefix (first 80 chars). Catches tool-call merge
-          // discrepancies where gateway content differs slightly from streaming.
-          const finalized = finalizedStreamContentRef.current.get(m.id);
-          if (finalized) {
-            const prefix = finalized.contentKey.slice(0, 80);
-            if (prefix.length >= 20) {
-              const fuzzyMatch = gwEntries.some((g) =>
-                g.role === m.role &&
-                Math.abs(g.ts - finalized.ts) < 30_000 &&
-                g.contentKey.slice(0, 80) === prefix
-              );
-              if (fuzzyMatch) return false;
-            }
-          }
-          return true;
+          return !gwContentKeys.has(key);
         });
       }
 
@@ -1900,7 +1591,6 @@ export function useChat(sessionKey?: string) {
         setMessages((prev) => prev.filter((m) => m.id !== finalId));
       } else {
         setMessages((prev) => {
-          const finalThinking = streamingThinkingRef.current.length > 0 ? [...streamingThinkingRef.current] : undefined;
           const idx = prev.findIndex((m) => m.id === finalId);
           if (idx >= 0) {
             const next = [...prev];
@@ -1910,7 +1600,6 @@ export function useChat(sessionKey?: string) {
               toolCalls: finalTools,
               streaming: false,
               attachments: finalAttachments || next[idx].attachments,
-              thinking: finalThinking || next[idx].thinking,
             };
             return next;
           }
@@ -1924,7 +1613,6 @@ export function useChat(sessionKey?: string) {
               toolCalls: finalTools,
               streaming: false,
               attachments: finalAttachments,
-              thinking: finalThinking,
             },
           ];
         });
@@ -1942,24 +1630,12 @@ export function useChat(sessionKey?: string) {
         }]).catch(() => {});
       }
 
-      // #155 / #218: Record finalized stream ID + content so loadHistory won't re-add it.
-      // Content is stored for robust matching when gateway returns slightly different
-      // content after mergeConsecutiveAssistant (tool-call boundaries differ).
+      // #155: Record finalized stream ID so loadHistory won't re-add it
       finalizedStreamIdsRef.current.add(finalId);
-      const finalContentKey = normalizeContentForDedup(finalContent);
-      finalizedStreamContentRef.current.set(finalId, {
-        contentKey: finalContentKey,
-        ts: Date.now(),
-      });
-      // Auto-expire after 60s (increased from 30s — #218: slow loadHistory could
-      // arrive after TTL expiry, re-introducing the duplicate).
-      setTimeout(() => {
-        finalizedStreamIdsRef.current.delete(finalId);
-        finalizedStreamContentRef.current.delete(finalId);
-      }, 60_000);
+      // Auto-expire after 30s to prevent unbounded growth
+      setTimeout(() => finalizedStreamIdsRef.current.delete(finalId), 30_000);
 
       resetAllStreamRefs(streamRefs);
-      streamingThinkingRef.current = [];
       runIdRef.current = null;
       clearPersistedPendingStream();
       flushDeferredHistoryReload();
@@ -1995,57 +1671,15 @@ export function useChat(sessionKey?: string) {
           const chatMsg = chatPayload.message as Record<string, unknown> | undefined;
           if (chatMsg) {
             let text = '';
-            let deltaThinking: Array<{ text: string }> = [];
             if (typeof chatMsg.content === 'string') {
-              const ext = extractThinkingFromContent(chatMsg.content);
-              deltaThinking = ext.thinking;
-              text = ext.thinking.length > 0
-                ? ext.cleanContent
-                : chatMsg.content;
+              text = chatMsg.content;
             } else if (Array.isArray(chatMsg.content)) {
               const parts = chatMsg.content as Array<Record<string, unknown>>;
-              // #222: Extract thinking blocks from delta
-              const ext = extractThinkingFromContent(parts);
-              deltaThinking = ext.thinking;
               for (const p of parts) {
                 if (p.type === 'thinking') continue;
                 if (p.type === 'text' && typeof p.text === 'string') {
                   text += p.text;
                 }
-              }
-            }
-            // #222: Update streaming thinking ref (cumulative — replace if more blocks)
-            if (deltaThinking.length > 0) {
-              streamingThinkingRef.current = deltaThinking;
-            }
-            // When only thinking arrives (no text yet), show the thinking indicator
-            if (!text && deltaThinking.length > 0) {
-              if (!chatStreamIdRef.current) {
-                chatStreamIdRef.current = `stream-${Date.now()}-${++streamIdCounter.current}`;
-                chatStreamRef.current = "";
-                chatStreamStartedAtRef.current = Date.now();
-              }
-              setStreaming(true);
-              startStreamingTimeout("thinking");
-              setAgentStatusDebug({ phase: "thinking" });
-              if (!streamRafRef.current) {
-                streamRafRef.current = requestAnimationFrame(() => {
-                  streamRafRef.current = null;
-                  const curId = chatStreamIdRef.current;
-                  if (!curId) return;
-                  setMessages((prev) => {
-                    const existing = prev.findIndex((m) => m.id === curId);
-                    const msg: DisplayMessage = {
-                      id: curId, role: "assistant", content: "",
-                      timestamp: new Date().toISOString(),
-                      toolCalls: [],
-                      streaming: true,
-                      thinking: streamingThinkingRef.current.length > 0 ? [...streamingThinkingRef.current] : undefined,
-                    };
-                    if (existing >= 0) { const next = [...prev]; next[existing] = msg; return next; }
-                    return [...prev, msg];
-                  });
-                });
               }
             }
             if (text && !shouldSuppressStreamingPreview(text)) {
@@ -2090,7 +1724,6 @@ export function useChat(sessionKey?: string) {
                         timestamp: new Date().toISOString(),
                         toolCalls: curTools,
                         streaming: true, attachments: curAttachments ?? prevAttachments,
-                        thinking: streamingThinkingRef.current.length > 0 ? [...streamingThinkingRef.current] : undefined,
                       };
                       if (existing >= 0) { const next = [...prev]; next[existing] = msg; return next; }
                       return [...prev, msg];
@@ -2719,7 +2352,18 @@ export function useChat(sessionKey?: string) {
     return full.length > 4000 ? full.slice(0, 3997) + "…" : full;
   }, [messages]);
 
-  // Keep ref in sync so the mount-time onSessionReset handler sees the latest closure
+  const sendContextBridge = useCallback(async () => {
+    if (!client || state !== "connected" || !sessionKey) return;
+    const summary = buildContextSummary();
+    if (!summary) return;
+    try {
+      await client.request("chat.send", { message: summary, idempotencyKey: `context-bridge-${Date.now()}`, sessionKey });
+      console.log("[AWF] Context bridge sent to new session");
+    } catch (err) { console.error("[AWF] Context bridge send error:", err); }
+  }, [client, state, sessionKey, buildContextSummary]);
+
+  // Keep refs in sync so the mount-time onSessionReset handler sees the latest closures
+  useEffect(() => { sendContextBridgeRef.current = sendContextBridge; }, [sendContextBridge]);
   useEffect(() => { buildContextSummaryRef.current = buildContextSummary; }, [buildContextSummary]);
 
   useEffect(() => {
@@ -2759,7 +2403,7 @@ export function useChat(sessionKey?: string) {
   return {
     messages, streaming, loading, agentStatus,
     sendMessage, sendCommand, addUserMessage, addLocalMessage, clearMessages,
-    cancelQueued, abort, reload: loadHistory,
+    cancelQueued, abort, reload: loadHistory, sendContextBridge,
     replyingTo, setReplyTo, clearReplyTo,
   };
 }

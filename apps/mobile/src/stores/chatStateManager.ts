@@ -2,33 +2,48 @@
  * Central chat state manager — owns per-session state and processes gateway
  * events so that multiple screens can subscribe without duplicating listeners.
  *
- * Migrated from apps/mobile/src/hooks/useChat.ts event handling logic.
+ * Uses shared streaming utilities from @intelli-claw/shared for consistent
+ * behavior between web and mobile (3-buffer architecture, hidden message
+ * filtering, internal prompt suppression).
  */
 import type {
   GatewayClient,
   EventFrame,
   ChatMessage,
   ToolCall,
+  DisplayMessage,
+  AgentStatus,
+  ToolStreamEntry,
+  ToolStreamRefs,
 } from "@intelli-claw/shared";
 
-// ─── Re-export types originally defined in useChat ───
+import {
+  isHiddenMessage,
+  stripInboundMeta,
+  stripTrailingControlTokens,
+  INTERNAL_PROMPT_RE,
+  resetAllStreamRefs,
+  commitChatStreamToSegment,
+  hasActiveStream,
+  buildStreamContent,
+  buildStreamToolCalls,
+} from "@intelli-claw/shared";
 
-export interface DisplayMessage {
-  id: string;
-  role: "user" | "assistant" | "system";
-  content: string;
-  timestamp: string;
-  toolCalls: ToolCall[];
-  streaming?: boolean;
-  /** Local image URIs for user-sent attachments (display only) */
-  imageUris?: string[];
+// Re-export shared types for mobile consumers
+export type { DisplayMessage, AgentStatus } from "@intelli-claw/shared";
+
+// ─── 3-buffer streaming state (plain objects compatible with shared ToolStreamRefs) ───
+
+function createStreamRefs(): ToolStreamRefs {
+  return {
+    chatStream: { current: null },
+    chatStreamId: { current: null },
+    chatStreamStartedAt: { current: null },
+    chatStreamSegments: { current: [] },
+    toolStreamById: { current: new Map() },
+    toolStreamOrder: { current: [] },
+  };
 }
-
-export type AgentStatus =
-  | { phase: "idle" }
-  | { phase: "thinking" }
-  | { phase: "writing" }
-  | { phase: "tool"; toolName: string };
 
 // ─── Internal state per session ───
 
@@ -37,20 +52,12 @@ export interface ChatState {
   streaming: boolean;
   agentStatus: AgentStatus;
   loading: boolean;
-  // internal
-  streamBuf: {
-    id: string;
-    content: string;
-    toolCalls: Map<string, ToolCall>;
-  } | null;
+  // internal — 3-buffer streaming refs (shared ToolStreamRefs)
+  streamRefs: ToolStreamRefs;
   runId: string | null;
   historyLoaded: boolean;
   lastAccessedAt: number;
 }
-
-/** Messages matching this pattern are housekeeping noise — hide from the user. */
-const HIDDEN_RE =
-  /^(NO_REPLY|HEARTBEAT_OK|NO_)\s*$|^System:|^\[System|Pre-compaction memory flush|^Read HEARTBEAT\.md|reply with NO_REPLY|Store durable memories now/;
 
 const STREAMING_TIMEOUT_MS = 45_000;
 
@@ -60,7 +67,7 @@ function createDefaultState(): ChatState {
     streaming: false,
     agentStatus: { phase: "idle" },
     loading: false,
-    streamBuf: null,
+    streamRefs: createStreamRefs(),
     runId: null,
     historyLoaded: false,
     lastAccessedAt: Date.now(),
@@ -74,6 +81,7 @@ export class ChatStateManager {
   private subscribers = new Map<string, Set<() => void>>();
   private eventUnsub: (() => void) | null = null;
   private streamingTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private streamIdCounter = 0;
 
   // ── GatewayClient binding ──
 
@@ -151,7 +159,12 @@ export class ChatStateManager {
               : Array.isArray(blocks)
                 ? blocks.map((b: any) => b?.text || "").join("")
                 : String(m.content || "");
-          return !HIDDEN_RE.test(raw.trim());
+          // Use shared isHiddenMessage for consistent filtering
+          if (isHiddenMessage(m.role, raw)) return false;
+          // Filter internal orchestration prompts (#255)
+          if (m.role === "user" && INTERNAL_PROMPT_RE.test(raw.trim()))
+            return false;
+          return true;
         })
         .map((m, i) => {
           const blocks = m.content as any;
@@ -161,6 +174,8 @@ export class ChatStateManager {
               : Array.isArray(blocks)
                 ? blocks.map((b: any) => b?.text || "").join("")
                 : String(m.content || "");
+          text = stripInboundMeta(text);
+          text = stripTrailingControlTokens(text);
           text = text.replace(/\n{3,}/g, "\n\n").trim();
           return {
             id: `hist-${i}`,
@@ -234,10 +249,89 @@ export class ChatStateManager {
   }
 
   // ══════════════════════════════════════════════════════════════════════
-  // Private — event handling (migrated from useChat.ts lines 130-283)
+  // Private — event handling
   // ══════════════════════════════════════════════════════════════════════
 
   private handleEvent(frame: EventFrame): void {
+    // ── Chat events (text streaming) ──
+    if (frame.event === "chat") {
+      const chatPayload = frame.payload as Record<string, unknown>;
+      const chatState = chatPayload.state as string | undefined;
+      const chatSessionKey = chatPayload.sessionKey as string | undefined;
+      if (!chatSessionKey) return;
+
+      if (chatState === "delta") {
+        const text = chatPayload.text as string | undefined;
+        if (!text) return;
+
+        this.mutate(chatSessionKey, (s) => {
+          s.streaming = true;
+          s.agentStatus = { phase: "writing" };
+
+          if (!s.streamRefs.chatStreamId.current) {
+            s.streamRefs.chatStreamId.current = `stream-${Date.now()}-${++this.streamIdCounter}`;
+            s.streamRefs.chatStreamStartedAt.current = Date.now();
+          }
+          s.streamRefs.chatStream.current =
+            (s.streamRefs.chatStream.current || "") + text;
+
+          const snapId = s.streamRefs.chatStreamId.current;
+          const snapContent = buildStreamContent(s.streamRefs);
+          const snapTools = buildStreamToolCalls(s.streamRefs);
+          const msg: DisplayMessage = {
+            id: snapId,
+            role: "assistant",
+            content: snapContent,
+            timestamp: new Date().toISOString(),
+            toolCalls: snapTools,
+            streaming: true,
+          };
+          const idx = s.messages.findIndex((m) => m.id === snapId);
+          if (idx >= 0) {
+            s.messages = [...s.messages];
+            s.messages[idx] = msg;
+          } else {
+            s.messages = [...s.messages, msg];
+          }
+        });
+
+        this.startStreamingTimeout(chatSessionKey);
+      } else if (chatState === "final") {
+        this.finalizeStream(chatSessionKey);
+      } else if (chatState === "error") {
+        this.clearStreamingTimeout(chatSessionKey);
+        const errMsg = String(
+          chatPayload.errorMessage || chatPayload.error || "Chat error",
+        );
+
+        this.mutate(chatSessionKey, (s) => {
+          s.streaming = false;
+          s.agentStatus = { phase: "idle" };
+          s.runId = null;
+
+          if (hasActiveStream(s.streamRefs)) {
+            const errId = s.streamRefs.chatStreamId.current;
+            if (errId) {
+              s.messages = s.messages.map((m) =>
+                m.id === errId
+                  ? {
+                      ...m,
+                      content: m.content + `\n\n**Error:** ${errMsg}`,
+                      streaming: false,
+                    }
+                  : m,
+              );
+            }
+            resetAllStreamRefs(s.streamRefs);
+          }
+        });
+      } else if (chatState === "aborted") {
+        this.finalizeStream(chatSessionKey);
+      }
+      return;
+    }
+
+    // ── Agent events (tool calls, lifecycle) ──
     if (frame.event !== "agent") return;
 
     const raw = frame.payload as Record<string, unknown>;
@@ -252,78 +346,50 @@ export class ChatStateManager {
 
     const sessionKey = evtSessionKey;
 
-    // ── assistant text delta ──
-    if (
-      stream === "assistant" &&
-      (typeof data?.delta === "string" || typeof data?.text === "string")
-    ) {
-      const chunk =
-        (data?.delta as string | undefined) ?? (data?.text as string);
+    // #255: Agent events do NOT handle stream === "assistant" text.
+    // Following OpenClaw architecture: assistant text is handled exclusively
+    // by the chat event handler above. The gateway sends both agent + chat
+    // events for assistant text; processing both causes content duplication.
 
-      this.mutate(sessionKey, (s) => {
-        s.streaming = true;
-        s.agentStatus = { phase: "writing" };
-
-        if (!s.streamBuf) {
-          s.streamBuf = {
-            id: `stream-${Date.now()}`,
-            content: "",
-            toolCalls: new Map(),
-          };
-        }
-        s.streamBuf.content += chunk;
-
-        const snap = s.streamBuf;
-        const msg: DisplayMessage = {
-          id: snap.id,
-          role: "assistant",
-          content: snap.content,
-          timestamp: new Date().toISOString(),
-          toolCalls: Array.from(snap.toolCalls.values()),
-          streaming: true,
-        };
-        const idx = s.messages.findIndex((m) => m.id === snap.id);
-        if (idx >= 0) {
-          s.messages = [...s.messages];
-          s.messages[idx] = msg;
-        } else {
-          s.messages = [...s.messages, msg];
-        }
-      });
-
-      this.startStreamingTimeout(sessionKey);
-
-      // ── tool start ──
-    } else if (stream === "tool-start" && data) {
+    // ── tool start ──
+    if (stream === "tool-start" && data) {
       const callId = String(data.toolCallId || data.callId || "");
       const name = String(data.name || data.tool || "");
+      const args = data.args as string | undefined;
 
       this.mutate(sessionKey, (s) => {
         s.agentStatus = { phase: "tool", toolName: name };
 
-        if (!s.streamBuf) {
-          s.streamBuf = {
-            id: `stream-${Date.now()}`,
-            content: "",
-            toolCalls: new Map(),
-          };
-        }
-        s.streamBuf.toolCalls.set(callId, {
-          callId,
-          name,
-          status: "running",
-        });
+        // Commit current text to segments before tool starts (3-buffer pattern)
+        commitChatStreamToSegment(s.streamRefs);
 
-        const snap = s.streamBuf;
+        if (!s.streamRefs.chatStreamId.current) {
+          s.streamRefs.chatStreamId.current = `stream-${Date.now()}-${++this.streamIdCounter}`;
+          s.streamRefs.chatStreamStartedAt.current = Date.now();
+        }
+
+        const entry: ToolStreamEntry = {
+          toolCallId: callId,
+          name,
+          args,
+          startedAt: Date.now(),
+          updatedAt: Date.now(),
+        };
+        s.streamRefs.toolStreamById.current.set(callId, entry);
+        s.streamRefs.toolStreamOrder.current.push(callId);
+
+        const snapId = s.streamRefs.chatStreamId.current;
+        const snapContent = buildStreamContent(s.streamRefs);
+        const snapTools = buildStreamToolCalls(s.streamRefs);
         const msg: DisplayMessage = {
-          id: snap.id,
+          id: snapId,
           role: "assistant",
-          content: snap.content,
+          content: snapContent,
           timestamp: new Date().toISOString(),
-          toolCalls: Array.from(snap.toolCalls.values()),
+          toolCalls: snapTools,
           streaming: true,
         };
-        const idx = s.messages.findIndex((m) => m.id === snap.id);
+        const idx = s.messages.findIndex((m) => m.id === snapId);
         if (idx >= 0) {
           s.messages = [...s.messages];
           s.messages[idx] = msg;
@@ -340,20 +406,24 @@ export class ChatStateManager {
       this.mutate(sessionKey, (s) => {
         s.agentStatus = { phase: "thinking" };
 
-        if (s.streamBuf) {
-          const tc = s.streamBuf.toolCalls.get(callId);
-          if (tc) {
-            tc.status = "done";
-            tc.result = result;
-          }
-          const snap = s.streamBuf;
-          const idx = s.messages.findIndex((m) => m.id === snap.id);
-          if (idx >= 0) {
-            s.messages = [...s.messages];
-            s.messages[idx] = {
-              ...s.messages[idx],
-              toolCalls: Array.from(snap.toolCalls.values()),
-            };
+        const entry = s.streamRefs.toolStreamById.current.get(callId);
+        if (entry) {
+          entry.output = result;
+          entry.updatedAt = Date.now();
+        }
+
+        if (hasActiveStream(s.streamRefs)) {
+          const snapId = s.streamRefs.chatStreamId.current;
+          if (snapId) {
+            const snapTools = buildStreamToolCalls(s.streamRefs);
+            const idx = s.messages.findIndex((m) => m.id === snapId);
+            if (idx >= 0) {
+              s.messages = [...s.messages];
+              s.messages[idx] = {
+                ...s.messages[idx],
+                toolCalls: snapTools,
+              };
+            }
           }
         }
       });
@@ -367,72 +437,23 @@ export class ChatStateManager {
       });
       this.startStreamingTimeout(sessionKey);
 
-      // ── lifecycle end ──
+      // ── lifecycle end — only reset status, do NOT finalize stream ──
+      // Stream finalization is handled by chat "final" event.
     } else if (stream === "lifecycle" && data?.phase === "end") {
-      this.clearStreamingTimeout(sessionKey);
-
+      // No-op for stream finalization — chat "final" handles it.
+      // Only update lifecycle tracking.
       this.mutate(sessionKey, (s) => {
-        s.streaming = false;
-        s.agentStatus = { phase: "idle" };
         s.runId = null;
-
-        if (s.streamBuf) {
-          const finalId = s.streamBuf.id;
-          const finalContent = s.streamBuf.content;
-          const finalTools = Array.from(s.streamBuf.toolCalls.values());
-          if (HIDDEN_RE.test(finalContent.trim())) {
-            s.messages = s.messages.filter((m) => m.id !== finalId);
-          } else {
-            s.messages = s.messages.map((m) =>
-              m.id === finalId
-                ? {
-                    ...m,
-                    content: finalContent,
-                    toolCalls: finalTools,
-                    streaming: false,
-                  }
-                : m,
-            );
-          }
-          s.streamBuf = null;
-        }
       });
 
-      // ── done/end/finish (alternative end signals) ──
+      // ── done/end/finish (legacy alternative end signals) ──
     } else if (
       stream === "done" ||
       stream === "end" ||
       stream === "finish"
     ) {
-      this.clearStreamingTimeout(sessionKey);
-
-      this.mutate(sessionKey, (s) => {
-        s.streaming = false;
-        s.agentStatus = { phase: "idle" };
-        s.runId = null;
-
-        if (s.streamBuf) {
-          const finalId = s.streamBuf.id;
-          const finalContent =
-            (data?.text as string) || s.streamBuf.content;
-          const finalTools = Array.from(s.streamBuf.toolCalls.values());
-          if (HIDDEN_RE.test(finalContent.trim())) {
-            s.messages = s.messages.filter((m) => m.id !== finalId);
-          } else {
-            s.messages = s.messages.map((m) =>
-              m.id === finalId
-                ? {
-                    ...m,
-                    content: finalContent,
-                    toolCalls: finalTools,
-                    streaming: false,
-                  }
-                : m,
-            );
-          }
-          s.streamBuf = null;
-        }
-      });
+      // Legacy signals — finalize if no chat "final" was received
+      this.finalizeStream(sessionKey, data?.text as string | undefined);
 
       // ── error ──
     } else if (stream === "error") {
@@ -446,21 +467,65 @@ export class ChatStateManager {
         s.agentStatus = { phase: "idle" };
         s.runId = null;
 
-        if (s.streamBuf) {
-          const errId = s.streamBuf.id;
-          s.messages = s.messages.map((m) =>
-            m.id === errId
-              ? {
-                  ...m,
-                  content: m.content + `\n\n**Error:** ${errMsg}`,
-                  streaming: false,
-                }
-              : m,
-          );
-          s.streamBuf = null;
+        if (hasActiveStream(s.streamRefs)) {
+          const errId = s.streamRefs.chatStreamId.current;
+          if (errId) {
+            s.messages = s.messages.map((m) =>
+              m.id === errId
+                ? {
+                    ...m,
+                    content: m.content + `\n\n**Error:** ${errMsg}`,
+                    streaming: false,
+                  }
+                : m,
+            );
+          }
+          resetAllStreamRefs(s.streamRefs);
         }
       });
     }
+  }
+
+  /**
+   * Finalize the active stream — build final content, apply hidden message
+   * filtering, and reset streaming state.
+   */
+  private finalizeStream(
+    sessionKey: string,
+    overrideText?: string,
+  ): void {
+    this.clearStreamingTimeout(sessionKey);
+
+    this.mutate(sessionKey, (s) => {
+      s.streaming = false;
+      s.agentStatus = { phase: "idle" };
+      s.runId = null;
+
+      if (hasActiveStream(s.streamRefs)) {
+        const finalId = s.streamRefs.chatStreamId.current;
+        let finalContent = overrideText || buildStreamContent(s.streamRefs);
+        finalContent = stripTrailingControlTokens(finalContent);
+        const finalTools = buildStreamToolCalls(s.streamRefs);
+
+        if (finalId) {
+          if (isHiddenMessage("assistant", finalContent)) {
+            s.messages = s.messages.filter((m) => m.id !== finalId);
+          } else {
+            s.messages = s.messages.map((m) =>
+              m.id === finalId
+                ? {
+                    ...m,
+                    content: finalContent,
+                    toolCalls: finalTools,
+                    streaming: false,
+                  }
+                : m,
+            );
+          }
+        }
+        resetAllStreamRefs(s.streamRefs);
+      }
+    });
   }
 
   // ── Helpers ──
@@ -503,12 +568,14 @@ export class ChatStateManager {
           s.streaming = false;
           s.agentStatus = { phase: "idle" };
           s.runId = null;
-          if (s.streamBuf) {
-            const finalId = s.streamBuf.id;
-            s.messages = s.messages.map((m) =>
-              m.id === finalId ? { ...m, streaming: false } : m,
-            );
-            s.streamBuf = null;
+          if (hasActiveStream(s.streamRefs)) {
+            const finalId = s.streamRefs.chatStreamId.current;
+            if (finalId) {
+              s.messages = s.messages.map((m) =>
+                m.id === finalId ? { ...m, streaming: false } : m,
+              );
+            }
+            resetAllStreamRefs(s.streamRefs);
           }
         });
         this.streamingTimers.delete(sessionKey);
