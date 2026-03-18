@@ -1,4 +1,4 @@
-import { makeReq, parseFrame, type Frame, type ReqFrame, type ResFrame, type EventFrame, type ErrorShape, type ClientId, type ClientMode } from "./protocol";
+import { makeReq, parseFrame, type Frame, type ReqFrame, type ResFrame, type EventFrame, type ErrorShape, type ClientId, type ClientMode, type StateVersion, type PresenceEntry } from "./protocol";
 import { getCryptoAdapter } from "./device-identity";
 
 export type ConnectionState = "disconnected" | "connecting" | "authenticating" | "connected";
@@ -6,6 +6,30 @@ type EventHandler = (event: EventFrame) => void;
 type StateHandler = (state: ConnectionState, error?: ErrorShape | null) => void;
 
 export type InvokeHandler = (id: string, command: string, params: unknown) => Promise<unknown>;
+
+/** Connect error detail codes that indicate non-recoverable auth failures. */
+const NON_RECOVERABLE_AUTH_CODES = new Set([
+  "AUTH_TOKEN_MISSING",
+  "AUTH_PASSWORD_MISSING",
+  "AUTH_PASSWORD_MISMATCH",
+  "AUTH_RATE_LIMITED",
+  "PAIRING_REQUIRED",
+  "DEVICE_IDENTITY_REQUIRED",
+  "CONTROL_UI_DEVICE_IDENTITY_REQUIRED",
+]);
+
+/** WebSocket close code for service restart — reconnect without error. */
+const WS_CLOSE_SERVICE_RESTART = 1012;
+
+/**
+ * Check if an error is a non-recoverable auth error.
+ * These errors won't resolve without user action — don't auto-reconnect.
+ */
+export function isNonRecoverableAuthError(error: ErrorShape | null | undefined): boolean {
+  if (!error?.details || typeof error.details !== "object") return false;
+  const code = (error.details as { code?: string }).code;
+  return typeof code === "string" && NON_RECOVERABLE_AUTH_CODES.has(code);
+}
 
 export interface GatewayClientOptions {
   role?: "operator" | "node";
@@ -17,6 +41,8 @@ export interface GatewayClientOptions {
   scopes?: string[];
   displayName?: string;
   onInvoke?: InvokeHandler;
+  /** Called when an event sequence gap is detected. */
+  onGap?: (info: { expected: number; received: number }) => void;
 }
 type PendingReq = {
   resolve: (payload: unknown) => void;
@@ -50,35 +76,17 @@ export class GatewayClient {
   private intentionalClose = false;
   private wasConnected = false;
   private networkCleanup: (() => void) | null = null;
+  private lastSeq: number | null = null;
   public mainSessionKey = "";
   public serverVersion = "";
   public serverCommit = "";
   public lastError: ErrorShape | null = null;
   public canvasHostUrl = "";
+  public snapshotPresence: PresenceEntry[] = [];
+  public snapshotHealth: unknown = null;
+  public snapshotStateVersion: StateVersion | null = null;
+  public updateAvailable: unknown = null;
   private options: GatewayClientOptions;
-
-  private handleOnline = (): void => {
-    // Network came back — if we're disconnected (not intentionally), reconnect immediately
-    if (this.state === "disconnected" && !this.intentionalClose && this.wasConnected) {
-      this.clearReconnect();
-      this.reconnectAttempt = 0; // reset — network change is a fresh start
-      this.connect();
-    }
-  };
-
-  private handleVisibilityChange = (): void => {
-    if (
-      typeof document !== "undefined" &&
-      !document.hidden &&
-      this.state === "disconnected" &&
-      !this.intentionalClose &&
-      this.wasConnected
-    ) {
-      this.clearReconnect();
-      this.reconnectAttempt = 0;
-      this.connect();
-    }
-  };
 
   constructor(url: string, token: string, options?: GatewayClientOptions) {
     this.url = url;
@@ -100,13 +108,12 @@ export class GatewayClient {
     this.lastError = null;
     this.setupNetworkListeners();
     this.setState("connecting");
-    this.addBrowserListeners();
 
     try {
       this.ws = new WebSocket(this.url);
       this.ws.onopen = () => this.handleOpen();
       this.ws.onmessage = (e) => this.handleMessage(e);
-      this.ws.onclose = (e: any) => { console.error("[GW] ws closed code:", e?.code, "reason:", e?.reason, "clean:", e?.wasClean); this.handleClose(); };
+      this.ws.onclose = (e: any) => { console.error("[GW] ws closed code:", e?.code, "reason:", e?.reason, "clean:", e?.wasClean); this.handleClose(e?.code); };
       this.ws.onerror = (e: any) => { console.error("[GW] ws error:", e?.message || e?.type || JSON.stringify(e), "url:", this.url); };
     } catch {
       this.handleClose();
@@ -119,7 +126,6 @@ export class GatewayClient {
     this.clearAuthTimer();
     this.stopPing();
     this.teardownNetworkListeners();
-    this.removeBrowserListeners();
     if (this.ws) {
       this.ws.onclose = null;
       this.ws.close();
@@ -298,6 +304,22 @@ export class GatewayClient {
       return;
     }
 
+    // Track event sequence numbers and detect gaps
+    if (typeof frame.seq === "number") {
+      if (this.lastSeq !== null && frame.seq > this.lastSeq + 1) {
+        const expected = this.lastSeq + 1;
+        console.warn(`[GW] Event seq gap: expected ${expected}, got ${frame.seq}`);
+        this.options.onGap?.({ expected, received: frame.seq });
+        const gapFrame: EventFrame = {
+          type: "event",
+          event: "client.seq_gap",
+          payload: { expected, received: frame.seq },
+        };
+        this.eventHandlers.forEach((h) => h(gapFrame));
+      }
+      this.lastSeq = frame.seq;
+    }
+
     console.log("[AWF] Event:", frame.event, JSON.stringify(frame.payload).slice(0, 200));
     this.eventHandlers.forEach((h) => h(frame));
   }
@@ -328,6 +350,16 @@ export class GatewayClient {
       this.serverVersion = (server?.version as string) || "";
       this.serverCommit = (server?.commit as string) || "";
       this.canvasHostUrl = (payload?.canvasHostUrl as string) || "";
+
+      // Expanded snapshot fields (#251)
+      this.snapshotPresence = (snapshot?.presence as PresenceEntry[]) || [];
+      this.snapshotHealth = snapshot?.health ?? null;
+      this.snapshotStateVersion = (snapshot?.stateVersion as StateVersion) ?? null;
+      this.updateAvailable = payload?.updateAvailable ?? null;
+
+      // Reset seq tracking for new connection
+      this.lastSeq = null;
+
       const isReconnect = this.wasConnected;
       console.log("[AWF] hello-ok: mainSessionKey=", this.mainSessionKey, "version=", this.serverVersion, "commit=", this.serverCommit, isReconnect ? "(reconnect)" : "(initial)");
       this.reconnectAttempt = 0;
@@ -367,14 +399,28 @@ export class GatewayClient {
     }
   }
 
-  private handleClose(): void {
+  private handleClose(closeCode?: number): void {
     this.clearAuthTimer();
     this.stopPing();
     this.ws = null;
     this.rejectAll("Connection closed");
+
+    // 1012 = Service Restart: clean reconnect without error display
+    if (closeCode === WS_CLOSE_SERVICE_RESTART) {
+      this.setState("disconnected");
+      this.reconnectAttempt = 0;
+      this.scheduleReconnect();
+      return;
+    }
+
     this.setState("disconnected");
 
     if (!this.intentionalClose) {
+      // Don't reconnect for non-recoverable auth errors
+      if (isNonRecoverableAuthError(this.lastError)) {
+        console.warn("[GW] Non-recoverable auth error, not reconnecting:", this.lastError?.code);
+        return;
+      }
       this.scheduleReconnect();
     }
   }
@@ -506,30 +552,4 @@ export class GatewayClient {
     this.pending.clear();
   }
 
-  // --- Browser event listeners for mobile reconnection ---
-
-  private browserListenersAdded = false;
-
-  private addBrowserListeners(): void {
-    if (this.browserListenersAdded) return;
-    if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
-      window.addEventListener("online", this.handleOnline);
-      window.addEventListener("offline", () => {}); // reserved for future offline handling
-    }
-    if (typeof document !== "undefined" && typeof document.addEventListener === "function") {
-      document.addEventListener("visibilitychange", this.handleVisibilityChange);
-    }
-    this.browserListenersAdded = true;
-  }
-
-  private removeBrowserListeners(): void {
-    if (!this.browserListenersAdded) return;
-    if (typeof window !== "undefined" && typeof window.removeEventListener === "function") {
-      window.removeEventListener("online", this.handleOnline);
-    }
-    if (typeof document !== "undefined" && typeof document.removeEventListener === "function") {
-      document.removeEventListener("visibilitychange", this.handleVisibilityChange);
-    }
-    this.browserListenersAdded = false;
-  }
 }
