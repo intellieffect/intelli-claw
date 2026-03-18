@@ -497,6 +497,20 @@ export function MessageList({
     );
   }
 
+  // Group consecutive same-role messages (#224)
+  const groups = useMemo(() => groupMessages(visibleMessages), [visibleMessages]);
+
+  // Precompute flat-index offsets so each group knows its starting position
+  const groupStartIndices = useMemo(() => {
+    const indices: number[] = [];
+    let idx = 0;
+    for (const group of groups) {
+      indices.push(idx);
+      idx += group.messages.length;
+    }
+    return indices;
+  }, [groups]);
+
   if (messages.length === 0) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-3 text-muted-foreground">
@@ -520,62 +534,56 @@ export function MessageList({
             </div>
           </div>
         )}
-        {(() => {
-          // Group consecutive same-role messages (#224)
-          const groups = groupMessages(visibleMessages);
-          let flatIdx = 0; // tracks position in the flat visibleMessages array
-          return groups.map((group) => {
-            const startIdx = flatIdx;
-            const groupElements = group.messages.map((msg, posInGroup) => {
-              const idx = startIdx + posInGroup;
-              const isFirst = posInGroup === 0;
-              const isLast = posInGroup === group.messages.length - 1;
+        {groups.map((group, groupIdx) => {
+          const startIdx = groupStartIndices[groupIdx];
+          const groupElements = group.messages.map((msg, posInGroup) => {
+            const idx = startIdx + posInGroup;
+            const isFirst = posInGroup === 0;
+            const isLast = posInGroup === group.messages.length - 1;
 
-              if (msg.role === "session-boundary") {
-                return (
-                  <SessionBoundary
-                    key={msg.id}
-                    reason={(msg as DisplayMessage).resetReason}
-                    onLoadContext={onLoadPreviousContext}
-                    onViewHistory={onOpenTopicHistory}
-                  />
-                );
-              }
-
+            if (msg.role === "session-boundary") {
               return (
-                <MessageBubble
+                <SessionBoundary
                   key={msg.id}
-                  ref={(el) => {
-                    if (el) bubbleRefs.current.set(idx, el);
-                    else bubbleRefs.current.delete(idx);
-                  }}
-                  message={msg as DisplayMessage}
-                  showAvatar={isFirst}
-                  showTimestamp={isLast}
-                  onCancel={(msg as DisplayMessage).queued ? onCancelQueued : undefined}
-                  agentId={agentId}
-                  agentStatus={(msg as DisplayMessage).streaming ? agentStatus : undefined}
-                  focused={focusedIdx === idx}
-                  selected={selectedIndices.has(idx)}
-                  onReply={onReply}
+                  reason={msg.resetReason}
+                  onLoadContext={onLoadPreviousContext}
+                  onViewHistory={onOpenTopicHistory}
                 />
               );
-            });
-            flatIdx = startIdx + group.messages.length;
-
-            // Single-message groups (system, session-boundary, tool-call): no wrapper needed
-            if (group.messages.length === 1) {
-              return groupElements[0];
             }
 
-            // Multi-message group: wrap in a tight-spacing container
             return (
-              <div key={group.firstMessageId} className="flex flex-col gap-1">
-                {groupElements}
-              </div>
+              <MessageBubble
+                key={msg.id}
+                ref={(el) => {
+                  if (el) bubbleRefs.current.set(idx, el);
+                  else bubbleRefs.current.delete(idx);
+                }}
+                message={msg}
+                showAvatar={isFirst}
+                showTimestamp={isLast}
+                onCancel={msg.queued ? onCancelQueued : undefined}
+                agentId={agentId}
+                agentStatus={msg.streaming ? agentStatus : undefined}
+                focused={focusedIdx === idx}
+                selected={selectedIndices.has(idx)}
+                onReply={onReply}
+              />
             );
           });
-        })()}
+
+          // Single-message groups (system, session-boundary, tool-call): no wrapper needed
+          if (group.messages.length === 1) {
+            return groupElements[0];
+          }
+
+          // Multi-message group: wrap in a tight-spacing container
+          return (
+            <div key={group.firstMessageId} className="flex flex-col gap-1">
+              {groupElements}
+            </div>
+          );
+        })}
         {streaming && !messages.some(m => m.streaming) && <ThinkingIndicator agentId={agentId} />}
         <div ref={bottomRef} />
       </div>

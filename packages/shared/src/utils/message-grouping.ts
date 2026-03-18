@@ -23,9 +23,9 @@ export interface GroupableMessage {
   streaming?: boolean;
 }
 
-export interface MessageGroup {
+export interface MessageGroup<T extends GroupableMessage = GroupableMessage> {
   role: string;
-  messages: GroupableMessage[];
+  messages: T[];
   firstMessageId: string;
   lastTimestamp: string;
 }
@@ -65,11 +65,11 @@ function isStandalone(msg: GroupableMessage): boolean {
  * - `firstMessageId`: id of the first message (used for avatar)
  * - `lastTimestamp`: timestamp of the last message (used for time display)
  */
-export function groupMessages<T extends GroupableMessage>(messages: T[]): MessageGroup[] {
+export function groupMessages<T extends GroupableMessage>(messages: T[]): MessageGroup<T>[] {
   if (messages.length === 0) return [];
 
-  const groups: MessageGroup[] = [];
-  let currentGroup: MessageGroup | null = null;
+  const groups: MessageGroup<T>[] = [];
+  let currentGroup: MessageGroup<T> | null = null;
 
   for (const msg of messages) {
     const standalone = isStandalone(msg);

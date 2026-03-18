@@ -195,6 +195,45 @@ describe("groupMessages", () => {
     expect(groups[0].messages).toHaveLength(2);
   });
 
+  // ── Consecutive tool-call messages are each standalone ──
+
+  it("consecutive tool-call messages form separate groups", () => {
+    const m1 = msg({
+      id: "1",
+      role: "assistant",
+      toolCalls: [{ callId: "tc-1", name: "search", status: "done" }],
+      timestamp: "2025-01-01T00:00:00Z",
+    });
+    const m2 = msg({
+      id: "2",
+      role: "assistant",
+      toolCalls: [{ callId: "tc-2", name: "fetch", status: "done" }],
+      timestamp: "2025-01-01T00:00:05Z",
+    });
+
+    const groups = groupMessages([m1, m2]);
+    expect(groups).toHaveLength(2);
+    expect(groups[0].messages).toHaveLength(1);
+    expect(groups[0].firstMessageId).toBe("1");
+    expect(groups[1].messages).toHaveLength(1);
+    expect(groups[1].firstMessageId).toBe("2");
+  });
+
+  // ── Reverse timestamps ──
+
+  it("reverse timestamps (t2 < t1) do not trigger time gap split", () => {
+    const t1 = "2025-01-01T00:10:00Z";
+    const t2 = "2025-01-01T00:05:00Z"; // earlier than t1
+
+    const m1 = msg({ id: "1", role: "assistant", timestamp: t1 });
+    const m2 = msg({ id: "2", role: "assistant", timestamp: t2 });
+
+    const groups = groupMessages([m1, m2]);
+    // Negative difference (-5 min) is not > 5 min, so they should stay grouped
+    expect(groups).toHaveLength(1);
+    expect(groups[0].messages).toHaveLength(2);
+  });
+
   // ── Messages with missing/invalid timestamps ──
 
   it("handles messages without timestamps gracefully", () => {
