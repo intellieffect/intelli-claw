@@ -742,6 +742,13 @@ export type AgentStatus =
  */
 export const HIDDEN_REPLY_RE = /^(NO_REPLY|REPLY_SKIP|HEARTBEAT_OK|NO_?)\s*$|Pre-compaction memory flush|^Read HEARTBEAT\.md|reply with NO_REPLY|Store durable memories now|(?:\[System\]|\(System\)|System:)\s*이전 세션이 컨텍스트 한도로 갱신|^이전 세션이 컨텍스트 한도로 갱신되었습니다\.\s*아래는 최근 대화 요약입니다\.|\[이전 세션 맥락\]/;
 
+/**
+ * Internal orchestration messages that should be hidden from the main chat.
+ * These are subagent task prompts, coordination messages, etc. injected by
+ * the gateway into the session history as user messages.
+ */
+export const INTERNAL_PROMPT_RE = /\[Subagent Context\]|\[Subagent Task\]|\[Request interrupted by user\]|You are running as a subagent/;
+
 /** Strip trailing control tokens from message content for display */
 export const TRAILING_CONTROL_TOKEN_RE = /\n{1,2}(REPLY_SKIP|NO_REPLY|HEARTBEAT_OK)\s*$/;
 export function stripTrailingControlTokens(text: string): string {
@@ -1155,7 +1162,10 @@ export function useChat(sessionKey?: string) {
     // Server response will be merged silently afterward.
     const isHiddenMessageEarly = (role: string, text: string) => {
       if (role === "system") return true;
-      return HIDDEN_REPLY_RE.test(text.trim());
+      const t = text.trim();
+      if (HIDDEN_REPLY_RE.test(t)) return true;
+      if (INTERNAL_PROMPT_RE.test(t)) return true;
+      return false;
     };
     let cacheShown = false;
     if (messagesRef.current.length === 0 && sessionKey) {
@@ -1204,7 +1214,11 @@ export function useChat(sessionKey?: string) {
 
       const isHiddenMessage = (role: string, text: string) => {
         if (role === "system") return true;
-        return HIDDEN_REPLY_RE.test(text.trim());
+        const t = text.trim();
+        if (HIDDEN_REPLY_RE.test(t)) return true;
+        // Hide internal orchestration prompts (subagent tasks, coordination)
+        if (INTERNAL_PROMPT_RE.test(t)) return true;
+        return false;
       };
 
       const histMsgs: DisplayMessage[] = (res?.messages || [])
@@ -2154,7 +2168,7 @@ export function useChat(sessionKey?: string) {
           // Strip trailing control tokens (REPLY_SKIP, NO_REPLY, etc.)
           const stripped = text.replace(/\n{1,2}(REPLY_SKIP|NO_REPLY|HEARTBEAT_OK)\s*$/g, "").trim();
           // Skip entirely if the message is purely a control token
-          if (!stripped || HIDDEN_REPLY_RE.test(stripped)) return;
+          if (!stripped || HIDDEN_REPLY_RE.test(stripped) || INTERNAL_PROMPT_RE.test(stripped)) return;
           let cleanedText = role === "user" ? stripInboundMeta(stripped) : stripped;
           const originDeviceId = data.deviceId as string | undefined;
           const timestamp = (data.timestamp as string) ?? new Date().toISOString();
