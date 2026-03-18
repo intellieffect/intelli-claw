@@ -564,6 +564,8 @@ export interface DisplayMessage {
   replyTo?: ReplyTo;
   /** #187: Type of system-injected message (for distinct rendering) */
   systemType?: SystemInjectedType;
+  /** #242: True when this message represents an error/timeout notification */
+  isError?: boolean;
 }
 
 /**
@@ -726,6 +728,7 @@ export function useChat(sessionKey?: string) {
   const [messages, setMessagesRaw] = useState<DisplayMessage[]>([]);
   const [streaming, setStreaming] = useState(false);
   const streamingRef = useRef(false);
+  const sendingRef = useRef(false);
   const [replyingTo, setReplyingToState] = useState<ReplyTo | null>(null);
   const [loading, setLoading] = useState(false);
   const [agentStatus, setAgentStatus] = useState<AgentStatus>({ phase: "idle" });
@@ -873,6 +876,15 @@ export function useChat(sessionKey?: string) {
       clearPersistedPendingStream();
       setStreaming(false);
       setAgentStatusDebug({ phase: "idle" });
+      // #242: Show timeout feedback message to user
+      timeoutScoped.setMessages((prev) => [...prev, {
+        id: `timeout-${Date.now()}`,
+        role: "assistant" as const,
+        content: "⏳ 에이전트로부터 응답이 없습니다. 다시 시도해주세요.",
+        timestamp: new Date().toISOString(),
+        toolCalls: [],
+        isError: true,
+      }]);
     }, timeoutMs);
   }, [clearStreamingTimeout, clearPersistedPendingStream, createScopedUpdater]);
 
@@ -1992,7 +2004,7 @@ export function useChat(sessionKey?: string) {
   ]);
 
   // Message queue
-  const queueRef = useRef<{ id: string; text: string }[]>(
+  const queueRef = useRef<{ id: string; text: string; attachments?: DisplayAttachment[] }[]>(
     (() => {
       if (queueStorageKey && typeof window !== "undefined") {
         try { const saved = localStorage.getItem(queueStorageKey); return saved ? JSON.parse(saved) : []; }
@@ -2015,6 +2027,7 @@ export function useChat(sessionKey?: string) {
   const doSend = useCallback(
     async (text: string, msgId: string) => {
       if (!client || state !== "connected") return;
+      sendingRef.current = true;
       setMessages((prev) => prev.map((m) => (m.id === msgId ? { ...m, queued: false } : m)));
       setStreaming(true);
       startStreamingTimeout("thinking");
@@ -2030,15 +2043,27 @@ export function useChat(sessionKey?: string) {
             idempotencyKey,
             // Use the latest session key on retry to avoid new-session race (#50)
             sessionKey: sessionKeyRef.current || sessionKey,
+            deliver: false, // #247: Gateway delivers via event stream, not inline response
           });
+          sendingRef.current = false;
           return;
         } catch (err) {
           const isLast = attempt >= maxAttempts;
           if (isLast) {
             console.error("[AWF] chat.send error:", String(err));
+            sendingRef.current = false;
             clearStreamingTimeout();
             setStreaming(false);
             setAgentStatusDebug({ phase: "idle" });
+            // #242: Show error feedback message to user
+            setMessages((prev) => [...prev, {
+              id: `error-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+              role: "assistant" as const,
+              content: "⚠️ 메시지 전송에 실패했습니다. 다시 시도해주세요.",
+              timestamp: new Date().toISOString(),
+              toolCalls: [],
+              isError: true,
+            }]);
             return;
           }
           // Short retry window for immediate session-switch/bootstrap timing race.
@@ -2060,7 +2085,14 @@ export function useChat(sessionKey?: string) {
           setMessages((prev) => { resolve(prev.some((m) => m.id === next.id)); return prev; });
         });
         if (stillExists) {
-          await doSend(next.text, next.id);
+          try {
+            await doSend(next.text, next.id);
+          } catch {
+            // #245: Re-insert failed item at front of queue for retry
+            queueRef.current = [next, ...queueRef.current];
+            persistQueue();
+            break;
+          }
           await new Promise<void>((resolve) => {
             const start = Date.now();
             const check = () => {
@@ -2091,9 +2123,11 @@ export function useChat(sessionKey?: string) {
       if (!client || state !== "connected" || !text.trim()) return;
       const msgId = `user-${Date.now()}-${Math.random().toString(36).slice(2)}`;
       const replyTo = options?.replyTo || replyingTo || undefined;
+      // #245: Queue when streaming OR when a send is still in-flight (race guard)
+      const shouldQueue = streaming || sendingRef.current;
       const userMsg: DisplayMessage = {
         id: msgId, role: "user", content: text,
-        timestamp: new Date().toISOString(), toolCalls: [], queued: streaming,
+        timestamp: new Date().toISOString(), toolCalls: [], queued: shouldQueue,
         replyTo,
       };
       setMessages((prev) => [...prev, userMsg]);
@@ -2109,7 +2143,7 @@ export function useChat(sessionKey?: string) {
       }]).catch(() => {});
       // Clear replyingTo after send
       if (replyingTo) setReplyingToState(null);
-      if (streaming) { queueRef.current.push({ id: msgId, text }); persistQueue(); }
+      if (shouldQueue) { queueRef.current.push({ id: msgId, text }); persistQueue(); }
       else { doSend(text, msgId); }
     },
     [client, state, streaming, doSend, replyingTo]
