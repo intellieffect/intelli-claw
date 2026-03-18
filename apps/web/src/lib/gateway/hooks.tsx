@@ -1074,6 +1074,8 @@ export function useChat(sessionKey?: string) {
   const loadHistory = useCallback(async () => {
     // #248: Check both hook state and client.state to handle timing race
     // where the hook state hasn't settled to "connected" yet but client is ready
+    // #248: Check both hook state and client's internal state for timing race.
+    // TODO: Add public getter for client.state instead of `as any` cast.
     if (!client || (state !== "connected" && (client as any).state !== "connected")) return;
     // #169: Capture guard version at start of async chain. If session switches
     // during any await, the scoped updater will reject the write.
@@ -1859,18 +1861,6 @@ export function useChat(sessionKey?: string) {
           const saveKey = chatSessionKey || boundSessionKey;
           finalizeActiveStream(undefined, saveKey);
         }
-        return;
-      }
-
-      // exec.approval 이벤트 처리 (#250)
-      if (frame.event === "exec.approval.requested") {
-        const payload = frame.payload as Record<string, unknown> | undefined;
-        console.log("[AWF] Exec approval requested:", payload);
-        return;
-      }
-      if (frame.event === "exec.approval.resolved") {
-        const payload = frame.payload as Record<string, unknown> | undefined;
-        console.log("[AWF] Exec approval resolved:", payload);
         return;
       }
 
