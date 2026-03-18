@@ -185,6 +185,50 @@ export function makeReconnectEvent(): EventFrame {
   return makeEventFrame("client.reconnected");
 }
 
+/**
+ * Shorthand: chat delta event (cumulative text).
+ * Following OpenClaw architecture, assistant text comes exclusively
+ * from chat events, not agent events.
+ */
+export function makeChatDelta(
+  text: string,
+  sessionKey?: string,
+  runId?: string,
+): EventFrame {
+  return makeEventFrame("chat", {
+    state: "delta",
+    sessionKey,
+    runId,
+    message: { role: "assistant", content: [{ type: "text", text }] },
+  });
+}
+
+/** Shorthand: chat final event */
+export function makeChatFinal(
+  sessionKey?: string,
+  runId?: string,
+  message?: Record<string, unknown>,
+): EventFrame {
+  return makeEventFrame("chat", {
+    state: "final",
+    sessionKey,
+    runId,
+    message,
+  });
+}
+
+/** Shorthand: chat aborted event */
+export function makeChatAborted(
+  sessionKey?: string,
+  runId?: string,
+): EventFrame {
+  return makeEventFrame("chat", {
+    state: "aborted",
+    sessionKey,
+    runId,
+  });
+}
+
 // ---------------------------------------------------------------------------
 // DisplayAttachment factory
 // ---------------------------------------------------------------------------

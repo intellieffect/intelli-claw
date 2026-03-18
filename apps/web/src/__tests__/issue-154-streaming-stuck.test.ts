@@ -17,7 +17,8 @@ import { createMockClient, type MockClient } from "./helpers/mock-gateway-client
 import { installMockStorage } from "./helpers/mock-storage";
 import {
   makeAgentEvent,
-  makeStreamChunk,
+  makeChatDelta,
+  makeChatFinal,
   makeLifecycleStart,
   makeLifecycleEnd,
   makeReconnectEvent,
@@ -118,7 +119,7 @@ describe("#154 — lifecycle.end without sessionKey", () => {
 
     // Stream some content
     act(() => {
-      mockClient!.emitEvent(makeStreamChunk("Hello", "test:agent"));
+      mockClient!.emitEvent(makeChatDelta("Hello", "test:agent"));
     });
     await act(async () => { vi.advanceTimersByTime(20); });
 
@@ -127,11 +128,15 @@ describe("#154 — lifecycle.end without sessionKey", () => {
       mockClient!.emitEvent(makeAgentEvent(
         "lifecycle",
         { phase: "end", runId: "run-abc" },
-        // No sessionKey in the payload
       ));
     });
 
-    // Should still finalize
+    // #255: lifecycle.end no longer finalizes — chat final does
+    act(() => {
+      mockClient!.emitEvent(makeChatFinal("test:agent", "run-abc"));
+    });
+
+    // Should finalize via chat final
     expect(result.current.streaming).toBe(false);
     expect(result.current.agentStatus.phase).toBe("idle");
   });
@@ -145,7 +150,7 @@ describe("#154 — lifecycle.end without sessionKey", () => {
     });
 
     act(() => {
-      mockClient!.emitEvent(makeStreamChunk("Hello", "test:agent"));
+      mockClient!.emitEvent(makeChatDelta("Hello", "test:agent"));
     });
     await act(async () => { vi.advanceTimersByTime(20); });
 
@@ -195,7 +200,7 @@ describe("#154 — tiered streaming timeout", () => {
 
     // Stream some content — transitions to writing phase
     act(() => {
-      mockClient!.emitEvent(makeStreamChunk("Starting response...", "test:agent"));
+      mockClient!.emitEvent(makeChatDelta("Starting response...", "test:agent"));
     });
     await act(async () => { vi.advanceTimersByTime(20); });
 
@@ -230,13 +235,16 @@ describe("#154 — flushDeferredHistoryReload guarantee", () => {
       mockClient!.emitEvent(makeLifecycleStart("test:agent", "run-1"));
     });
     act(() => {
-      mockClient!.emitEvent(makeStreamChunk("Response", "test:agent"));
+      mockClient!.emitEvent(makeChatDelta("Response", "test:agent"));
     });
     await act(async () => { vi.advanceTimersByTime(20); });
 
-    // lifecycle.end should trigger history reload regardless of throttle
+    // lifecycle.end + chat final triggers history reload (#255)
     act(() => {
       mockClient!.emitEvent(makeLifecycleEnd("test:agent", "run-1"));
+    });
+    act(() => {
+      mockClient!.emitEvent(makeChatFinal("test:agent", "run-1"));
     });
     await act(async () => { vi.advanceTimersByTime(100); });
 
@@ -263,7 +271,7 @@ describe("#154 — reconnect with streaming state", () => {
       mockClient!.emitEvent(makeLifecycleStart("test:agent", "run-1"));
     });
     act(() => {
-      mockClient!.emitEvent(makeStreamChunk("Partial...", "test:agent"));
+      mockClient!.emitEvent(makeChatDelta("Partial...", "test:agent"));
     });
     await act(async () => { vi.advanceTimersByTime(20); });
     expect(result.current.streaming).toBe(true);
@@ -290,7 +298,7 @@ describe("#154 — reconnect with streaming state", () => {
       mockClient!.emitEvent(makeLifecycleStart("test:agent", "run-1"));
     });
     act(() => {
-      mockClient!.emitEvent(makeStreamChunk("Partial...", "test:agent"));
+      mockClient!.emitEvent(makeChatDelta("Partial...", "test:agent"));
     });
     await act(async () => { vi.advanceTimersByTime(20); });
 
@@ -320,7 +328,7 @@ describe("#154 — reconnect with streaming state", () => {
       mockClient!.emitEvent(makeLifecycleStart("test:agent", "run-1"));
     });
     act(() => {
-      mockClient!.emitEvent(makeStreamChunk("Start...", "test:agent"));
+      mockClient!.emitEvent(makeChatDelta("Start...", "test:agent"));
     });
     await act(async () => { vi.advanceTimersByTime(20); });
 
@@ -332,7 +340,7 @@ describe("#154 — reconnect with streaming state", () => {
     // Text delta arrives before safety timer
     await act(async () => { vi.advanceTimersByTime(1_500); });
     act(() => {
-      mockClient!.emitEvent(makeStreamChunk(" more text", "test:agent"));
+      mockClient!.emitEvent(makeChatDelta(" more text", "test:agent"));
     });
     await act(async () => { vi.advanceTimersByTime(20); });
 

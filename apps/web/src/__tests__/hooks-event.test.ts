@@ -19,7 +19,7 @@ import { createMockClient, type MockClient } from "./helpers/mock-gateway-client
 import { installMockStorage } from "./helpers/mock-storage";
 import {
   makeAgentEvent,
-  makeStreamChunk,
+  makeChatDelta,
   makeLifecycleStart,
   makeLifecycleEnd,
   makeEventFrame,
@@ -142,7 +142,7 @@ describe("hooks-event: chat event type handling (#244)", () => {
 
     // Send delta
     act(() => {
-      mockClient!.emitEvent(makeStreamChunk("Hello world", SESSION_KEY));
+      mockClient!.emitEvent(makeChatDelta("Hello world", SESSION_KEY));
     });
     await act(async () => { await vi.advanceTimersByTimeAsync(50); });
 
@@ -170,7 +170,7 @@ describe("hooks-event: chat event type handling (#244)", () => {
       mockClient!.emitEvent(makeLifecycleStart(SESSION_KEY, "run-2"));
     });
     act(() => {
-      mockClient!.emitEvent(makeStreamChunk("Partial...", SESSION_KEY));
+      mockClient!.emitEvent(makeChatDelta("Partial...", SESSION_KEY));
     });
     await act(async () => { await vi.advanceTimersByTimeAsync(50); });
 
@@ -198,7 +198,7 @@ describe("hooks-event: chat event type handling (#244)", () => {
       mockClient!.emitEvent(makeLifecycleStart(SESSION_KEY, "run-3"));
     });
     act(() => {
-      mockClient!.emitEvent(makeStreamChunk("Partial text", SESSION_KEY));
+      mockClient!.emitEvent(makeChatDelta("Partial text", SESSION_KEY));
     });
     await act(async () => { await vi.advanceTimersByTimeAsync(50); });
 
