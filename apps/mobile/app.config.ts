@@ -4,7 +4,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
   name: "iClaw",
   slug: "intelli-claw",
-  version: "0.1.0",
+  version: "0.2.20",
   orientation: "portrait",
   icon: "./assets/icon.png",
   scheme: "intelli-claw",

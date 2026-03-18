@@ -1,6 +1,6 @@
 {
   "name": "@intelli-claw/web",
-  "version": "0.2.0",
+  "version": "0.2.20",
   "private": true,
   "type": "module",
   "scripts": {

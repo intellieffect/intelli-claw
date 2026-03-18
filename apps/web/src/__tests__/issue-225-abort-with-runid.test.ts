@@ -16,7 +16,8 @@ import { createMockClient, type MockClient } from "./helpers/mock-gateway-client
 import { installMockStorage } from "./helpers/mock-storage";
 import {
   makeAgentEvent,
-  makeStreamChunk,
+  makeChatDelta,
+  makeChatFinal,
   makeLifecycleStart,
   makeLifecycleEnd,
   resetFixtureCounter,
@@ -110,7 +111,7 @@ describe("chat.abort includes runId (#225)", () => {
 
     // Stream some content so streamBuf exists
     act(() => {
-      mockClient!.emitEvent(makeStreamChunk("Partial response", "test:agent"));
+      mockClient!.emitEvent(makeChatDelta("Partial response", "test:agent"));
     });
     await act(async () => { vi.advanceTimersByTime(20); });
 
@@ -158,7 +159,7 @@ describe("chat.abort includes runId (#225)", () => {
       mockClient!.emitEvent(makeLifecycleStart("test:agent", "run-xyz-789"));
     });
     act(() => {
-      mockClient!.emitEvent(makeStreamChunk("text", "test:agent"));
+      mockClient!.emitEvent(makeChatDelta("text", "test:agent"));
     });
     await act(async () => { vi.advanceTimersByTime(20); });
 
@@ -180,11 +181,15 @@ describe("chat.abort includes runId (#225)", () => {
       mockClient!.emitEvent(makeLifecycleStart("test:agent", "run-first"));
     });
     act(() => {
-      mockClient!.emitEvent(makeStreamChunk("Done", "test:agent"));
+      mockClient!.emitEvent(makeChatDelta("Done", "test:agent"));
     });
     await act(async () => { vi.advanceTimersByTime(20); });
     act(() => {
       mockClient!.emitEvent(makeLifecycleEnd("test:agent", "run-first"));
+    });
+    // #255: chat final triggers finalization (clears runId)
+    act(() => {
+      mockClient!.emitEvent(makeChatFinal("test:agent", "run-first"));
     });
 
     // Abort after the run has completed — should NOT send the old runId
@@ -206,7 +211,7 @@ describe("chat.abort includes runId (#225)", () => {
       mockClient!.emitEvent(makeLifecycleStart("test:agent", "run-error"));
     });
     act(() => {
-      mockClient!.emitEvent(makeStreamChunk("Partial", "test:agent"));
+      mockClient!.emitEvent(makeChatDelta("Partial", "test:agent"));
     });
     await act(async () => { vi.advanceTimersByTime(20); });
 
@@ -238,7 +243,7 @@ describe("chat.abort includes runId (#225)", () => {
       mockClient!.emitEvent(makeLifecycleStart("test:agent", "run-double-abort"));
     });
     act(() => {
-      mockClient!.emitEvent(makeStreamChunk("Text", "test:agent"));
+      mockClient!.emitEvent(makeChatDelta("Text", "test:agent"));
     });
     await act(async () => { vi.advanceTimersByTime(20); });
 
@@ -265,7 +270,7 @@ describe("chat.abort includes runId (#225)", () => {
       mockClient!.emitEvent(makeLifecycleStart("test:agent", "run-1"));
     });
     act(() => {
-      mockClient!.emitEvent(makeStreamChunk("First", "test:agent"));
+      mockClient!.emitEvent(makeChatDelta("First", "test:agent"));
     });
     await act(async () => { vi.advanceTimersByTime(20); });
     act(() => {
@@ -277,7 +282,7 @@ describe("chat.abort includes runId (#225)", () => {
       mockClient!.emitEvent(makeLifecycleStart("test:agent", "run-2"));
     });
     act(() => {
-      mockClient!.emitEvent(makeStreamChunk("Second", "test:agent"));
+      mockClient!.emitEvent(makeChatDelta("Second", "test:agent"));
     });
     await act(async () => { vi.advanceTimersByTime(20); });
 

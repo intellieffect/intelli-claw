@@ -10,7 +10,7 @@ import React from "react";
 import { createMockClient, type MockClient } from "./helpers/mock-gateway-client";
 import { installMockStorage, type MockStorage } from "./helpers/mock-storage";
 import {
-  makeStreamChunk,
+  makeChatDelta,
   makeLifecycleStart,
   makeLifecycleEnd,
   resetFixtureCounter,
@@ -138,7 +138,7 @@ describe("useChat integration", () => {
 
     // Start streaming
     act(() => { mockClient!.emitEvent(makeLifecycleStart("test:agent", "run-1")); });
-    act(() => { mockClient!.emitEvent(makeStreamChunk("Response...", "test:agent")); });
+    act(() => { mockClient!.emitEvent(makeChatDelta("Response...", "test:agent")); });
     await act(async () => { vi.advanceTimersByTime(20); });
 
     // Send a message while streaming
@@ -157,7 +157,7 @@ describe("useChat integration", () => {
 
     // Start streaming first
     act(() => { mockClient!.emitEvent(makeLifecycleStart("test:agent", "run-1")); });
-    act(() => { mockClient!.emitEvent(makeStreamChunk("...", "test:agent")); });
+    act(() => { mockClient!.emitEvent(makeChatDelta("...", "test:agent")); });
     await act(async () => { vi.advanceTimersByTime(20); });
 
     // Queue a message

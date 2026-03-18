@@ -39,7 +39,7 @@ echo ""
 echo "═══════════════════════════════════════════"
 echo "  Step 2/5: Commit version bump"
 echo "═══════════════════════════════════════════"
-git add package.json apps/desktop/package.json
+git add package.json apps/desktop/package.json apps/web/package.json apps/mobile/package.json apps/mobile/app.config.ts
 git commit -m "chore: bump version to $NEW_VERSION"
 echo "  ✓ Committed"
 echo ""

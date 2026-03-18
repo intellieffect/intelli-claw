@@ -11,7 +11,7 @@ import { createMockClient, type MockClient } from "./helpers/mock-gateway-client
 import { installMockStorage, type MockStorage } from "./helpers/mock-storage";
 import {
   makeAgentEvent,
-  makeStreamChunk,
+  makeChatDelta,
   makeLifecycleStart,
   makeLifecycleEnd,
   makeReconnectEvent,
@@ -128,7 +128,7 @@ describe("Reconnect flow", () => {
 
     // Start streaming
     act(() => { mockClient!.emitEvent(makeLifecycleStart("test:agent", "run-1")); });
-    act(() => { mockClient!.emitEvent(makeStreamChunk("Partial", "test:agent")); });
+    act(() => { mockClient!.emitEvent(makeChatDelta("Partial", "test:agent")); });
     await act(async () => { vi.advanceTimersByTime(20); });
 
     expect(result.current.streaming).toBe(true);
@@ -154,7 +154,7 @@ describe("Reconnect flow", () => {
 
     // Start streaming
     act(() => { mockClient!.emitEvent(makeLifecycleStart("test:agent", "run-1")); });
-    act(() => { mockClient!.emitEvent(makeStreamChunk("Partial", "test:agent")); });
+    act(() => { mockClient!.emitEvent(makeChatDelta("Partial", "test:agent")); });
     await act(async () => { vi.advanceTimersByTime(20); });
 
     // Reconnect
@@ -178,7 +178,7 @@ describe("Reconnect flow", () => {
     await act(async () => { vi.advanceTimersByTime(100); });
 
     act(() => { mockClient!.emitEvent(makeLifecycleStart("test:agent", "run-1")); });
-    act(() => { mockClient!.emitEvent(makeStreamChunk("Partial", "test:agent")); });
+    act(() => { mockClient!.emitEvent(makeChatDelta("Partial", "test:agent")); });
     await act(async () => { vi.advanceTimersByTime(20); });
 
     // Reconnect
@@ -186,7 +186,7 @@ describe("Reconnect flow", () => {
     await act(async () => { vi.advanceTimersByTime(1000); });
 
     // New stream chunk → cancels safety timer
-    act(() => { mockClient!.emitEvent(makeStreamChunk(" more content", "test:agent")); });
+    act(() => { mockClient!.emitEvent(makeChatDelta(" more content", "test:agent")); });
     await act(async () => { vi.advanceTimersByTime(20); });
 
     // Advance past 3s
@@ -203,7 +203,7 @@ describe("Reconnect flow", () => {
 
     // Start streaming
     act(() => { mockClient!.emitEvent(makeLifecycleStart("test:agent", "run-1")); });
-    act(() => { mockClient!.emitEvent(makeStreamChunk("In-flight content", "test:agent")); });
+    act(() => { mockClient!.emitEvent(makeChatDelta("In-flight content", "test:agent")); });
     await act(async () => { vi.advanceTimersByTime(20); });
 
     expect(result.current.streaming).toBe(true);
@@ -226,7 +226,7 @@ describe("Reconnect flow", () => {
 
     // Start streaming
     act(() => { mockClient!.emitEvent(makeLifecycleStart("test:agent", "run-1")); });
-    act(() => { mockClient!.emitEvent(makeStreamChunk("Must not lose this", "test:agent")); });
+    act(() => { mockClient!.emitEvent(makeChatDelta("Must not lose this", "test:agent")); });
     await act(async () => { vi.advanceTimersByTime(20); });
 
     // Trigger beforeunload
@@ -241,7 +241,7 @@ describe("Reconnect flow", () => {
     if (stored) {
       const parsed = JSON.parse(stored);
       expect(parsed.content).toContain("Must not lose this");
-      expect(parsed.v).toBe(2);
+      expect(parsed.v).toBe(3);
     }
   });
 
@@ -252,7 +252,7 @@ describe("Reconnect flow", () => {
 
     // Start streaming
     act(() => { mockClient!.emitEvent(makeLifecycleStart("test:agent", "run-1")); });
-    act(() => { mockClient!.emitEvent(makeStreamChunk("content", "test:agent")); });
+    act(() => { mockClient!.emitEvent(makeChatDelta("content", "test:agent")); });
     await act(async () => { vi.advanceTimersByTime(20); });
 
     expect(result.current.streaming).toBe(true);
@@ -273,7 +273,7 @@ describe("Reconnect flow", () => {
 
     // Start streaming but never send lifecycle.end
     act(() => { mockClient!.emitEvent(makeLifecycleStart("test:agent", "run-1")); });
-    act(() => { mockClient!.emitEvent(makeStreamChunk("Orphaned stream", "test:agent")); });
+    act(() => { mockClient!.emitEvent(makeChatDelta("Orphaned stream", "test:agent")); });
     await act(async () => { vi.advanceTimersByTime(20); });
 
     expect(result.current.streaming).toBe(true);
@@ -291,7 +291,7 @@ describe("Reconnect flow", () => {
 
     // Start streaming
     act(() => { mockClient!.emitEvent(makeLifecycleStart("test:agent", "run-1")); });
-    act(() => { mockClient!.emitEvent(makeStreamChunk("Content during disconnect", "test:agent")); });
+    act(() => { mockClient!.emitEvent(makeChatDelta("Content during disconnect", "test:agent")); });
     await act(async () => { vi.advanceTimersByTime(20); });
 
     expect(result.current.streaming).toBe(true);
@@ -464,7 +464,7 @@ describe("Pending stream snapshot restoration", () => {
     await act(async () => { vi.advanceTimersByTime(100); });
 
     act(() => { mockClient!.emitEvent(makeLifecycleStart("test:agent", "run-full")); });
-    act(() => { mockClient!.emitEvent(makeStreamChunk("In-flight response", "test:agent")); });
+    act(() => { mockClient!.emitEvent(makeChatDelta("In-flight response", "test:agent")); });
     await act(async () => { vi.advanceTimersByTime(20); });
     expect(result.current.streaming).toBe(true);
 

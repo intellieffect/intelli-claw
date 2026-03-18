@@ -40,7 +40,7 @@ describe("PendingStreamSnapshot v2: sessionKey field", () => {
       content: "hello",
       toolCalls: [],
     });
-    expect(snapshot.v).toBe(2);
+    expect(snapshot.v).toBe(3);
     expect(snapshot.sessionKey).toBe("agent:ops:main");
     expect(snapshot.runId).toBe("run-1");
     expect(snapshot.streamId).toBe("stream-1");
