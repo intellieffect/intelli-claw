@@ -677,13 +677,15 @@ const PENDING_STREAM_TTL_MS = 45_000;
 type PendingToolCall = Pick<ToolCall, "callId" | "name" | "args" | "status" | "result">;
 
 export interface PendingStreamSnapshot {
-  v: 1 | 2;
+  v: 1 | 2 | 3;
   /** #169: Which session this snapshot belongs to (v2+) */
   sessionKey?: string;
   runId: string | null;
   streamId: string;
   content: string;
   toolCalls: PendingToolCall[];
+  /** v3: committed text segments (frozen before tool calls) */
+  segments?: Array<{ text: string; ts: number }>;
   updatedAt: number;
 }
 
@@ -693,10 +695,11 @@ export function createPendingStreamSnapshot(params: {
   streamId: string;
   content: string;
   toolCalls: ToolCall[];
+  segments?: Array<{ text: string; ts: number }>;
   now?: number;
 }): PendingStreamSnapshot {
   return {
-    v: 2,
+    v: 3,
     sessionKey: params.sessionKey,
     runId: params.runId,
     streamId: params.streamId,
@@ -708,6 +711,7 @@ export function createPendingStreamSnapshot(params: {
       status: tc.status,
       result: tc.result,
     })),
+    segments: params.segments,
     updatedAt: params.now ?? Date.now(),
   };
 }
@@ -717,7 +721,7 @@ export function isPendingStreamSnapshotFresh(
   now = Date.now(),
   ttlMs = PENDING_STREAM_TTL_MS,
 ): boolean {
-  return (snapshot.v === 1 || snapshot.v === 2) && now - snapshot.updatedAt <= ttlMs;
+  return (snapshot.v === 1 || snapshot.v === 2 || snapshot.v === 3) && now - snapshot.updatedAt <= ttlMs;
 }
 
 export function finalEventKey(runId: string | null | undefined): string | null {
@@ -888,14 +892,19 @@ export function useChat(sessionKey?: string) {
 
   const persistPendingStreamImmediate = useCallback(() => {
     if (!pendingStreamStorageKey || !hasActiveStream(streamRefs)) return;
-    const content = buildStreamContent(streamRefs);
+    // v3: persist current chatStream (not merged) + segments separately
+    const currentText = chatStreamRef.current || "";
     const toolCalls = buildStreamToolCalls(streamRefs);
+    const segments = chatStreamSegmentsRef.current.length > 0
+      ? chatStreamSegmentsRef.current
+      : undefined;
     const snapshot = createPendingStreamSnapshot({
       sessionKey: sessionKeyRef.current,
       runId: runIdRef.current,
       streamId: chatStreamIdRef.current || `stream-persist-${Date.now()}`,
-      content,
+      content: currentText,
       toolCalls,
+      segments,
     });
     sessionStorage.setItem(pendingStreamStorageKey, JSON.stringify(snapshot));
   }, [pendingStreamStorageKey]);
@@ -975,7 +984,7 @@ export function useChat(sessionKey?: string) {
       // If streaming is active but no content yet (thinking/tool phase), save a minimal marker
       if (!hasActiveStream(streamRefs) && streamingRef.current && pendingStreamStorageKey) {
         const snapshot: PendingStreamSnapshot = {
-          v: 2,
+          v: 3,
           sessionKey: sessionKeyRef.current,
           runId: runIdRef.current,
           streamId: `stream-pending-${Date.now()}`,
@@ -1032,10 +1041,15 @@ export function useChat(sessionKey?: string) {
       runIdRef.current = parsed.runId;
       setStreaming(true);
 
+      // v3: restore committed segments separately
+      if (parsed.v >= 3 && Array.isArray(parsed.segments) && parsed.segments.length > 0) {
+        chatStreamSegmentsRef.current = parsed.segments;
+      }
+
       // Empty content = "thinking" marker (saved when streaming was active but
       // no text chunks had arrived yet). Just restore streaming + agentStatus
       // so the UI shows the thinking indicator. Gateway events will resume after reconnect.
-      if (!parsed.content && restoredToolCalls.length === 0) {
+      if (!parsed.content && restoredToolCalls.length === 0 && !chatStreamSegmentsRef.current.length) {
         setAgentStatusDebug({ phase: state === "connected" ? "thinking" : "waiting" });
       } else {
         chatStreamIdRef.current = parsed.streamId;

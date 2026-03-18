@@ -199,7 +199,7 @@ describe("PendingStreamSnapshot", () => {
       now: 1_000_000,
     });
 
-    expect(snapshot.v).toBe(2);
+    expect(snapshot.v).toBe(3);
     expect(snapshot.runId).toBe("run-1");
     expect(snapshot.streamId).toBe("stream-1");
     expect(snapshot.content).toBe("Partial content");
