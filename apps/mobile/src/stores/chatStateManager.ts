@@ -217,6 +217,22 @@ export class ChatStateManager {
     return this.getState(sessionKey).runId;
   }
 
+  /**
+   * Eagerly clear the runId for a session, returning the previous value.
+   * Used by abort to capture the runId before clearing it, matching the
+   * web client's eager-clear pattern (#225).
+   */
+  clearRunId(sessionKey: string): string | null {
+    const s = this.getState(sessionKey);
+    const prev = s.runId;
+    if (prev !== null) {
+      this.mutate(sessionKey, (state) => {
+        state.runId = null;
+      });
+    }
+    return prev;
+  }
+
   // ══════════════════════════════════════════════════════════════════════
   // Private — event handling (migrated from useChat.ts lines 130-283)
   // ══════════════════════════════════════════════════════════════════════
@@ -358,6 +374,7 @@ export class ChatStateManager {
       this.mutate(sessionKey, (s) => {
         s.streaming = false;
         s.agentStatus = { phase: "idle" };
+        s.runId = null;
 
         if (s.streamBuf) {
           const finalId = s.streamBuf.id;
@@ -392,6 +409,7 @@ export class ChatStateManager {
       this.mutate(sessionKey, (s) => {
         s.streaming = false;
         s.agentStatus = { phase: "idle" };
+        s.runId = null;
 
         if (s.streamBuf) {
           const finalId = s.streamBuf.id;
@@ -426,6 +444,7 @@ export class ChatStateManager {
       this.mutate(sessionKey, (s) => {
         s.streaming = false;
         s.agentStatus = { phase: "idle" };
+        s.runId = null;
 
         if (s.streamBuf) {
           const errId = s.streamBuf.id;
@@ -483,6 +502,7 @@ export class ChatStateManager {
         this.mutate(sessionKey, (s) => {
           s.streaming = false;
           s.agentStatus = { phase: "idle" };
+          s.runId = null;
           if (s.streamBuf) {
             const finalId = s.streamBuf.id;
             s.messages = s.messages.map((m) =>
