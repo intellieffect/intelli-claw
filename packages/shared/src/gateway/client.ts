@@ -256,20 +256,17 @@ export class GatewayClient {
           const keyPair = await cryptoAdapter.getOrCreateKeyPair("primary");
           const signedAt = Date.now();
 
-          // v3 signature payload (pipe-delimited)
-          const payload = [
-            "v3",
-            keyPair.id,
-            String(opts.clientId),
-            String(opts.clientMode),
-            String(opts.role),
-            (opts.scopes || []).join(","),
-            String(signedAt),
-            this.token,
+          const payload = buildDeviceAuthPayload({
+            deviceId: keyPair.id,
+            clientId: String(opts.clientId),
+            clientMode: String(opts.clientMode),
+            role: String(opts.role),
+            scopes: opts.scopes || [],
+            signedAt,
+            token: this.token,
             nonce,
-            "web",
-            "",
-          ].join("|");
+            platform: "web",
+          });
 
           const signature = await cryptoAdapter.sign("primary", payload);
           connectParams.device = {
@@ -552,4 +549,31 @@ export class GatewayClient {
     this.pending.clear();
   }
 
+}
+
+/** Build v3 pipe-delimited device auth payload for signature (#251). */
+export function buildDeviceAuthPayload(params: {
+  deviceId: string;
+  clientId: string;
+  clientMode: string;
+  role: string;
+  scopes: string[];
+  signedAt: number;
+  token: string;
+  nonce: string;
+  platform: string;
+}): string {
+  return [
+    "v3",
+    params.deviceId,
+    params.clientId,
+    params.clientMode,
+    params.role,
+    params.scopes.join(","),
+    String(params.signedAt),
+    params.token,
+    params.nonce,
+    params.platform,
+    "",
+  ].join("|");
 }

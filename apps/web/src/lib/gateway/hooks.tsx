@@ -60,6 +60,24 @@ import {
 
 import { getTopicHistory } from "./topic-store";
 
+// --- Chat command utilities (#251) ---
+
+/** Check if user input is a stop/abort command. */
+export function isChatStopCommand(text: string): boolean {
+  const t = text.trim().toLowerCase();
+  if (!t) return false;
+  return t === "/stop" || t === "stop" || t === "abort" || t === "/abort";
+}
+
+/** Check if user input is a session reset command. Returns message text after command if present. */
+export function isChatResetCommand(text: string): { reset: boolean; message?: string } {
+  const t = text.trim();
+  if (!t) return { reset: false };
+  if (/^\/new(\s|$)/i.test(t)) return { reset: true, message: t.slice(4).trim() || undefined };
+  if (/^\/reset(\s|$)/i.test(t)) return { reset: true, message: t.slice(6).trim() || undefined };
+  return { reset: false };
+}
+
 // --- Web Config Persistence ---
 
 export function loadGatewayConfig(): GatewayConfig {
@@ -1733,6 +1751,18 @@ export function useChat(sessionKey?: string) {
     };
 
     const unsub = client.onEvent((frame: EventFrame) => {
+      // #250: Handle exec.approval events
+      if (frame.event === "exec.approval.requested") {
+        const payload = frame.payload as Record<string, unknown> | undefined;
+        console.log("[AWF] Exec approval requested:", payload);
+        return;
+      }
+      if (frame.event === "exec.approval.resolved") {
+        const payload = frame.payload as Record<string, unknown> | undefined;
+        console.log("[AWF] Exec approval resolved:", payload);
+        return;
+      }
+
       // #244: Handle chat events (delta, final, error, aborted)
       if (frame.event === "chat") {
         const chatPayload = frame.payload as Record<string, unknown> | undefined;
@@ -1829,6 +1859,18 @@ export function useChat(sessionKey?: string) {
           const saveKey = chatSessionKey || boundSessionKey;
           finalizeActiveStream(undefined, saveKey);
         }
+        return;
+      }
+
+      // exec.approval 이벤트 처리 (#250)
+      if (frame.event === "exec.approval.requested") {
+        const payload = frame.payload as Record<string, unknown> | undefined;
+        console.log("[AWF] Exec approval requested:", payload);
+        return;
+      }
+      if (frame.event === "exec.approval.resolved") {
+        const payload = frame.payload as Record<string, unknown> | undefined;
+        console.log("[AWF] Exec approval resolved:", payload);
         return;
       }
 
@@ -2282,9 +2324,60 @@ export function useChat(sessionKey?: string) {
     setReplyingToState(null);
   }, []);
 
+  const abort = useCallback(() => {
+    // Immediately stop UI — don't await the RPC
+    abortedRef.current = true;
+    const currentRunId = runIdRef.current;
+    clearStreamingTimeout();
+    if (streamBuf.current) {
+      const abortedId = streamBuf.current.id;
+      setMessages((prev) => prev.map((m) => m.id === abortedId ? { ...m, streaming: false } : m));
+      streamBuf.current = null;
+    }
+    runIdRef.current = null;
+    clearPersistedPendingStream();
+    setStreaming(false);
+    setAgentStatusDebug({ phase: "idle" });
+    // Fire-and-forget the gateway abort
+    if (client && state === "connected") {
+      client.request("chat.abort", { sessionKey, runId: currentRunId ?? undefined })
+        .catch((err: unknown) => console.warn("[AWF] chat.abort failed:", String(err)));
+    }
+  }, [client, state, sessionKey, clearStreamingTimeout, clearPersistedPendingStream]);
+
+  const sendCommand = useCallback(
+    async (text: string) => {
+      if (!client || state !== "connected") return;
+      try {
+        await client.request("chat.send", {
+          message: text,
+          idempotencyKey: `awf-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          sessionKey,
+        });
+      } catch (err) { console.error("[AWF] command error:", String(err)); }
+    },
+    [client, state, sessionKey]
+  );
+
   const sendMessage = useCallback(
     (text: string, options?: { replyTo?: ReplyTo }) => {
       if (!client || state !== "connected" || !text.trim()) return;
+
+      // #251: Intercept text-based stop/reset commands
+      if (isChatStopCommand(text)) {
+        abort();
+        return;
+      }
+      const resetCmd = isChatResetCommand(text);
+      if (resetCmd.reset) {
+        sendCommand("reset");
+        if (resetCmd.message) {
+          // Send the trailing message as a new message after reset
+          setTimeout(() => doSend(resetCmd.message!, `user-${Date.now()}-${Math.random().toString(36).slice(2)}`), 100);
+        }
+        return;
+      }
+
       const msgId = `user-${Date.now()}-${Math.random().toString(36).slice(2)}`;
       const replyTo = options?.replyTo || replyingTo || undefined;
       // #245: Queue when streaming OR when a send is still in-flight (race guard)
@@ -2310,7 +2403,7 @@ export function useChat(sessionKey?: string) {
       if (shouldQueue) { queueRef.current.push({ id: msgId, text }); persistQueue(); }
       else { doSend(text, msgId); }
     },
-    [client, state, streaming, doSend, replyingTo]
+    [client, state, streaming, doSend, replyingTo, abort, sendCommand]
   );
 
   useEffect(() => {
@@ -2322,27 +2415,6 @@ export function useChat(sessionKey?: string) {
     persistQueue();
     setMessages((prev) => prev.filter((m) => m.id !== msgId));
   }, [persistQueue]);
-
-  const abort = useCallback(() => {
-    // Immediately stop UI — don't await the RPC
-    abortedRef.current = true;
-    const currentRunId = runIdRef.current;
-    clearStreamingTimeout();
-    if (streamBuf.current) {
-      const abortedId = streamBuf.current.id;
-      setMessages((prev) => prev.map((m) => m.id === abortedId ? { ...m, streaming: false } : m));
-      streamBuf.current = null;
-    }
-    runIdRef.current = null;
-    clearPersistedPendingStream();
-    setStreaming(false);
-    setAgentStatusDebug({ phase: "idle" });
-    // Fire-and-forget the gateway abort
-    if (client && state === "connected") {
-      client.request("chat.abort", { sessionKey, runId: currentRunId ?? undefined })
-        .catch((err: unknown) => console.warn("[AWF] chat.abort failed:", String(err)));
-    }
-  }, [client, state, sessionKey, clearStreamingTimeout, clearPersistedPendingStream]);
 
   const addUserMessage = useCallback((text: string, attachments?: DisplayAttachment[]) => {
     const msgId = `user-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -2375,20 +2447,6 @@ export function useChat(sessionKey?: string) {
   const clearMessages = useCallback(() => {
     setMessages([]);
   }, []);
-
-  const sendCommand = useCallback(
-    async (text: string) => {
-      if (!client || state !== "connected") return;
-      try {
-        await client.request("chat.send", {
-          message: text,
-          idempotencyKey: `awf-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-          sessionKey,
-        });
-      } catch (err) { console.error("[AWF] command error:", String(err)); }
-    },
-    [client, state, sessionKey]
-  );
 
   const buildContextSummary = useCallback((): string | null => {
     const relevant = messages
