@@ -896,11 +896,15 @@ export function useChat(sessionKey?: string) {
     };
   }, []);
 
-  // Tiered streaming timeouts (#154):
+  // Tiered streaming timeouts (#154, #264):
   // - Thinking phase (no content yet): 45s — stale connections are detected faster
+  // - Tool phase (tool execution, no delta): 120s — tool calls can take long
   // - Writing phase (content streaming): 90s — allows long responses to complete
+  // - Lifecycle end grace: 10s — wait for chat final after lifecycle.end
   const THINKING_TIMEOUT_MS = 45_000;
+  const TOOL_TIMEOUT_MS = 120_000;
   const WRITING_TIMEOUT_MS = 90_000;
+  const LIFECYCLE_END_GRACE_MS = 10_000;
   // #142: Scope queue key per browser tab to prevent cross-tab queue collision
   const queueStorageKey = sessionKey ? `awf:${windowStoragePrefix()}queue:${sessionKey}` : null;
   const pendingStreamStorageKey = sessionKey ? `${PENDING_STREAM_SESSION_KEY_PREFIX}${sessionKey}` : null;
@@ -946,10 +950,12 @@ export function useChat(sessionKey?: string) {
     }
   }, []);
 
-  const startStreamingTimeout = useCallback((phase?: "thinking" | "writing") => {
+  const startStreamingTimeout = useCallback((phase?: "thinking" | "writing" | "tool") => {
     clearStreamingTimeout();
-    // Use shorter timeout for thinking phase, longer for writing (#154)
-    const timeoutMs = phase === "writing" ? WRITING_TIMEOUT_MS : THINKING_TIMEOUT_MS;
+    // Use phase-specific timeout (#154, #264)
+    const timeoutMs = phase === "writing" ? WRITING_TIMEOUT_MS
+      : phase === "tool" ? TOOL_TIMEOUT_MS
+      : THINKING_TIMEOUT_MS;
     // #169: Capture guard version before setTimeout gap
     const timeoutScoped = createScopedUpdater();
     streamingTimeoutRef.current = setTimeout(() => {
@@ -2064,6 +2070,8 @@ export function useChat(sessionKey?: string) {
         const callId = (data.toolCallId || data.callId || "") as string;
         const name = (data.name || data.tool || "") as string;
         setAgentStatusDebug({ phase: "tool", toolName: name });
+        // #264: Reset timeout with tool-specific duration (120s)
+        startStreamingTimeout("tool");
         const args = data.args as string | undefined;
         // Commit current text to segments before tool starts (OpenClaw pattern)
         commitChatStreamToSegment(streamRefs);
@@ -2098,6 +2106,8 @@ export function useChat(sessionKey?: string) {
         const callId = (data.toolCallId || data.callId || "") as string;
         const result = data.result as string | undefined;
         setAgentStatusDebug({ phase: "thinking" });
+        // #264: Reset timeout back to thinking after tool completes
+        startStreamingTimeout("thinking");
         if (hasActiveStream(streamRefs)) {
           const entry = toolStreamByIdRef.current.get(callId);
           if (entry) { entry.output = result; entry.updatedAt = Date.now(); }
@@ -2125,6 +2135,8 @@ export function useChat(sessionKey?: string) {
           const callId = (data.toolCallId || data.callId || "") as string;
           const name = (data.name || data.tool || "") as string;
           setAgentStatusDebug({ phase: "tool", toolName: name });
+          // #264: Reset timeout with tool-specific duration (120s)
+          startStreamingTimeout("tool");
           const args = data.args as string | undefined;
           // Commit current text to segments before tool starts (OpenClaw pattern)
           commitChatStreamToSegment(streamRefs);
@@ -2159,6 +2171,8 @@ export function useChat(sessionKey?: string) {
           const callId = (data.toolCallId || data.callId || "") as string;
           const result = data.result as string | undefined;
           setAgentStatusDebug({ phase: "thinking" });
+          // #264: Reset timeout back to thinking after tool completes
+          startStreamingTimeout("thinking");
           if (hasActiveStream(streamRefs)) {
             const toolEntry = toolStreamByIdRef.current.get(callId);
             if (toolEntry) { toolEntry.output = result; toolEntry.updatedAt = Date.now(); }
@@ -2290,6 +2304,17 @@ export function useChat(sessionKey?: string) {
         const eventRunId = resolveRunId(raw, data);
         const key = finalEventKey(eventRunId);
         if (key) finalizedEventKeysRef.current.add(key);
+        // #264: Replace current timeout with a short grace period for chat final.
+        // If chat final doesn't arrive within LIFECYCLE_END_GRACE_MS, force finalize.
+        startStreamingTimeout("thinking");
+        clearStreamingTimeout();
+        const graceScoped = createScopedUpdater();
+        streamingTimeoutRef.current = setTimeout(() => {
+          if (!graceScoped.isValid()) return;
+          console.warn("[AWF] lifecycle.end grace period expired — chat final not received, force finalizing");
+          finalizeActiveStream(undefined, boundSessionKey);
+          loadHistory();
+        }, LIFECYCLE_END_GRACE_MS);
       } else if (stream === "done" || stream === "end" || stream === "finish") {
         // #255: Same as lifecycle.end — don't finalize from agent events.
         // Chat final handles finalization.
