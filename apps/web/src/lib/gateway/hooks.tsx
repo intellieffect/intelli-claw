@@ -9,6 +9,7 @@ import {
 } from "react";
 import { getMimeType } from "@/lib/mime-types";
 import { windowStoragePrefix } from "@/lib/utils";
+import { usePageVisibility } from "@/lib/hooks/use-page-visibility";
 import { validateMediaPath, sanitizeAttachmentPath } from "@/lib/platform/media-path";
 import { platform } from "@/lib/platform";
 import type {
@@ -166,6 +167,7 @@ export function useSessions() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(false);
   const lastRefreshAtRef = useRef(0);
+  const visible = usePageVisibility();
   const trackedSessionIdsRef = useRef<Map<string, string>>(new Map());
   /** Preserve user-set labels across session resets (#216) */
   const preservedLabelsRef = useRef<Map<string, string>>(new Map());
@@ -301,11 +303,13 @@ export function useSessions() {
     return unsub;
   }, [client, refreshThrottled]);
 
+  // #260: Only run 15s polling when page is visible; refresh immediately on becoming visible
   useEffect(() => {
-    if (state !== "connected") return;
+    if (state !== "connected" || !visible) return;
+    refreshThrottled();
     const id = setInterval(() => { refreshThrottled(); }, 15000);
     return () => clearInterval(id);
-  }, [state, refreshThrottled]);
+  }, [state, visible, refreshThrottled]);
 
   const patchSession = useCallback((key: string, patch: Record<string, unknown>) => {
     setSessions((prev) => prev.map((s) => (s.key === key ? { ...s, ...patch } : s)));
