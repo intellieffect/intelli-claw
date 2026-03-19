@@ -6,6 +6,7 @@ import { readFileSync, writeFileSync } from "fs";
 const appVersion = app.getVersion(); // electron-builder sets this from package.json
 import { registerIpcHandlers } from "./ipc-handlers";
 import { NodeConnectionManager } from "./node-connection";
+import { buildReloadTarget, type ReloadContext } from "./window-reload";
 
 // --- Dev mode detection & isolation ---
 const isDev = !app.isPackaged;
@@ -87,6 +88,36 @@ interface CreateWindowOpts {
   sessionKey?: string;
 }
 
+/**
+ * Reload a window while preserving its current session (#256).
+ * Uses windowSessionKeys (populated via session:update IPC) to rebuild
+ * the correct URL/file target with the latest sessionKey.
+ */
+function reloadWindow(win: BrowserWindow): void {
+  // Find windowId for this window
+  let wid: number | undefined;
+  for (const [id, w] of windowMap) {
+    if (w === win) { wid = id; break; }
+  }
+
+  const rendererUrl = process.env.ELECTRON_RENDERER_URL;
+  const htmlPath = join(__dirname, "../renderer/index.html");
+
+  const ctx: ReloadContext = {
+    windowId: wid,
+    windowSessionKeys,
+    rendererUrl,
+    rendererHtmlPath: htmlPath,
+  };
+
+  const target = buildReloadTarget(ctx);
+  if (target.kind === "url") {
+    win.loadURL(target.url);
+  } else {
+    win.loadFile(target.filePath, target.query ? { query: target.query } : undefined);
+  }
+}
+
 function createWindow(opts?: CreateWindowOpts): BrowserWindow {
   const windowId = opts?.windowId ?? nextWindowId++;
   if (windowId >= nextWindowId) nextWindowId = windowId + 1;
@@ -134,7 +165,7 @@ function createWindow(opts?: CreateWindowOpts): BrowserWindow {
     console.warn("[main] Renderer crashed:", details.reason, "— reloading in 1s");
     if (details.reason !== "clean-exit") {
       setTimeout(() => {
-        if (!win.isDestroyed()) win.reload();
+        if (!win.isDestroyed()) reloadWindow(win);
       }, 1000);
     }
   });
@@ -384,8 +415,24 @@ app.whenReady().then(() => {
     {
       label: "View",
       submenu: [
-        { role: "reload" },
-        { role: "forceReload" },
+        {
+          label: "Reload",
+          accelerator: "CmdOrCtrl+R",
+          click: () => {
+            const focused = BrowserWindow.getFocusedWindow();
+            if (focused && !focused.isDestroyed()) reloadWindow(focused);
+          },
+        },
+        {
+          label: "Force Reload",
+          accelerator: "CmdOrCtrl+Shift+R",
+          click: () => {
+            const focused = BrowserWindow.getFocusedWindow();
+            if (focused && !focused.isDestroyed()) {
+              focused.webContents.session.clearCache().then(() => reloadWindow(focused));
+            }
+          },
+        },
         { role: "toggleDevTools" },
         { type: "separator" },
         { role: "resetZoom" },
