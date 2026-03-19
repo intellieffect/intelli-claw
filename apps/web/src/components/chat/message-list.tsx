@@ -10,6 +10,7 @@ import { MarkdownRenderer, MarkdownFilePreview } from "./markdown-renderer";
 import { ToolCallCard } from "./tool-call-card";
 import { HIDDEN_REPLY_RE, canBeReplyTarget, stripTrailingControlTokens, type DisplayMessage, type DisplayAttachment, type AgentStatus, type SystemInjectedType } from "@/lib/gateway/hooks";
 import { AgentAvatar } from "@/components/ui/agent-avatar";
+import { groupMessages } from "@intelli-claw/shared";
 
 import { blobDownload, forceDownloadUrl } from "@/lib/utils/download";
 import { formatTime } from "@/lib/utils/format-time";
@@ -496,6 +497,20 @@ export function MessageList({
     );
   }
 
+  // Group consecutive same-role messages (#224)
+  const groups = useMemo(() => groupMessages(visibleMessages), [visibleMessages]);
+
+  // Precompute flat-index offsets so each group knows its starting position
+  const groupStartIndices = useMemo(() => {
+    const indices: number[] = [];
+    let idx = 0;
+    for (const group of groups) {
+      indices.push(idx);
+      idx += group.messages.length;
+    }
+    return indices;
+  }, [groups]);
+
   if (messages.length === 0) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-3 text-muted-foreground">
@@ -519,8 +534,13 @@ export function MessageList({
             </div>
           </div>
         )}
-        {visibleMessages
-          .map((msg, idx, arr) => {
+        {groups.map((group, groupIdx) => {
+          const startIdx = groupStartIndices[groupIdx];
+          const groupElements = group.messages.map((msg, posInGroup) => {
+            const idx = startIdx + posInGroup;
+            const isFirst = posInGroup === 0;
+            const isLast = posInGroup === group.messages.length - 1;
+
             if (msg.role === "session-boundary") {
               return (
                 <SessionBoundary
@@ -531,8 +551,7 @@ export function MessageList({
                 />
               );
             }
-            const prevRole = idx > 0 ? arr[idx - 1].role : null;
-            const showAvatar = msg.role !== "assistant" || prevRole !== "assistant";
+
             return (
               <MessageBubble
                 key={msg.id}
@@ -541,7 +560,8 @@ export function MessageList({
                   else bubbleRefs.current.delete(idx);
                 }}
                 message={msg}
-                showAvatar={showAvatar}
+                showAvatar={isFirst}
+                showTimestamp={isLast}
                 onCancel={msg.queued ? onCancelQueued : undefined}
                 agentId={agentId}
                 agentStatus={msg.streaming ? agentStatus : undefined}
@@ -550,7 +570,20 @@ export function MessageList({
                 onReply={onReply}
               />
             );
-          })}
+          });
+
+          // Single-message groups (system, session-boundary, tool-call): no wrapper needed
+          if (group.messages.length === 1) {
+            return groupElements[0];
+          }
+
+          // Multi-message group: wrap in a tight-spacing container
+          return (
+            <div key={group.firstMessageId} className="flex flex-col gap-1">
+              {groupElements}
+            </div>
+          );
+        })}
         {streaming && !messages.some(m => m.streaming) && <ThinkingIndicator agentId={agentId} />}
         <div ref={bottomRef} />
       </div>
@@ -779,8 +812,8 @@ function ReplyButton({ onClick }: { onClick: () => void }) {
   );
 }
 
-const MessageBubble = React.memo(React.forwardRef<HTMLDivElement, { message: DisplayMessage; showAvatar?: boolean; onCancel?: (id: string) => void; agentId?: string; agentStatus?: AgentStatus; focused?: boolean; selected?: boolean; onReply?: (msg: DisplayMessage) => void }>(
-  function MessageBubble({ message, showAvatar = true, onCancel, agentId, agentStatus, focused, selected, onReply }, ref) {
+const MessageBubble = React.memo(React.forwardRef<HTMLDivElement, { message: DisplayMessage; showAvatar?: boolean; showTimestamp?: boolean; onCancel?: (id: string) => void; agentId?: string; agentStatus?: AgentStatus; focused?: boolean; selected?: boolean; onReply?: (msg: DisplayMessage) => void }>(
+  function MessageBubble({ message, showAvatar = true, showTimestamp = true, onCancel, agentId, agentStatus, focused, selected, onReply }, ref) {
   const isUser = message.role === "user";
   const isSystem = message.role === "system";
   const isQueued = message.queued;
@@ -890,7 +923,7 @@ const MessageBubble = React.memo(React.forwardRef<HTMLDivElement, { message: Dis
             {message.content && message.content === "(첨부 파일)" && !message.attachments?.length && (
               <p className={`whitespace-pre-wrap break-words text-sm ${isQueued ? "opacity-70" : ""}`}>{message.content}</p>
             )}
-            {time && !isQueued && (
+            {showTimestamp && time && !isQueued && (
               <div className="mt-1 text-right text-[10px] text-zinc-400">{time}</div>
             )}
             {isQueued && (
@@ -988,7 +1021,7 @@ const MessageBubble = React.memo(React.forwardRef<HTMLDivElement, { message: Dis
                 {onReply && canBeReplyTarget(message) && (
                   <ReplyButton onClick={() => onReply(message)} />
                 )}
-                {time && <span className="text-[10px] text-zinc-500">{time}</span>}
+                {showTimestamp && time && <span className="text-[10px] text-zinc-500">{time}</span>}
               </div>
             )}
           </div>
@@ -1006,8 +1039,8 @@ const MessageBubble = React.memo(React.forwardRef<HTMLDivElement, { message: Dis
 
 /** React.memo comparator for MessageBubble — exported for testing */
 export function messageBubbleAreEqual(
-  prev: { message: DisplayMessage; showAvatar?: boolean; agentId?: string; agentStatus?: AgentStatus; focused?: boolean; selected?: boolean },
-  next: { message: DisplayMessage; showAvatar?: boolean; agentId?: string; agentStatus?: AgentStatus; focused?: boolean; selected?: boolean },
+  prev: { message: DisplayMessage; showAvatar?: boolean; showTimestamp?: boolean; agentId?: string; agentStatus?: AgentStatus; focused?: boolean; selected?: boolean },
+  next: { message: DisplayMessage; showAvatar?: boolean; showTimestamp?: boolean; agentId?: string; agentStatus?: AgentStatus; focused?: boolean; selected?: boolean },
 ): boolean {
   const pm = prev.message, nm = next.message;
   return pm.id === nm.id
@@ -1020,5 +1053,6 @@ export function messageBubbleAreEqual(
     && prev.selected === next.selected
     && prev.agentId === next.agentId
     && prev.agentStatus?.phase === next.agentStatus?.phase
-    && prev.showAvatar === next.showAvatar;
+    && prev.showAvatar === next.showAvatar
+    && prev.showTimestamp === next.showTimestamp;
 }

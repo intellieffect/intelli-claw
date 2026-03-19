@@ -1,5 +1,5 @@
 // --- Gateway ---
-export { GatewayClient, type ConnectionState, type GatewayClientOptions, type InvokeHandler } from "./gateway/client";
+export { GatewayClient, isNonRecoverableAuthError, buildDeviceAuthPayload, type ConnectionState, type GatewayClientOptions, type InvokeHandler } from "./gateway/client";
 export { NodeGatewayClient } from "./gateway/node-client";
 export {
   makeReq,
@@ -50,6 +50,10 @@ export {
   type SessionGroup,
   type GatewaySession,
 } from "./gateway/session-utils";
+export {
+  resolveToolDisplay,
+  type ToolDisplay,
+} from "./gateway/tool-display";
 
 // --- Hooks ---
 export {
@@ -68,6 +72,8 @@ export {
   useSessionSettings,
   type SessionInfo,
   type ModelInfo,
+  type ThinkingLevel,
+  type VerboseLevel,
 } from "./hooks/use-session-settings";
 export {
   useCron,
@@ -90,3 +96,8 @@ export type { PlatformAPI, MediaInfo, ShowcaseFileEntry } from "./adapters/platf
 
 // --- Utils ---
 export { cn } from "./utils/index";
+export {
+  groupMessages,
+  type GroupableMessage,
+  type MessageGroup,
+} from "./utils/message-grouping";

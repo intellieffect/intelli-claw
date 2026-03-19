@@ -11,7 +11,8 @@ import { createMockClient, type MockClient } from "./helpers/mock-gateway-client
 import { installMockStorage } from "./helpers/mock-storage";
 import {
   makeAgentEvent,
-  makeStreamChunk,
+  makeChatDelta,
+  makeChatFinal,
   makeLifecycleStart,
   makeLifecycleEnd,
   resetFixtureCounter,
@@ -118,21 +119,22 @@ describe("Streaming lifecycle", () => {
       mockClient!.emitEvent(makeLifecycleStart("test:agent", "run-1"));
     });
 
-    // Send chunks
+    // Send cumulative chat deltas (each delta contains full text so far)
     act(() => {
-      mockClient!.emitEvent(makeStreamChunk("Hello ", "test:agent"));
+      mockClient!.emitEvent(makeChatDelta("Hello ", "test:agent"));
     });
 
     // Flush rAF
     await act(async () => { vi.advanceTimersByTime(20); });
 
     act(() => {
-      mockClient!.emitEvent(makeStreamChunk("World", "test:agent"));
+      // Chat delta is cumulative — second delta contains "Hello World"
+      mockClient!.emitEvent(makeChatDelta("Hello World", "test:agent"));
     });
 
     await act(async () => { vi.advanceTimersByTime(20); });
 
-    // There should be a streaming message with accumulated content
+    // There should be a streaming message with the latest cumulative content
     const streamingMsg = result.current.messages.find((m) => m.streaming);
     expect(streamingMsg).toBeTruthy();
     expect(streamingMsg!.content).toContain("Hello ");
@@ -148,14 +150,19 @@ describe("Streaming lifecycle", () => {
     });
 
     act(() => {
-      mockClient!.emitEvent(makeStreamChunk("Response", "test:agent"));
+      mockClient!.emitEvent(makeChatDelta("Response", "test:agent"));
     });
 
     await act(async () => { vi.advanceTimersByTime(20); });
 
-    // End lifecycle
+    // End lifecycle (no longer finalizes — just records the key)
     act(() => {
       mockClient!.emitEvent(makeLifecycleEnd("test:agent", "run-1"));
+    });
+
+    // Chat final is the authoritative finalization signal (#255)
+    act(() => {
+      mockClient!.emitEvent(makeChatFinal("test:agent", "run-1"));
     });
 
     expect(result.current.streaming).toBe(false);
@@ -178,7 +185,7 @@ describe("Streaming lifecycle", () => {
 
     // Start with normal text, then replace
     act(() => {
-      mockClient!.emitEvent(makeStreamChunk("NO_REPLY", "test:agent"));
+      mockClient!.emitEvent(makeChatDelta("NO_REPLY", "test:agent"));
     });
 
     await act(async () => { vi.advanceTimersByTime(20); });
@@ -201,7 +208,7 @@ describe("Streaming lifecycle", () => {
     });
 
     act(() => {
-      mockClient!.emitEvent(makeStreamChunk("Partial response", "test:agent"));
+      mockClient!.emitEvent(makeChatDelta("Partial response", "test:agent"));
     });
 
     await act(async () => { vi.advanceTimersByTime(20); });
@@ -228,7 +235,7 @@ describe("Streaming lifecycle", () => {
     await act(async () => { vi.advanceTimersByTime(100); });
 
     act(() => { mockClient!.emitEvent(makeLifecycleStart("test:agent", "run-1")); });
-    act(() => { mockClient!.emitEvent(makeStreamChunk("Text", "test:agent")); });
+    act(() => { mockClient!.emitEvent(makeChatDelta("Text", "test:agent")); });
     await act(async () => { vi.advanceTimersByTime(20); });
 
     const msgCountBefore = result.current.messages.length;
@@ -256,7 +263,7 @@ describe("Streaming lifecycle", () => {
     expect(result.current.streaming).toBe(false);
 
     act(() => {
-      mockClient!.emitEvent(makeStreamChunk("Should be ignored", "other:agent"));
+      mockClient!.emitEvent(makeChatDelta("Should be ignored", "other:agent"));
     });
 
     await act(async () => { vi.advanceTimersByTime(20); });
@@ -270,7 +277,7 @@ describe("Streaming lifecycle", () => {
     await act(async () => { vi.advanceTimersByTime(100); });
 
     act(() => { mockClient!.emitEvent(makeLifecycleStart("test:agent", "run-1")); });
-    act(() => { mockClient!.emitEvent(makeStreamChunk("Partial", "test:agent")); });
+    act(() => { mockClient!.emitEvent(makeChatDelta("Partial", "test:agent")); });
     await act(async () => { vi.advanceTimersByTime(20); });
 
     expect(result.current.streaming).toBe(true);
@@ -337,7 +344,7 @@ describe("Streaming lifecycle", () => {
     phases.push(result.current.agentStatus.phase);
 
     // stream chunk → writing
-    act(() => { mockClient!.emitEvent(makeStreamChunk("text", "test:agent")); });
+    act(() => { mockClient!.emitEvent(makeChatDelta("text", "test:agent")); });
     await act(async () => { vi.advanceTimersByTime(20); });
     phases.push(result.current.agentStatus.phase);
 
@@ -353,8 +360,11 @@ describe("Streaming lifecycle", () => {
     });
     phases.push(result.current.agentStatus.phase);
 
-    // lifecycle.end → idle
+    // lifecycle.end (no longer finalizes)
     act(() => { mockClient!.emitEvent(makeLifecycleEnd("test:agent", "run-1")); });
+
+    // chat final → idle (#255)
+    act(() => { mockClient!.emitEvent(makeChatFinal("test:agent", "run-1")); });
     phases.push(result.current.agentStatus.phase);
 
     expect(phases).toEqual(["idle", "thinking", "writing", "tool", "thinking", "idle"]);

@@ -246,3 +246,51 @@ describe("mergeConsecutiveAssistant — realistic scenarios", () => {
     expect(result[0].timestamp).toBe(T2);
   });
 });
+
+describe("mergeConsecutiveAssistant — #255 overlap detection", () => {
+  it("deduplicates cumulative messages (A, A+B, A+B+C → A+B+C)", () => {
+    const msgs = [
+      msg({ id: "hist-0", content: "Hello" }),
+      msg({ id: "hist-1", content: "Hello world" }),
+      msg({ id: "hist-2", content: "Hello world. How are you?" }),
+    ];
+    const result = mergeConsecutiveAssistant(msgs);
+    expect(result).toHaveLength(1);
+    expect(result[0].content).toBe("Hello world. How are you?");
+  });
+
+  it("keeps accumulator when it's already a superset", () => {
+    const msgs = [
+      msg({ id: "hist-0", content: "Full response with details" }),
+      msg({ id: "hist-1", content: "Full response" }),
+    ];
+    const result = mergeConsecutiveAssistant(msgs);
+    expect(result).toHaveLength(1);
+    expect(result[0].content).toBe("Full response with details");
+  });
+
+  it("joins truly separate messages normally", () => {
+    const msgs = [
+      msg({ id: "hist-0", content: "Part A" }),
+      msg({ id: "hist-1", content: "Part B" }),
+    ];
+    const result = mergeConsecutiveAssistant(msgs);
+    expect(result).toHaveLength(1);
+    expect(result[0].content).toBe("Part A\n\nPart B");
+  });
+
+  it("handles mixed overlap and separate content", () => {
+    const msgs = [
+      msg({ id: "hist-0", content: "Hello" }),
+      msg({ id: "hist-1", content: "Hello world" }),  // overlap with 0
+      msg({ id: "hist-2", role: "user", content: "question" }),
+      msg({ id: "hist-3", content: "Answer part 1" }),
+      msg({ id: "hist-4", content: "Answer part 2" }),  // separate from 3
+    ];
+    const result = mergeConsecutiveAssistant(msgs);
+    expect(result).toHaveLength(3);
+    expect(result[0].content).toBe("Hello world");
+    expect(result[1].content).toBe("question");
+    expect(result[2].content).toBe("Answer part 1\n\nAnswer part 2");
+  });
+});

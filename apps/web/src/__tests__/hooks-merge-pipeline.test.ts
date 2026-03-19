@@ -10,7 +10,7 @@ import React from "react";
 import { createMockClient, type MockClient } from "./helpers/mock-gateway-client";
 import { installMockStorage, type MockStorage } from "./helpers/mock-storage";
 import {
-  makeStreamChunk,
+  makeChatDelta,
   makeLifecycleStart,
   makeLifecycleEnd,
   resetFixtureCounter,
@@ -261,7 +261,7 @@ describe("Merge pipeline", () => {
 
     // Start streaming
     act(() => { mockClient!.emitEvent(makeLifecycleStart("test:agent", "run-1")); });
-    act(() => { mockClient!.emitEvent(makeStreamChunk("Streaming response...", "test:agent")); });
+    act(() => { mockClient!.emitEvent(makeChatDelta("Streaming response...", "test:agent")); });
     await act(async () => { vi.advanceTimersByTime(20); });
 
     // Trigger another loadHistory (e.g. from reconnect)

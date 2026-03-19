@@ -1,6 +1,6 @@
 {
   "name": "@intelli-claw/mobile",
-  "version": "0.1.0",
+  "version": "0.2.21",
   "private": true,
   "main": "expo-router/entry",
   "scripts": {
@@ -11,6 +11,7 @@
     "native:prebuild": "expo prebuild",
     "ios": "expo run:ios",
     "android": "expo run:android",
+    "test": "vitest run",
     "eas-build-post-install": "cd ../.. && pnpm install --frozen-lockfile"
   },
   "dependencies": {
@@ -61,6 +62,7 @@
     "eslint": "^9.22.0",
     "jscodeshift": "^17.3.0",
     "tailwindcss": "^3.4.17",
-    "typescript": "~5.9.3"
+    "typescript": "~5.9.3",
+    "vitest": "^4.0.18"
   }
 }
