@@ -489,14 +489,6 @@ export function MessageList({
     return () => document.removeEventListener("keydown", handler);
   }, [scrollToBottom, scrollToTop, navigableIndices, focusedIdx, visibleMessages, onReply, loadMore]);
 
-  if (loading) {
-    return (
-      <div className="flex flex-1 items-center justify-center text-muted-foreground">
-        대화 기록 불러오는 중...
-      </div>
-    );
-  }
-
   // Group consecutive same-role messages (#224)
   const groups = useMemo(() => groupMessages(visibleMessages), [visibleMessages]);
 
@@ -510,6 +502,14 @@ export function MessageList({
     }
     return indices;
   }, [groups]);
+
+  if (loading) {
+    return (
+      <div className="flex flex-1 items-center justify-center text-muted-foreground">
+        대화 기록 불러오는 중...
+      </div>
+    );
+  }
 
   if (messages.length === 0) {
     return (
