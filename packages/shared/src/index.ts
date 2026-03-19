@@ -131,6 +131,11 @@ export {
   deduplicateMessages,
   mergeConsecutiveAssistant,
 } from "./gateway/message-utils";
+export {
+  ChatStreamProcessor,
+  type ChatStreamCallbacks,
+  type ChatStreamProcessorConfig,
+} from "./gateway/chat-stream-processor";
 
 // --- Utils ---
 export { cn } from "./utils/index";
