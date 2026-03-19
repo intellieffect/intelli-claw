@@ -73,6 +73,15 @@ export interface ChatStreamCallbacks {
   };
   /** Optional: called on streaming timeout for platform-specific feedback. */
   onTimeout?: () => void;
+  /**
+   * Optional: called for agent events not handled by the processor
+   * (e.g., inbound, compaction, exec approval). Platform can handle these.
+   */
+  onUnhandledAgentEvent?: (
+    stream: string,
+    raw: Record<string, unknown>,
+    data: Record<string, unknown> | undefined,
+  ) => void;
 }
 
 export interface ChatStreamProcessorConfig {
@@ -403,6 +412,9 @@ export class ChatStreamProcessor {
       if (key) this.finalizedEventKeys.add(key);
     } else if (stream === "error") {
       this.handleAgentError(data);
+    } else if (stream) {
+      // Pass unhandled agent events to platform (inbound, compaction, exec, etc.)
+      this.cb.onUnhandledAgentEvent?.(stream, raw, data);
     }
   }
 

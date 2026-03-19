@@ -267,7 +267,7 @@ describe("Reconnect flow", () => {
     expect(result.current.agentStatus.phase).toBe("idle");
   });
 
-  it("main streaming timeout (120s) force-resets streaming state", async () => {
+  it("main streaming timeout (45s) force-resets streaming state", async () => {
     const { result } = renderHook(() => useChat("test:agent"));
     await act(async () => { vi.advanceTimersByTime(100); });
 
@@ -278,8 +278,8 @@ describe("Reconnect flow", () => {
 
     expect(result.current.streaming).toBe(true);
 
-    // Advance 120 seconds (streaming timeout)
-    await act(async () => { vi.advanceTimersByTime(120_000); });
+    // Advance 45 seconds (processor streaming timeout)
+    await act(async () => { vi.advanceTimersByTime(45_000); });
 
     expect(result.current.streaming).toBe(false);
     expect(result.current.agentStatus.phase).toBe("idle");
@@ -436,7 +436,7 @@ describe("Pending stream snapshot restoration", () => {
     expect(result2.current.agentStatus.phase).toBe("waiting");
   });
 
-  it("restored snapshot triggers streaming timeout (120s safety net)", async () => {
+  it("restored snapshot triggers streaming timeout (45s safety net)", async () => {
     const snapshot = createPendingStreamSnapshot({
       runId: "run-timeout",
       streamId: "stream-timeout-1",
@@ -451,8 +451,8 @@ describe("Pending stream snapshot restoration", () => {
 
     expect(result.current.streaming).toBe(true);
 
-    // Advance 120s — streaming timeout should force-reset
-    await act(async () => { vi.advanceTimersByTime(120_000); });
+    // Advance 45s — restore safety timeout should force-reset
+    await act(async () => { vi.advanceTimersByTime(45_000); });
 
     expect(result.current.streaming).toBe(false);
     expect(result.current.agentStatus.phase).toBe("idle");

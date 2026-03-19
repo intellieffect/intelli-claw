@@ -88,6 +88,13 @@ export function shouldSuppressStreamingPreview(text: string): boolean {
   );
 }
 
+// ── Template variable stripping ──
+
+/** Strip [[var]] template placeholders from message content. */
+export function stripTemplateVars(text: string): string {
+  return text.replace(/\[\[[^\]]+\]\]\s*/g, "").trim();
+}
+
 // ── Chat commands ──
 
 /** Check if user input is a stop/abort command. */

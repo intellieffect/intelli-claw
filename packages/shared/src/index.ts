@@ -123,6 +123,7 @@ export {
   shouldSuppressStreamingPreview,
   isChatStopCommand,
   isChatResetCommand,
+  stripTemplateVars,
 } from "./gateway/chat-stream-core";
 export {
   simpleHash,
