@@ -104,7 +104,7 @@ describe("processQueue failure — re-insert at front", () => {
 // ---------------------------------------------------------------------------
 describe("sendingRef — streaming race prevention", () => {
   it("blocks send when sendingRef is true", () => {
-    let sendingRef = { current: false };
+    const sendingRef = { current: false };
     const streaming = false;
 
     // Should send when neither flag is set
