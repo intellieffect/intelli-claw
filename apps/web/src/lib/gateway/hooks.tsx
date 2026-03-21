@@ -89,6 +89,13 @@ export function isChatResetCommand(text: string): { reset: boolean; message?: st
   return { reset: false };
 }
 
+// --- Streaming Timeout Constants (#154, #264) ---
+// Exported for testing — values must stay in sync with startStreamingTimeout().
+export const THINKING_TIMEOUT_MS = 45_000;
+export const TOOL_TIMEOUT_MS = 120_000;
+export const WRITING_TIMEOUT_MS = 90_000;
+export const LIFECYCLE_END_GRACE_MS = 10_000;
+
 // --- Web Config Persistence ---
 
 export function loadGatewayConfig(): GatewayConfig {
@@ -896,15 +903,7 @@ export function useChat(sessionKey?: string) {
     };
   }, []);
 
-  // Tiered streaming timeouts (#154, #264):
-  // - Thinking phase (no content yet): 45s — stale connections are detected faster
-  // - Tool phase (tool execution, no delta): 120s — tool calls can take long
-  // - Writing phase (content streaming): 90s — allows long responses to complete
-  // - Lifecycle end grace: 10s — wait for chat final after lifecycle.end
-  const THINKING_TIMEOUT_MS = 45_000;
-  const TOOL_TIMEOUT_MS = 120_000;
-  const WRITING_TIMEOUT_MS = 90_000;
-  const LIFECYCLE_END_GRACE_MS = 10_000;
+  // Tiered streaming timeouts — see module-level constants (#154, #264)
   // #142: Scope queue key per browser tab to prevent cross-tab queue collision
   const queueStorageKey = sessionKey ? `awf:${windowStoragePrefix()}queue:${sessionKey}` : null;
   const pendingStreamStorageKey = sessionKey ? `${PENDING_STREAM_SESSION_KEY_PREFIX}${sessionKey}` : null;
