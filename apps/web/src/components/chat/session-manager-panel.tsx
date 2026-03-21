@@ -1,5 +1,5 @@
 
-import { useState, useMemo, useCallback, useRef, useEffect } from "react";
+import { useState, useMemo, useCallback } from "react";
 import {
   Bot, Pin, MessageCircle, Settings, Zap, Clock,
   Trash2, RotateCcw, X, ChevronDown, ChevronRight, Hand,
@@ -115,16 +115,13 @@ export function SessionManagerPanel({
     });
   }, [sessions, agents]);
 
-  // Auto-expand current agent on first render only
+  // Auto-expand current agent
   const currentParsed = currentSessionKey ? parseSessionKey(currentSessionKey) : null;
-  const autoExpandedRef = useRef(false);
-  useEffect(() => {
-    if (!autoExpandedRef.current && currentParsed) {
-      setExpandedAgents((prev) => new Set(prev).add(currentParsed.agentId));
-      autoExpandedRef.current = true;
-    }
-  }, [currentParsed]);
-  const effectiveExpanded = expandedAgents;
+  const effectiveExpanded = useMemo(() => {
+    const set = new Set(expandedAgents);
+    if (currentParsed) set.add(currentParsed.agentId);
+    return set;
+  }, [expandedAgents, currentParsed]);
 
   const toggleAgent = useCallback((agentId: string) => {
     setExpandedAgents((prev) => {

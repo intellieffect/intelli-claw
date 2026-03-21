@@ -213,11 +213,12 @@ export function AgentSessionBrowser({
 
   const handleAgentClick = useCallback((agentId: string) => {
     if (expandedAgent === agentId) {
-      setExpandedAgent(null);
+      onAgentChange(agentId);
+      setOpen(false);
     } else {
       setExpandedAgent(agentId);
     }
-  }, [expandedAgent]);
+  }, [expandedAgent, onAgentChange, setOpen]);
 
   const handleSessionClick = useCallback((key: string) => {
     onSelect(key);

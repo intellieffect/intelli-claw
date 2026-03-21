@@ -9,7 +9,6 @@ import {
 } from "react";
 import { getMimeType } from "@/lib/mime-types";
 import { windowStoragePrefix } from "@/lib/utils";
-import { usePageVisibility } from "@/lib/hooks/use-page-visibility";
 import { validateMediaPath, sanitizeAttachmentPath } from "@/lib/platform/media-path";
 import { platform } from "@/lib/platform";
 import type {
@@ -88,13 +87,6 @@ export function isChatResetCommand(text: string): { reset: boolean; message?: st
   if (/^\/reset(\s|$)/i.test(t)) return { reset: true, message: t.slice(6).trim() || undefined };
   return { reset: false };
 }
-
-// --- Streaming Timeout Constants (#154, #264) ---
-// Exported for testing — values must stay in sync with startStreamingTimeout().
-export const THINKING_TIMEOUT_MS = 45_000;
-export const TOOL_TIMEOUT_MS = 120_000;
-export const WRITING_TIMEOUT_MS = 90_000;
-export const LIFECYCLE_END_GRACE_MS = 10_000;
 
 // --- Web Config Persistence ---
 
@@ -202,7 +194,6 @@ export function useSessions() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(false);
   const lastRefreshAtRef = useRef(0);
-  const visible = usePageVisibility();
   const trackedSessionIdsRef = useRef<Map<string, string>>(new Map());
   /** Preserve user-set labels across session resets (#216) */
   const preservedLabelsRef = useRef<Map<string, string>>(new Map());
@@ -347,14 +338,6 @@ export function useSessions() {
     });
     return unsub;
   }, [client, refreshThrottled]);
-
-  // #260: Only run 15s polling when page is visible; refresh immediately on becoming visible
-  useEffect(() => {
-    if (state !== "connected" || !visible) return;
-    refreshThrottled();
-    const id = setInterval(() => { refreshThrottled(); }, 15000);
-    return () => clearInterval(id);
-  }, [state, visible, refreshThrottled]);
 
   const patchSession = useCallback((key: string, patch: Record<string, unknown>) => {
     setSessions((prev) => prev.map((s) => (s.key === key ? { ...s, ...patch } : s)));
@@ -847,11 +830,8 @@ export function useChat(sessionKey?: string) {
   const pendingHistoryReloadRef = useRef(false);
   const reconnectSafetyRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const finalizedEventKeysRef = useRef<Set<string>>(new Set());
-  // #155 / #218: Track recently finalized stream messages so loadHistory can skip duplicates.
-  // Store both ID and normalized content for robust matching even when gateway
-  // returns slightly different content (e.g. after mergeConsecutiveAssistant).
+  // #155: Track recently finalized stream IDs so loadHistory can skip duplicates
   const finalizedStreamIdsRef = useRef<Set<string>>(new Set());
-  const finalizedStreamContentRef = useRef<Map<string, { contentKey: string; ts: number }>>(new Map());
   const messagesRef = useRef<DisplayMessage[]>([]);
   // Throttle streaming UI updates to once per animation frame
   const streamRafRef = useRef<number | null>(null);
@@ -903,7 +883,11 @@ export function useChat(sessionKey?: string) {
     };
   }, []);
 
-  // Tiered streaming timeouts — see module-level constants (#154, #264)
+  // Tiered streaming timeouts (#154):
+  // - Thinking phase (no content yet): 45s — stale connections are detected faster
+  // - Writing phase (content streaming): 90s — allows long responses to complete
+  const THINKING_TIMEOUT_MS = 45_000;
+  const WRITING_TIMEOUT_MS = 90_000;
   // #142: Scope queue key per browser tab to prevent cross-tab queue collision
   const queueStorageKey = sessionKey ? `awf:${windowStoragePrefix()}queue:${sessionKey}` : null;
   const pendingStreamStorageKey = sessionKey ? `${PENDING_STREAM_SESSION_KEY_PREFIX}${sessionKey}` : null;
@@ -949,12 +933,10 @@ export function useChat(sessionKey?: string) {
     }
   }, []);
 
-  const startStreamingTimeout = useCallback((phase?: "thinking" | "writing" | "tool") => {
+  const startStreamingTimeout = useCallback((phase?: "thinking" | "writing") => {
     clearStreamingTimeout();
-    // Use phase-specific timeout (#154, #264)
-    const timeoutMs = phase === "writing" ? WRITING_TIMEOUT_MS
-      : phase === "tool" ? TOOL_TIMEOUT_MS
-      : THINKING_TIMEOUT_MS;
+    // Use shorter timeout for thinking phase, longer for writing (#154)
+    const timeoutMs = phase === "writing" ? WRITING_TIMEOUT_MS : THINKING_TIMEOUT_MS;
     // #169: Capture guard version before setTimeout gap
     const timeoutScoped = createScopedUpdater();
     streamingTimeoutRef.current = setTimeout(() => {
@@ -1138,7 +1120,6 @@ export function useChat(sessionKey?: string) {
         runIdRef.current = null;
         finalizedEventKeysRef.current.clear();
         finalizedStreamIdsRef.current.clear();
-        finalizedStreamContentRef.current.clear();
         abortedRef.current = false;
 
       }
@@ -1547,45 +1528,19 @@ export function useChat(sessionKey?: string) {
       }
       mergedMsgs = mergeLiveStreamingIntoHistory(mergedMsgs, liveStreaming);
 
-      // #155 / #218: Remove finalized stream messages that now have a gateway equivalent.
+      // #155: Remove finalized stream messages that now have a gateway equivalent.
       // After finalizeActiveStream, both the finalized msg (stream-...) and the
       // gateway version (hist-N) can coexist. Remove the stream version if
       // a gateway message with matching content already exists.
-      //
-      // #218 enhancement: Also use prefix + timestamp proximity matching to catch
-      // cases where mergeConsecutiveAssistant produces slightly different content
-      // (e.g. tool-call text blocks included/excluded).
       if (finalizedStreamIdsRef.current.size > 0 && dedupedHistMsgs.length > 0) {
         const gwContentKeys = new Set(
           dedupedHistMsgs.map((m) => `${m.role}:${normalizeContentForDedup(m.content)}`),
         );
-        // #218: Build gateway entries with prefix + timestamp for fuzzy matching
-        const gwEntries = dedupedHistMsgs.map((m) => ({
-          role: m.role,
-          contentKey: normalizeContentForDedup(m.content),
-          ts: new Date(m.timestamp).getTime(),
-        }));
         mergedMsgs = mergedMsgs.filter((m) => {
           if (!finalizedStreamIdsRef.current.has(m.id)) return true;
-          // Exact content match
+          // Keep if no gateway equivalent exists (gateway hasn't caught up yet)
           const key = `${m.role}:${normalizeContentForDedup(m.content)}`;
-          if (gwContentKeys.has(key)) return false;
-          // #218: Fuzzy match — same role, close timestamp (< 30s), and content
-          // shares a meaningful prefix (first 80 chars). Catches tool-call merge
-          // discrepancies where gateway content differs slightly from streaming.
-          const finalized = finalizedStreamContentRef.current.get(m.id);
-          if (finalized) {
-            const prefix = finalized.contentKey.slice(0, 80);
-            if (prefix.length >= 20) {
-              const fuzzyMatch = gwEntries.some((g) =>
-                g.role === m.role &&
-                Math.abs(g.ts - finalized.ts) < 30_000 &&
-                g.contentKey.slice(0, 80) === prefix
-              );
-              if (fuzzyMatch) return false;
-            }
-          }
-          return true;
+          return !gwContentKeys.has(key);
         });
       }
 
@@ -1866,21 +1821,10 @@ export function useChat(sessionKey?: string) {
         }]).catch(() => {});
       }
 
-      // #155 / #218: Record finalized stream ID + content so loadHistory won't re-add it.
-      // Content is stored for robust matching when gateway returns slightly different
-      // content after mergeConsecutiveAssistant (tool-call boundaries differ).
+      // #155: Record finalized stream ID so loadHistory won't re-add it
       finalizedStreamIdsRef.current.add(finalId);
-      const finalContentKey = normalizeContentForDedup(finalContent);
-      finalizedStreamContentRef.current.set(finalId, {
-        contentKey: finalContentKey,
-        ts: Date.now(),
-      });
-      // Auto-expire after 60s (increased from 30s — #218: slow loadHistory could
-      // arrive after TTL expiry, re-introducing the duplicate).
-      setTimeout(() => {
-        finalizedStreamIdsRef.current.delete(finalId);
-        finalizedStreamContentRef.current.delete(finalId);
-      }, 60_000);
+      // Auto-expire after 30s to prevent unbounded growth
+      setTimeout(() => finalizedStreamIdsRef.current.delete(finalId), 30_000);
 
       resetAllStreamRefs(streamRefs);
       runIdRef.current = null;
@@ -2069,8 +2013,6 @@ export function useChat(sessionKey?: string) {
         const callId = (data.toolCallId || data.callId || "") as string;
         const name = (data.name || data.tool || "") as string;
         setAgentStatusDebug({ phase: "tool", toolName: name });
-        // #264: Reset timeout with tool-specific duration (120s)
-        startStreamingTimeout("tool");
         const args = data.args as string | undefined;
         // Commit current text to segments before tool starts (OpenClaw pattern)
         commitChatStreamToSegment(streamRefs);
@@ -2105,8 +2047,6 @@ export function useChat(sessionKey?: string) {
         const callId = (data.toolCallId || data.callId || "") as string;
         const result = data.result as string | undefined;
         setAgentStatusDebug({ phase: "thinking" });
-        // #264: Reset timeout back to thinking after tool completes
-        startStreamingTimeout("thinking");
         if (hasActiveStream(streamRefs)) {
           const entry = toolStreamByIdRef.current.get(callId);
           if (entry) { entry.output = result; entry.updatedAt = Date.now(); }
@@ -2134,8 +2074,6 @@ export function useChat(sessionKey?: string) {
           const callId = (data.toolCallId || data.callId || "") as string;
           const name = (data.name || data.tool || "") as string;
           setAgentStatusDebug({ phase: "tool", toolName: name });
-          // #264: Reset timeout with tool-specific duration (120s)
-          startStreamingTimeout("tool");
           const args = data.args as string | undefined;
           // Commit current text to segments before tool starts (OpenClaw pattern)
           commitChatStreamToSegment(streamRefs);
@@ -2170,8 +2108,6 @@ export function useChat(sessionKey?: string) {
           const callId = (data.toolCallId || data.callId || "") as string;
           const result = data.result as string | undefined;
           setAgentStatusDebug({ phase: "thinking" });
-          // #264: Reset timeout back to thinking after tool completes
-          startStreamingTimeout("thinking");
           if (hasActiveStream(streamRefs)) {
             const toolEntry = toolStreamByIdRef.current.get(callId);
             if (toolEntry) { toolEntry.output = result; toolEntry.updatedAt = Date.now(); }
@@ -2303,17 +2239,6 @@ export function useChat(sessionKey?: string) {
         const eventRunId = resolveRunId(raw, data);
         const key = finalEventKey(eventRunId);
         if (key) finalizedEventKeysRef.current.add(key);
-        // #264: Replace current timeout with a short grace period for chat final.
-        // If chat final doesn't arrive within LIFECYCLE_END_GRACE_MS, force finalize.
-        startStreamingTimeout("thinking");
-        clearStreamingTimeout();
-        const graceScoped = createScopedUpdater();
-        streamingTimeoutRef.current = setTimeout(() => {
-          if (!graceScoped.isValid()) return;
-          console.warn("[AWF] lifecycle.end grace period expired — chat final not received, force finalizing");
-          finalizeActiveStream(undefined, boundSessionKey);
-          loadHistory();
-        }, LIFECYCLE_END_GRACE_MS);
       } else if (stream === "done" || stream === "end" || stream === "finish") {
         // #255: Same as lifecycle.end — don't finalize from agent events.
         // Chat final handles finalization.
