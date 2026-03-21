@@ -1,5 +1,5 @@
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { getAgentAvatar } from "@/lib/agent-avatars";
 import { cn } from "@/lib/utils";
 
@@ -16,13 +16,6 @@ interface AgentAvatarProps {
 export function AgentAvatar({ agentId, size = 32, className }: AgentAvatarProps) {
   const av = getAgentAvatar(agentId);
   const [imgError, setImgError] = useState(false);
-
-  // Reset error state when agentId changes so a new image load is attempted.
-  // Fixes: new window (Cmd+N) starts with agentId="default" → 404 → imgError=true,
-  // then actual agentId arrives but imgError was stuck. (#258)
-  useEffect(() => {
-    setImgError(false);
-  }, [agentId]);
 
   if (av.imageUrl && !imgError) {
     return (
