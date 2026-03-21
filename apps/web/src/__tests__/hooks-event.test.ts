@@ -560,10 +560,9 @@ describe("hooks-event: polling → event-based session refresh (#250)", () => {
       (c: unknown[]) => c[0] === "sessions.list"
     ).length;
 
-    // With event-based, no extra calls should be made in those 60 seconds
-    // (unless lifecycle events trigger them)
-    // Old behavior: would have made ~4 calls (60s / 15s)
-    expect(callsAfter - callsBefore).toBe(0);
+    // #260: visibility-aware polling runs every 15s when page is visible,
+    // so ~4 calls in 60s is expected. Old pure-event approach had 0.
+    expect(callsAfter - callsBefore).toBeGreaterThanOrEqual(3);
   });
 
   it("should refresh sessions after chat final event", async () => {
