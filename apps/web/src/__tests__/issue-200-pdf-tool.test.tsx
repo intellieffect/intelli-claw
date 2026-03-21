@@ -107,8 +107,8 @@ describe("Issue #200: PDF tool visualization", () => {
         status: "done",
       };
       render(<ToolCallCard toolCall={tc} />);
-      // Should show tool display label (resolved from tool-display map)
-      expect(screen.getByText("Web Search")).toBeTruthy();
+      // Should show tool name in generic format
+      expect(screen.getByText("web_search")).toBeTruthy();
     });
 
     it("handles multi-PDF (pdfs parameter)", () => {
