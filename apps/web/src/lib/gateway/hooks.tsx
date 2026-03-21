@@ -299,10 +299,23 @@ export function useSessions() {
           const existing = await getCurrentSessionId(key);
           if (!existing || existing !== newSessionId) {
             if (existing) {
+              // #216: On first poll after refresh, if session reset happened while offline,
+              // try to recover label from IndexedDB before marking the old session ended.
+              if (!serverLabel) {
+                try {
+                  const topics = await getTopicHistory(key);
+                  const prevTopic = topics.find((t) => t.sessionId === existing);
+                  if (prevTopic?.label) {
+                    labelsToRestore.set(key, prevTopic.label);
+                    preservedLabelsRef.current.set(key, prevTopic.label);
+                    client.request("sessions.patch", { key, label: prevTopic.label }).catch(() => {});
+                  }
+                } catch { /* best-effort */ }
+              }
               markSessionEnded(key, existing).catch(() => {});
             }
             trackSessionId(key, newSessionId, {
-              label: s.label ? String(s.label) : undefined,
+              label: s.label ? String(s.label) : labelsToRestore.get(key),
             }).catch(() => {});
           }
         }
