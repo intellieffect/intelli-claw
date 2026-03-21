@@ -202,8 +202,9 @@ describe("첫 사용자 시나리오", () => {
       expect(latestWs().url).toBe("ws://custom:9999");
     });
 
-    it("localStorage에 저장된 설정이 env보다 우선", async () => {
-      vi.stubEnv("VITE_GATEWAY_URL", "ws://env-url:1234");
+    it("localStorage에 저장된 설정이 env보다 우선 (같은 URL일 때)", async () => {
+      // When env URL matches localStorage URL, localStorage token wins
+      vi.stubEnv("VITE_GATEWAY_URL", "ws://saved-url:5678");
       mockLocalStorage.setItem(GATEWAY_CONFIG_STORAGE_KEY, JSON.stringify({
         url: "ws://saved-url:5678",
         token: "saved-token",
@@ -217,6 +218,24 @@ describe("첫 사용자 시나리오", () => {
 
       await new Promise((r) => setTimeout(r, 10));
       expect(latestWs().url).toBe("ws://saved-url:5678");
+    });
+
+    it("env URL이 non-default이고 localStorage와 다르면 env가 우선", async () => {
+      // Deployment target changed — env wins, stale localStorage cleared (#220)
+      vi.stubEnv("VITE_GATEWAY_URL", "ws://new-deploy:1234");
+      mockLocalStorage.setItem(GATEWAY_CONFIG_STORAGE_KEY, JSON.stringify({
+        url: "ws://old-saved:5678",
+        token: "old-token",
+      }));
+
+      render(
+        <GatewayProvider>
+          <div>test</div>
+        </GatewayProvider>
+      );
+
+      await new Promise((r) => setTimeout(r, 10));
+      expect(latestWs().url).toBe("ws://new-deploy:1234");
     });
   });
 
