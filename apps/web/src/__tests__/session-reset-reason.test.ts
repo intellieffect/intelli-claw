@@ -103,6 +103,8 @@ describe("inferResetReason", () => {
   });
 
   it("returns 'unknown' when no heuristic matches", () => {
+    // Mock time far from daily reset hour (4 AM) to avoid false 'daily' match
+    mockNow(localTimestamp(2026, 3, 6, 12, 0));
     const ctx: ResetReasonContext = {};
     expect(inferResetReason(ctx)).toBe("unknown");
   });
