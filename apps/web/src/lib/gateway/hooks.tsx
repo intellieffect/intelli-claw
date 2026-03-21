@@ -88,6 +88,49 @@ export function isChatResetCommand(text: string): { reset: boolean; message?: st
   return { reset: false };
 }
 
+// --- Label Preservation (#216) ---
+
+export interface SessionLabelSnapshot {
+  key: string;
+  sessionId: string;
+  label?: string;
+}
+
+/**
+ * Detect session resets and determine which labels need restoring.
+ * Pure function extracted for testability (#216).
+ *
+ * @param trackedSessionIds - Previously known sessionIds per key
+ * @param preservedLabels - Accumulated label cache (mutated in-place)
+ * @param sessions - Current sessions from server
+ * @returns labelsToRestore - Map of key → label to restore
+ */
+export function detectLabelsToRestore(
+  trackedSessionIds: Map<string, string>,
+  preservedLabels: Map<string, string>,
+  sessions: SessionLabelSnapshot[],
+): Map<string, string> {
+  const labelsToRestore = new Map<string, string>();
+
+  for (const s of sessions) {
+    if (!s.key || !s.sessionId) continue;
+
+    if (s.label) {
+      preservedLabels.set(s.key, s.label);
+    }
+
+    const oldSessionId = trackedSessionIds.get(s.key);
+    if (oldSessionId && oldSessionId !== s.sessionId) {
+      const previousLabel = preservedLabels.get(s.key);
+      if (previousLabel && !s.label) {
+        labelsToRestore.set(s.key, previousLabel);
+      }
+    }
+  }
+
+  return labelsToRestore;
+}
+
 // --- Web Config Persistence ---
 
 export function loadGatewayConfig(): GatewayConfig {
@@ -205,30 +248,16 @@ export function useSessions() {
       const res = await client.request<{ sessions: Array<Record<string, unknown>> }>("sessions.list", { limit: 200 });
 
       // #216: Detect session resets and preserve labels BEFORE updating UI state.
-      // This ensures the UI never flashes an empty/wrong label on reset.
-      const labelsToRestore = new Map<string, string>();
-
-      for (const s of res?.sessions || []) {
-        const key = String(s.key || "");
-        const newSessionId = s.sessionId ? String(s.sessionId) : undefined;
-        if (!key || !newSessionId) continue;
-
-        const serverLabel = s.label ? String(s.label) : undefined;
-        const oldSessionId = trackedSessionIdsRef.current.get(key);
-
-        // Track non-empty labels so we can restore them if a reset clears them
-        if (serverLabel) {
-          preservedLabelsRef.current.set(key, serverLabel);
-        }
-
-        if (oldSessionId && oldSessionId !== newSessionId) {
-          // Session reset detected — check if label needs preservation
-          const previousLabel = preservedLabelsRef.current.get(key);
-          if (previousLabel && !serverLabel) {
-            labelsToRestore.set(key, previousLabel);
-          }
-        }
-      }
+      const sessionSnapshots: SessionLabelSnapshot[] = (res?.sessions || []).map((s) => ({
+        key: String(s.key || ""),
+        sessionId: s.sessionId ? String(s.sessionId) : "",
+        label: s.label ? String(s.label) : undefined,
+      }));
+      const labelsToRestore = detectLabelsToRestore(
+        trackedSessionIdsRef.current,
+        preservedLabelsRef.current,
+        sessionSnapshots,
+      );
 
       const mapped = (res?.sessions || []).map((s) => {
         const key = String(s.key || "");
