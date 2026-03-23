@@ -552,6 +552,11 @@ export function mergeConsecutiveAssistant(msgs: DisplayMessage[]): DisplayMessag
           accumulator.attachments || m.attachments
             ? [...(accumulator.attachments || []), ...(m.attachments || [])]
             : undefined,
+        // #222: Merge thinking blocks from consecutive assistant messages
+        thinking:
+          accumulator.thinking || m.thinking
+            ? [...(accumulator.thinking || []), ...(m.thinking || [])]
+            : undefined,
       };
     } else {
       if (accumulator) result.push(accumulator);
@@ -827,9 +832,9 @@ export function truncateForPreview(content: string, maxLen = 100): string {
  */
 export function extractThinkingFromContent(
   content: string | ContentPart[] | Array<Record<string, unknown>>,
-): { thinking: Array<{ text: string }>; thinkingText: string } {
+): { thinking: Array<{ text: string }>; cleanContent: string } {
   const result = extractThinking(content as string | ContentPart[]);
-  return { thinking: result.thinking, thinkingText: "" };
+  return { thinking: result.thinking, cleanContent: result.cleanContent };
 }
 
 /** Check if a message can be used as a reply target */
@@ -1308,7 +1313,7 @@ export function useChat(sessionKey?: string) {
             const extracted = extractThinkingFromContent(m.content);
             thinkingBlocks = extracted.thinking;
             textContent = extracted.thinking.length > 0
-              ? extractThinking(m.content).cleanContent
+              ? extracted.cleanContent
               : m.content;
           } else if (Array.isArray(m.content)) {
             const parts = m.content as Array<Record<string, unknown>>;
@@ -1995,7 +2000,7 @@ export function useChat(sessionKey?: string) {
               const ext = extractThinkingFromContent(chatMsg.content);
               deltaThinking = ext.thinking;
               text = ext.thinking.length > 0
-                ? extractThinking(chatMsg.content).cleanContent
+                ? ext.cleanContent
                 : chatMsg.content;
             } else if (Array.isArray(chatMsg.content)) {
               const parts = chatMsg.content as Array<Record<string, unknown>>;

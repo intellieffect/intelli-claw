@@ -11,7 +11,7 @@ describe("extractThinkingFromContent", () => {
   it("returns empty thinking for plain string content", () => {
     const result = extractThinkingFromContent("Hello world");
     expect(result.thinking).toEqual([]);
-    expect(result.thinkingText).toBe("");
+    expect(result.cleanContent).toBe("Hello world");
   });
 
   it("extracts thinking blocks from ContentPart[]", () => {
@@ -21,14 +21,14 @@ describe("extractThinkingFromContent", () => {
     ];
     const result = extractThinkingFromContent(content);
     expect(result.thinking).toEqual([{ text: "Let me reason..." }]);
-    expect(result.thinkingText).toBe("");
+    expect(result.cleanContent).toBe("Here is the answer.");
   });
 
   it("extracts thinking from string with <think> tags", () => {
     const content = "<think>My reasoning</think>The answer";
     const result = extractThinkingFromContent(content);
     expect(result.thinking).toEqual([{ text: "My reasoning" }]);
-    expect(result.thinkingText).toBe("");
+    expect(result.cleanContent).toBe("The answer");
   });
 
   it("handles ContentPart[] with no thinking", () => {
@@ -37,7 +37,7 @@ describe("extractThinkingFromContent", () => {
     ];
     const result = extractThinkingFromContent(content);
     expect(result.thinking).toEqual([]);
-    expect(result.thinkingText).toBe("");
+    expect(result.cleanContent).toBe("Just text");
   });
 
   it("accumulates thinking text during streaming from delta content", () => {
@@ -48,5 +48,6 @@ describe("extractThinkingFromContent", () => {
     const result = extractThinkingFromContent(content);
     expect(result.thinking).toHaveLength(1);
     expect(result.thinking[0].text).toContain("Step 1");
+    expect(result.cleanContent).toBe("");
   });
 });
