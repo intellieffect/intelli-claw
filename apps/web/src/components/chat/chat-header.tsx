@@ -2,7 +2,7 @@
 import { useMemo, useRef, useEffect, useState, useCallback } from "react";
 import {
   MessageSquare, Plus, X, Pin, Zap,
-  MessageCircle, Bot, Settings,
+  MessageCircle, Bot, Settings, Eye, EyeOff,
 } from "lucide-react";
 import { parseSessionKey, isTopicClosed, getCleanLabel } from "@/lib/gateway/session-utils";
 import { isSessionHidden, hideSession } from "@/lib/gateway/hidden-sessions";
@@ -10,6 +10,7 @@ import type { Agent, Session } from "@/lib/gateway/protocol";
 import type { AgentStatus } from "@/lib/gateway/hooks";
 import { AgentAvatar } from "@/components/ui/agent-avatar";
 import { cn } from "@/lib/utils";
+import { useShowThinking } from "@/lib/hooks/use-show-thinking";
 
 
 // --- Types ---
@@ -145,6 +146,7 @@ export function ChatHeader({
   const [confirmDeleteKey, setConfirmDeleteKey] = useState<string | null>(null);
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [editLabel, setEditLabel] = useState("");
+  const [showThinking, toggleThinking] = useShowThinking();
 
   const parsed = sessionKey ? parseSessionKey(sessionKey) : null;
   const agent = parsed ? agents.find((a) => a.id === parsed.agentId) : undefined;
@@ -324,6 +326,19 @@ export function ChatHeader({
         <span className="text-xl font-extrabold text-white truncate tracking-tight leading-tight">
           {agentName}
         </span>
+        <button
+          onClick={toggleThinking}
+          className={cn(
+            "rounded p-1 transition",
+            showThinking
+              ? "text-amber-400/70 hover:bg-zinc-800 hover:text-amber-400"
+              : "text-zinc-600 hover:bg-zinc-800 hover:text-zinc-400"
+          )}
+          title={showThinking ? "Reasoning 숨기기" : "Reasoning 표시"}
+          data-testid="thinking-toggle-global"
+        >
+          {showThinking ? <Eye size={12} /> : <EyeOff size={12} />}
+        </button>
         {onOpenSessionManager && (
           <button
             onClick={onOpenSessionManager}
