@@ -4,7 +4,7 @@ import {
   User, Bot, Clock, X, Copy, Check, ArrowDown, Download,
   FileText, Music, Video, File, Image as ImageIcon,
   FileSpreadsheet, FileCode, FileArchive, FileAudio, FileVideo,
-  RefreshCw, History, Loader2, Reply, ChevronDown,
+  History, Loader2, Reply, ChevronDown,
 } from "lucide-react";
 import { MarkdownRenderer, MarkdownFilePreview } from "./markdown-renderer";
 import { ToolCallCard } from "./tool-call-card";
@@ -114,7 +114,6 @@ export function MessageList({
   onCancelQueued,
   agentId,
   agentStatus,
-  onLoadPreviousContext,
   onOpenTopicHistory,
   onReply,
 }: {
@@ -124,7 +123,6 @@ export function MessageList({
   onCancelQueued?: (id: string) => void;
   agentId?: string;
   agentStatus?: AgentStatus;
-  onLoadPreviousContext?: () => void | Promise<void>;
   onOpenTopicHistory?: () => void;
   onReply?: (msg: DisplayMessage) => void;
 }) {
@@ -546,7 +544,6 @@ export function MessageList({
                 <SessionBoundary
                   key={msg.id}
                   reason={msg.resetReason}
-                  onLoadContext={onLoadPreviousContext}
                   onViewHistory={onOpenTopicHistory}
                 />
               );
@@ -635,25 +632,9 @@ function SessionBoundary({
   onViewHistory,
 }: {
   reason?: string;
-  onLoadContext?: () => void | Promise<void>;
   onViewHistory?: () => void;
 }) {
   const label = resetReasonLabel((reason || "unknown") as ResetReason);
-  const [bridgeSent, setBridgeSent] = useState(false);
-  const [sending, setSending] = useState(false);
-
-  const handleLoadContext = useCallback(async () => {
-    if (bridgeSent || sending || !onLoadContext) return;
-    setSending(true);
-    try {
-      await onLoadContext();
-      setBridgeSent(true);
-    } catch {
-      // 실패 시 재시도 가능하도록 상태 유지
-    } finally {
-      setSending(false);
-    }
-  }, [onLoadContext, bridgeSent, sending]);
 
   return (
     <div className="flex items-center gap-3 py-3">
@@ -663,47 +644,15 @@ function SessionBoundary({
           <span>{label.icon}</span>
           <span>{label.text}</span>
         </div>
-        <div className="flex items-center gap-2">
-          {onLoadContext && (
-            <button
-              onClick={handleLoadContext}
-              disabled={bridgeSent || sending}
-              className={`flex items-center gap-1 rounded-md border px-2.5 py-1 text-[10px] transition ${
-                bridgeSent
-                  ? "border-emerald-600/30 bg-emerald-900/20 text-emerald-400 cursor-default"
-                  : sending
-                    ? "border-amber-600/30 bg-amber-900/20 text-amber-400/60 cursor-wait"
-                    : "border-amber-600/30 bg-amber-900/20 text-amber-400 hover:bg-amber-900/40 hover:border-amber-500/50"
-              }`}
-            >
-              {bridgeSent ? (
-                <>
-                  <Check size={10} />
-                  맥락 전송됨
-                </>
-              ) : sending ? (
-                <>
-                  <Loader2 size={10} className="animate-spin" />
-                  전송 중...
-                </>
-              ) : (
-                <>
-                  <RefreshCw size={10} />
-                  이전 맥락 불러오기
-                </>
-              )}
-            </button>
-          )}
-          {onViewHistory && (
-            <button
-              onClick={onViewHistory}
-              className="flex items-center gap-1 rounded-md border border-zinc-600/30 bg-zinc-800/40 px-2.5 py-1 text-[10px] text-zinc-400 transition hover:bg-zinc-700/40 hover:text-zinc-300"
-            >
-              <History size={10} />
-              이전 대화 보기
-            </button>
-          )}
-        </div>
+        {onViewHistory && (
+          <button
+            onClick={onViewHistory}
+            className="flex items-center gap-1 rounded-md border border-zinc-600/30 bg-zinc-800/40 px-2.5 py-1 text-[10px] text-zinc-400 transition hover:bg-zinc-700/40 hover:text-zinc-300"
+          >
+            <History size={10} />
+            이전 대화 보기
+          </button>
+        )}
       </div>
       <div className="flex-1 border-t border-dashed border-amber-600/40" />
     </div>

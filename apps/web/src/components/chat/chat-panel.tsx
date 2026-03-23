@@ -94,7 +94,7 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
     api?.updateSessionKey?.(effectiveSessionKey);
   }, [effectiveSessionKey]);
 
-  const { messages, streaming, loading, agentStatus, sendMessage, sendCommand, addUserMessage, addLocalMessage, clearMessages, cancelQueued, abort, sendContextBridge, replyingTo, setReplyTo, clearReplyTo } = useChat(effectiveSessionKey);
+  const { messages, streaming, loading, agentStatus, sendMessage, sendCommand, addUserMessage, addLocalMessage, clearMessages, cancelQueued, abort, replyingTo, setReplyTo, clearReplyTo } = useChat(effectiveSessionKey);
   const { agents } = useAgents();
   const { sessions, loading: sessionsLoading, refresh: refreshSessions, patchSession } = useSessions();
 
@@ -872,7 +872,6 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
           onCancelQueued={cancelQueued}
           agentId={currentAgentId}
           agentStatus={agentStatus}
-          onLoadPreviousContext={sendContextBridge}
           onOpenTopicHistory={() => setTopicHistoryOpen(true)}
           onReply={setReplyTo}
           onClearMessages={() => {
