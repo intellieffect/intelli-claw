@@ -99,7 +99,7 @@ function ResultPreview({ result }: { result: string }) {
   );
 }
 
-export function ToolCallCard({ toolCall }: { toolCall: ToolCall }) {
+export function ToolCallCard({ toolCall, onViewDetail }: { toolCall: ToolCall; onViewDetail?: (tc: ToolCall) => void }) {
   const [expanded, setExpanded] = useState(false);
 
   // Resolve display info from registry
@@ -174,6 +174,15 @@ export function ToolCallCard({ toolCall }: { toolCall: ToolCall }) {
         <span className="text-xs text-foreground">{display.label}</span>
         {toolCall.status === "running" && (
           <span className="ml-auto text-xs text-muted-foreground">실행 중...</span>
+        )}
+        {onViewDetail && toolCall.result && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onViewDetail(toolCall); }}
+            className="ml-auto rounded px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-zinc-600/40 hover:text-zinc-300 transition"
+            title="사이드바에서 상세 보기"
+          >
+            상세
+          </button>
         )}
       </button>
 

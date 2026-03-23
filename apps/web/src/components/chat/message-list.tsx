@@ -10,6 +10,7 @@ import { MarkdownRenderer, MarkdownFilePreview } from "./markdown-renderer";
 import { ToolCallCard } from "./tool-call-card";
 import { ThinkingBlock } from "./thinking-block";
 import { HIDDEN_REPLY_RE, canBeReplyTarget, stripTrailingControlTokens, type DisplayMessage, type DisplayAttachment, type AgentStatus, type SystemInjectedType, type MessageSegment } from "@/lib/gateway/hooks";
+import type { ToolCall } from "@intelli-claw/shared";
 import { useShowThinking } from "@/lib/hooks/use-show-thinking";
 import { AgentAvatar } from "@/components/ui/agent-avatar";
 import { groupMessages } from "@intelli-claw/shared";
@@ -119,6 +120,7 @@ export function MessageList({
   onLoadPreviousContext,
   onOpenTopicHistory,
   onReply,
+  onToolClick,
 }: {
   messages: DisplayMessage[];
   loading: boolean;
@@ -129,6 +131,7 @@ export function MessageList({
   onLoadPreviousContext?: () => void | Promise<void>;
   onOpenTopicHistory?: () => void;
   onReply?: (msg: DisplayMessage) => void;
+  onToolClick?: (tc: ToolCall) => void;
 }) {
   const PAGE_SIZE = 50;
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -571,6 +574,7 @@ export function MessageList({
                 focused={focusedIdx === idx}
                 selected={selectedIndices.has(idx)}
                 onReply={onReply}
+                onToolClick={onToolClick}
                 showThinking={showThinking}
               />
             );
@@ -816,8 +820,8 @@ function ReplyButton({ onClick }: { onClick: () => void }) {
   );
 }
 
-const MessageBubble = React.memo(React.forwardRef<HTMLDivElement, { message: DisplayMessage; showAvatar?: boolean; showTimestamp?: boolean; onCancel?: (id: string) => void; agentId?: string; agentStatus?: AgentStatus; focused?: boolean; selected?: boolean; onReply?: (msg: DisplayMessage) => void; showThinking?: boolean }>(
-  function MessageBubble({ message, showAvatar = true, showTimestamp = true, onCancel, agentId, agentStatus, focused, selected, onReply, showThinking = true }, ref) {
+const MessageBubble = React.memo(React.forwardRef<HTMLDivElement, { message: DisplayMessage; showAvatar?: boolean; showTimestamp?: boolean; onCancel?: (id: string) => void; agentId?: string; agentStatus?: AgentStatus; focused?: boolean; selected?: boolean; onReply?: (msg: DisplayMessage) => void; showThinking?: boolean; onToolClick?: (tc: ToolCall) => void }>(
+  function MessageBubble({ message, showAvatar = true, showTimestamp = true, onCancel, agentId, agentStatus, focused, selected, onReply, showThinking = true, onToolClick }, ref) {
   const isUser = message.role === "user";
   const isSystem = message.role === "system";
   const isQueued = message.queued;
@@ -868,10 +872,10 @@ const MessageBubble = React.memo(React.forwardRef<HTMLDivElement, { message: Dis
       )}
 
       <div
-        className={`min-w-0 max-w-[90%] md:max-w-[85%] ${
+        className={`min-w-0 max-w-[90%] md:max-w-[85%] overflow-hidden ${
           isUser
             ? `rounded-2xl rounded-br-md px-3.5 py-2 md:px-4 md:py-2.5 text-foreground ${isQueued ? "bg-primary/15 border border-primary/20" : "bg-primary/15 border border-primary/10"}${selected ? " outline outline-2 outline-amber-500 bg-amber-500/10" : focused ? " outline outline-2 outline-amber-500/50" : ""}`
-            : `rounded-2xl rounded-bl-md px-3.5 py-2 md:px-4 md:py-2.5 bg-zinc-800/60 border border-zinc-700/50 flex-1${selected ? " outline outline-2 outline-amber-500 bg-amber-500/10" : focused ? " outline outline-2 outline-amber-500/50" : ""}`
+            : `rounded-2xl rounded-bl-md px-3.5 py-2 md:px-4 md:py-2.5 bg-zinc-800/60 border border-zinc-700/50${selected ? " outline outline-2 outline-amber-500 bg-amber-500/10" : focused ? " outline outline-2 outline-amber-500/50" : ""}`
         }`}
       >
         {isUser ? (
@@ -958,12 +962,12 @@ const MessageBubble = React.memo(React.forwardRef<HTMLDivElement, { message: Dis
             )}
             {/* #231: Interleaved segments (text↔tool in order) */}
             {message.segments && message.segments.length > 0 ? (
-              <div className="mb-2 space-y-2">
+              <div className="mb-2 space-y-2 min-w-0 overflow-hidden">
                 {message.segments.map((seg, i) =>
                   seg.type === "text" ? (
                     <MarkdownRenderer key={`seg-text-${i}`} content={seg.text} />
                   ) : (
-                    <ToolCallCard key={seg.toolCall.callId} toolCall={seg.toolCall} />
+                    <ToolCallCard key={seg.toolCall.callId} toolCall={seg.toolCall} onViewDetail={onToolClick} />
                   )
                 )}
               </div>
@@ -972,7 +976,7 @@ const MessageBubble = React.memo(React.forwardRef<HTMLDivElement, { message: Dis
                 {message.toolCalls.length > 0 && (
                   <div className="mb-2">
                     {message.toolCalls.map((tc) => (
-                      <ToolCallCard key={tc.callId} toolCall={tc} />
+                      <ToolCallCard key={tc.callId} toolCall={tc} onViewDetail={onToolClick} />
                     ))}
                   </div>
                 )}
