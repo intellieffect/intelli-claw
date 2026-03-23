@@ -665,6 +665,8 @@ export interface DisplayMessage {
   systemType?: SystemInjectedType;
   /** #242: True when this message represents an error/timeout notification */
   isError?: boolean;
+  /** #222: Extracted thinking/reasoning blocks from the model */
+  thinking?: Array<{ text: string }>;
 }
 
 /**
