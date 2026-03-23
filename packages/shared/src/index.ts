@@ -101,3 +101,8 @@ export {
   type GroupableMessage,
   type MessageGroup,
 } from "./utils/message-grouping";
+export {
+  extractThinking,
+  type ThinkingBlock,
+  type ExtractThinkingResult,
+} from "./utils/thinking-parser";
