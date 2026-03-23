@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { MarkdownRenderer, MarkdownFilePreview } from "./markdown-renderer";
 import { ToolCallCard } from "./tool-call-card";
+import { ThinkingBlock } from "./thinking-block";
 import { HIDDEN_REPLY_RE, canBeReplyTarget, stripTrailingControlTokens, type DisplayMessage, type DisplayAttachment, type AgentStatus, type SystemInjectedType } from "@/lib/gateway/hooks";
 import { AgentAvatar } from "@/components/ui/agent-avatar";
 import { groupMessages } from "@intelli-claw/shared";
@@ -948,6 +949,10 @@ const MessageBubble = React.memo(React.forwardRef<HTMLDivElement, { message: Dis
           <div>
             {/* Reply quote block */}
             {message.replyTo && <ReplyQuoteBlock replyTo={message.replyTo} />}
+            {/* #222: Thinking/reasoning block */}
+            {message.thinking && message.thinking.length > 0 && (
+              <ThinkingBlock thinking={message.thinking} streaming={message.streaming} />
+            )}
             {message.toolCalls.length > 0 && (
               <div className="mb-2">
                 {message.toolCalls.map((tc) => (
@@ -1049,6 +1054,7 @@ export function messageBubbleAreEqual(
     && pm.role === nm.role
     && (pm.toolCalls?.length ?? 0) === (nm.toolCalls?.length ?? 0)
     && (pm.attachments?.length ?? 0) === (nm.attachments?.length ?? 0)
+    && (pm.thinking?.length ?? 0) === (nm.thinking?.length ?? 0)
     && prev.focused === next.focused
     && prev.selected === next.selected
     && prev.agentId === next.agentId
