@@ -700,7 +700,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
   // Collapse 3+ consecutive newlines to 2 (one blank line)
   const cleaned = withoutMedia.replace(/\n{3,}/g, "\n\n").trim();
   return (
-    <div className="prose">
+    <div className="prose min-w-0 overflow-hidden">
       {mediaEntries.length > 0 && (
         <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-thin">
           {mediaEntries.map((entry, i) => (
