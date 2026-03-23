@@ -2693,8 +2693,27 @@ export function useChat(sessionKey?: string) {
       }]).catch(() => {});
       // Clear replyingTo after send
       if (replyingTo) setReplyingToState(null);
-      if (shouldQueue) { queueRef.current.push({ id: msgId, text }); persistQueue(); }
-      else { doSend(text, msgId); }
+      if (shouldQueue) {
+        // #230: Enforce queue size limit
+        const MAX_QUEUE_SIZE = 10;
+        if (queueRef.current.length >= MAX_QUEUE_SIZE) {
+          console.warn(`[AWF] Queue full (${MAX_QUEUE_SIZE}) — message rejected`);
+          setMessages((prev) => [
+            ...prev.filter((m) => m.id !== msgId),
+            {
+              id: `queue-full-${Date.now()}`,
+              role: "assistant" as const,
+              content: `⚠️ 대기열이 가득 찼습니다 (최대 ${MAX_QUEUE_SIZE}개). 현재 응답 완료 후 다시 시도해주세요.`,
+              timestamp: new Date().toISOString(),
+              toolCalls: [],
+              isError: true,
+            },
+          ]);
+          return;
+        }
+        queueRef.current.push({ id: msgId, text });
+        persistQueue();
+      } else { doSend(text, msgId); }
     },
     [client, state, streaming, doSend, replyingTo, abort, sendCommand]
   );
