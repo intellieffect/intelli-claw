@@ -17,7 +17,9 @@ import type {
   Session,
   ChatMessage,
   ToolCall,
+  ContentPart,
 } from "@intelli-claw/shared";
+import { extractThinking } from "@intelli-claw/shared";
 
 import {
   type ToolStreamRefs,
@@ -818,6 +820,18 @@ export function truncateForPreview(content: string, maxLen = 100): string {
   return oneLine.slice(0, maxLen - 1) + "…";
 }
 
+/**
+ * Extract thinking blocks from message content (#222).
+ * Wraps extractThinking from shared, returning thinking array and any
+ * accumulated thinking text (for streaming compatibility).
+ */
+export function extractThinkingFromContent(
+  content: string | ContentPart[] | Array<Record<string, unknown>>,
+): { thinking: Array<{ text: string }>; thinkingText: string } {
+  const result = extractThinking(content as string | ContentPart[]);
+  return { thinking: result.thinking, thinkingText: "" };
+}
+
 /** Check if a message can be used as a reply target */
 export function canBeReplyTarget(msg: DisplayMessage): boolean {
   if (msg.role === "system" || msg.role === "session-boundary") return false;
@@ -856,6 +870,8 @@ export function useChat(sessionKey?: string) {
   const toolStreamByIdRef = useRef<Map<string, ToolStreamEntry>>(new Map());
   const toolStreamOrderRef = useRef<string[]>([]);
   const streamIdCounter = useRef(0);
+  /** #222: Accumulated thinking blocks during streaming */
+  const streamingThinkingRef = useRef<Array<{ text: string }>>([]);
 
   // Convenience handle to pass all 6 refs to tool-stream.ts utilities
   const streamRefsHandle = useRef<ToolStreamRefs>({
@@ -1285,13 +1301,25 @@ export function useChat(sessionKey?: string) {
           let textContent = '';
           const imgAttachments: DisplayAttachment[] = [];
 
+          // #222: Extract thinking blocks from content
+          let thinkingBlocks: Array<{ text: string }> = [];
+
           if (typeof m.content === 'string') {
-            textContent = m.content;
+            const extracted = extractThinkingFromContent(m.content);
+            thinkingBlocks = extracted.thinking;
+            textContent = extracted.thinking.length > 0
+              ? extractThinking(m.content).cleanContent
+              : m.content;
           } else if (Array.isArray(m.content)) {
             const parts = m.content as Array<Record<string, unknown>>;
             const hasToolUse = parts.some(p => p.type === 'tool_use');
+
+            // Extract thinking blocks first
+            const extracted = extractThinkingFromContent(parts);
+            thinkingBlocks = extracted.thinking;
+
             for (const p of parts) {
-              // #249: Skip thinking content blocks — strip from display
+              // #222: Skip thinking — already extracted above
               if (p.type === 'thinking') continue;
               if (p.type === 'text' && typeof p.text === 'string') {
                 if (hasToolUse && m.role === 'assistant') {
@@ -1373,6 +1401,7 @@ export function useChat(sessionKey?: string) {
             toolCalls: m.toolCalls || [],
             attachments: allAttachments.length > 0 ? allAttachments : undefined,
             systemType: systemType ?? undefined,
+            thinking: thinkingBlocks.length > 0 ? thinkingBlocks : undefined,
           };
         })
         .filter((m) => {
@@ -1866,6 +1895,7 @@ export function useChat(sessionKey?: string) {
         setMessages((prev) => prev.filter((m) => m.id !== finalId));
       } else {
         setMessages((prev) => {
+          const finalThinking = streamingThinkingRef.current.length > 0 ? [...streamingThinkingRef.current] : undefined;
           const idx = prev.findIndex((m) => m.id === finalId);
           if (idx >= 0) {
             const next = [...prev];
@@ -1875,6 +1905,7 @@ export function useChat(sessionKey?: string) {
               toolCalls: finalTools,
               streaming: false,
               attachments: finalAttachments || next[idx].attachments,
+              thinking: finalThinking || next[idx].thinking,
             };
             return next;
           }
@@ -1888,6 +1919,7 @@ export function useChat(sessionKey?: string) {
               toolCalls: finalTools,
               streaming: false,
               attachments: finalAttachments,
+              thinking: finalThinking,
             },
           ];
         });
@@ -1922,6 +1954,7 @@ export function useChat(sessionKey?: string) {
       }, 60_000);
 
       resetAllStreamRefs(streamRefs);
+      streamingThinkingRef.current = [];
       runIdRef.current = null;
       clearPersistedPendingStream();
       flushDeferredHistoryReload();
@@ -1957,15 +1990,57 @@ export function useChat(sessionKey?: string) {
           const chatMsg = chatPayload.message as Record<string, unknown> | undefined;
           if (chatMsg) {
             let text = '';
+            let deltaThinking: Array<{ text: string }> = [];
             if (typeof chatMsg.content === 'string') {
-              text = chatMsg.content;
+              const ext = extractThinkingFromContent(chatMsg.content);
+              deltaThinking = ext.thinking;
+              text = ext.thinking.length > 0
+                ? extractThinking(chatMsg.content).cleanContent
+                : chatMsg.content;
             } else if (Array.isArray(chatMsg.content)) {
               const parts = chatMsg.content as Array<Record<string, unknown>>;
+              // #222: Extract thinking blocks from delta
+              const ext = extractThinkingFromContent(parts);
+              deltaThinking = ext.thinking;
               for (const p of parts) {
                 if (p.type === 'thinking') continue;
                 if (p.type === 'text' && typeof p.text === 'string') {
                   text += p.text;
                 }
+              }
+            }
+            // #222: Update streaming thinking ref (cumulative — replace if more blocks)
+            if (deltaThinking.length > 0) {
+              streamingThinkingRef.current = deltaThinking;
+            }
+            // When only thinking arrives (no text yet), show the thinking indicator
+            if (!text && deltaThinking.length > 0) {
+              if (!chatStreamIdRef.current) {
+                chatStreamIdRef.current = `stream-${Date.now()}-${++streamIdCounter.current}`;
+                chatStreamRef.current = "";
+                chatStreamStartedAtRef.current = Date.now();
+              }
+              setStreaming(true);
+              startStreamingTimeout("thinking");
+              setAgentStatusDebug({ phase: "thinking" });
+              if (!streamRafRef.current) {
+                streamRafRef.current = requestAnimationFrame(() => {
+                  streamRafRef.current = null;
+                  const curId = chatStreamIdRef.current;
+                  if (!curId) return;
+                  setMessages((prev) => {
+                    const existing = prev.findIndex((m) => m.id === curId);
+                    const msg: DisplayMessage = {
+                      id: curId, role: "assistant", content: "",
+                      timestamp: new Date().toISOString(),
+                      toolCalls: [],
+                      streaming: true,
+                      thinking: streamingThinkingRef.current.length > 0 ? [...streamingThinkingRef.current] : undefined,
+                    };
+                    if (existing >= 0) { const next = [...prev]; next[existing] = msg; return next; }
+                    return [...prev, msg];
+                  });
+                });
               }
             }
             if (text && !shouldSuppressStreamingPreview(text)) {
@@ -2010,6 +2085,7 @@ export function useChat(sessionKey?: string) {
                         timestamp: new Date().toISOString(),
                         toolCalls: curTools,
                         streaming: true, attachments: curAttachments ?? prevAttachments,
+                        thinking: streamingThinkingRef.current.length > 0 ? [...streamingThinkingRef.current] : undefined,
                       };
                       if (existing >= 0) { const next = [...prev]; next[existing] = msg; return next; }
                       return [...prev, msg];
