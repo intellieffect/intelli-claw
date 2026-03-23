@@ -100,6 +100,62 @@ export function buildStreamContent(refs: ToolStreamRefs): string {
 }
 
 /**
+ * #231: Build interleaved MessageSegment[] from segments + tool calls.
+ * Uses timestamps to reconstruct the original text↔tool order.
+ */
+export type MessageSegment =
+  | { type: "text"; text: string }
+  | { type: "tool"; toolCall: ToolCall };
+
+export function buildStreamSegments(refs: ToolStreamRefs): MessageSegment[] {
+  const result: MessageSegment[] = [];
+
+  // Collect all items with timestamps for sorting
+  const items: Array<{ ts: number; segment: MessageSegment }> = [];
+
+  // Text segments (committed before tool calls)
+  for (const seg of refs.chatStreamSegments.current) {
+    if (seg.text.trim()) {
+      items.push({ ts: seg.ts, segment: { type: "text", text: seg.text } });
+    }
+  }
+
+  // Tool calls
+  for (const callId of refs.toolStreamOrder.current) {
+    const entry = refs.toolStreamById.current.get(callId);
+    if (entry) {
+      items.push({
+        ts: entry.startedAt,
+        segment: {
+          type: "tool",
+          toolCall: {
+            callId: entry.toolCallId,
+            name: entry.name,
+            args: entry.args,
+            status: (entry.output ? "done" : "running") as "done" | "running",
+            result: entry.output,
+          },
+        },
+      });
+    }
+  }
+
+  // Sort by timestamp to preserve interleave order
+  items.sort((a, b) => a.ts - b.ts);
+  for (const item of items) {
+    result.push(item.segment);
+  }
+
+  // Append current (uncommitted) chatStream text as trailing segment
+  const currentText = refs.chatStream.current;
+  if (currentText && currentText.trim()) {
+    result.push({ type: "text", text: currentText });
+  }
+
+  return result;
+}
+
+/**
  * Build ToolCall[] from the toolStreamById map (for DisplayMessage.toolCalls).
  */
 export function buildStreamToolCalls(refs: ToolStreamRefs): ToolCall[] {

@@ -29,6 +29,7 @@ import {
   hasActiveStream,
   buildStreamContent,
   buildStreamToolCalls,
+  buildStreamSegments,
 } from "./tool-stream";
 
 // Re-export everything from shared for backward compatibility
@@ -557,6 +558,11 @@ export function mergeConsecutiveAssistant(msgs: DisplayMessage[]): DisplayMessag
           accumulator.thinking || m.thinking
             ? [...(accumulator.thinking || []), ...(m.thinking || [])]
             : undefined,
+        // #231: Merge segments from consecutive assistant messages
+        segments:
+          accumulator.segments || m.segments
+            ? [...(accumulator.segments || []), ...(m.segments || [])]
+            : undefined,
       };
     } else {
       if (accumulator) result.push(accumulator);
@@ -674,7 +680,14 @@ export interface DisplayMessage {
   isError?: boolean;
   /** #222: Extracted thinking/reasoning blocks from the model */
   thinking?: Array<{ text: string }>;
+  /** #231: Ordered segments preserving text↔tool interleave */
+  segments?: MessageSegment[];
 }
+
+/** #231: A single segment in an interleaved text↔tool response */
+export type MessageSegment =
+  | { type: "text"; text: string }
+  | { type: "tool"; toolCall: ToolCall };
 
 /**
  * During reconnect/history refresh, keep in-flight streaming messages visible
@@ -1308,6 +1321,7 @@ export function useChat(sessionKey?: string) {
 
           // #222: Extract thinking blocks from content
           let thinkingBlocks: Array<{ text: string }> = [];
+          let orderedSegments: MessageSegment[] = [];
 
           if (typeof m.content === 'string') {
             const extracted = extractThinkingFromContent(m.content);
@@ -1323,6 +1337,8 @@ export function useChat(sessionKey?: string) {
             const extracted = extractThinkingFromContent(parts);
             thinkingBlocks = extracted.thinking;
 
+            // #231: Build ordered segments from content blocks
+
             for (const p of parts) {
               // #222: Skip thinking — already extracted above
               if (p.type === 'thinking') continue;
@@ -1334,6 +1350,24 @@ export function useChat(sessionKey?: string) {
                   if (!hasMedia && text.length < 100 && !text.includes('\n')) continue;
                 }
                 textContent += p.text;
+                // #231: Add text segment
+                if ((p.text as string).trim()) {
+                  orderedSegments.push({ type: "text", text: p.text as string });
+                }
+              } else if (p.type === 'tool_use') {
+                // #231: Add tool segment from content block
+                const toolId = (p.id as string) || `tool-${orderedSegments.length}`;
+                const toolName = (p.name as string) || 'unknown';
+                orderedSegments.push({
+                  type: "tool",
+                  toolCall: {
+                    callId: toolId,
+                    name: toolName,
+                    args: p.input ? JSON.stringify(p.input) : undefined,
+                    status: "done" as const,
+                    result: undefined,
+                  },
+                });
               } else if (p.type === 'image_url' || p.type === 'image') {
                 let url: string | undefined;
                 if (typeof p.image_url === 'object' && p.image_url) {
@@ -1407,6 +1441,7 @@ export function useChat(sessionKey?: string) {
             attachments: allAttachments.length > 0 ? allAttachments : undefined,
             systemType: systemType ?? undefined,
             thinking: thinkingBlocks.length > 0 ? thinkingBlocks : undefined,
+            segments: orderedSegments.length > 1 ? orderedSegments : undefined,
           };
         })
         .filter((m) => {
@@ -1889,6 +1924,7 @@ export function useChat(sessionKey?: string) {
       const finalId = chatStreamIdRef.current!;
       let finalContent = stripTemplateVars(finalText ?? buildStreamContent(streamRefs));
       const finalTools = buildStreamToolCalls(streamRefs);
+      const finalSegments = buildStreamSegments(streamRefs);
       let finalAttachments: DisplayAttachment[] | undefined;
       if (finalContent.includes("MEDIA:")) {
         const extracted = extractMediaAttachments(finalContent);
@@ -1911,6 +1947,7 @@ export function useChat(sessionKey?: string) {
               streaming: false,
               attachments: finalAttachments || next[idx].attachments,
               thinking: finalThinking || next[idx].thinking,
+              segments: finalSegments.length > 0 ? finalSegments : next[idx].segments,
             };
             return next;
           }
@@ -1925,6 +1962,7 @@ export function useChat(sessionKey?: string) {
               streaming: false,
               attachments: finalAttachments,
               thinking: finalThinking,
+              segments: finalSegments.length > 0 ? finalSegments : undefined,
             },
           ];
         });
@@ -2079,6 +2117,8 @@ export function useChat(sessionKey?: string) {
                     curAttachments = ext.attachments.length > 0 ? ext.attachments : undefined;
                   }
                   const curTools = buildStreamToolCalls(streamRefs);
+                  // #231: Build interleaved segments for ordered rendering
+                  const curSegments = buildStreamSegments(streamRefs);
                   if (shouldSuppressStreamingPreview(curContent)) {
                     setMessages((prev) => prev.filter((m) => m.id !== curId));
                   } else {
@@ -2091,6 +2131,7 @@ export function useChat(sessionKey?: string) {
                         toolCalls: curTools,
                         streaming: true, attachments: curAttachments ?? prevAttachments,
                         thinking: streamingThinkingRef.current.length > 0 ? [...streamingThinkingRef.current] : undefined,
+                        segments: curSegments.length > 0 ? curSegments : undefined,
                       };
                       if (existing >= 0) { const next = [...prev]; next[existing] = msg; return next; }
                       return [...prev, msg];
@@ -2208,12 +2249,14 @@ export function useChat(sessionKey?: string) {
         const snapId = chatStreamIdRef.current;
         const snapContent = buildStreamContent(streamRefs);
         const snapTools = buildStreamToolCalls(streamRefs);
+        const snapSegments = buildStreamSegments(streamRefs);
         setMessages((prev) => {
           const existing = prev.findIndex((m) => m.id === snapId);
           const msg: DisplayMessage = {
             id: snapId, role: "assistant", content: snapContent,
             timestamp: new Date().toISOString(),
             toolCalls: snapTools, streaming: true,
+            segments: snapSegments.length > 0 ? snapSegments : undefined,
           };
           if (existing >= 0) { const next = [...prev]; next[existing] = msg; return next; }
           return [...prev, msg];
@@ -2269,12 +2312,14 @@ export function useChat(sessionKey?: string) {
           const snapId = chatStreamIdRef.current;
           const snapContent = buildStreamContent(streamRefs);
           const snapTools = buildStreamToolCalls(streamRefs);
+          const snapSegments = buildStreamSegments(streamRefs);
           setMessages((prev) => {
             const existing = prev.findIndex((m) => m.id === snapId);
             const msg: DisplayMessage = {
               id: snapId, role: "assistant", content: snapContent,
               timestamp: new Date().toISOString(),
               toolCalls: snapTools, streaming: true,
+              segments: snapSegments.length > 0 ? snapSegments : undefined,
             };
             if (existing >= 0) { const next = [...prev]; next[existing] = msg; return next; }
             return [...prev, msg];
