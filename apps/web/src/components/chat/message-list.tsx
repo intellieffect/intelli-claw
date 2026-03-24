@@ -982,7 +982,16 @@ const MessageBubble = React.memo(React.forwardRef<HTMLDivElement, { message: Dis
                     return (
                       <div key={i} className="w-full max-w-sm">
                         <audio controls src={url} className="w-full rounded-lg" />
-                        <div className="mt-1 text-[10px] text-zinc-500">{att.fileName}</div>
+                        <div className="mt-1 flex items-center justify-between">
+                          <div className="text-[10px] text-zinc-500 truncate">{att.fileName}</div>
+                          <button
+                            onClick={() => { void downloadAttachment(att); }}
+                            className="flex items-center gap-1 rounded bg-zinc-700/60 px-2 py-0.5 text-[10px] text-zinc-300 hover:bg-zinc-600 transition"
+                            title={`다운로드 ${att.fileName}`}
+                          >
+                            <Download size={10} /> 저장
+                          </button>
+                        </div>
                       </div>
                     );
                   }
@@ -991,7 +1000,16 @@ const MessageBubble = React.memo(React.forwardRef<HTMLDivElement, { message: Dis
                     return (
                       <div key={i} className="w-full max-w-md">
                         <video controls src={url} className="w-full rounded-lg border border-zinc-700" />
-                        <div className="mt-1 text-[10px] text-zinc-500">{att.fileName}</div>
+                        <div className="mt-1 flex items-center justify-between">
+                          <div className="text-[10px] text-zinc-500 truncate">{att.fileName}</div>
+                          <button
+                            onClick={() => { void downloadAttachment(att); }}
+                            className="flex items-center gap-1 rounded bg-zinc-700/60 px-2 py-0.5 text-[10px] text-zinc-300 hover:bg-zinc-600 transition"
+                            title={`다운로드 ${att.fileName}`}
+                          >
+                            <Download size={10} /> 저장
+                          </button>
+                        </div>
                       </div>
                     );
                   }
