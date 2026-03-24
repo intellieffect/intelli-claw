@@ -23,6 +23,11 @@ describe('Electron assistant attachment download', () => {
     };
   });
 
+  afterEach(() => {
+    // @ts-expect-error cleanup
+    delete window.electronAPI;
+  });
+
   it('uses Electron download API for assistant file attachments when available', async () => {
     render(
       <MessageList
@@ -48,5 +53,37 @@ describe('Electron assistant attachment download', () => {
       mimeType: 'application/pdf',
     });
     expect(mockBlobDownload).not.toHaveBeenCalled();
+  });
+});
+
+describe('Web fallback download (no electronAPI)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // @ts-expect-error cleanup
+    delete window.electronAPI;
+  });
+
+  it('falls back to blobDownload when electronAPI is not available', async () => {
+    render(
+      <MessageList
+        messages={[{
+          id: 'm2',
+          role: 'assistant',
+          content: '파일입니다',
+          timestamp: new Date().toISOString(),
+          toolCalls: [],
+          attachments: [{ fileName: 'data.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', downloadUrl: '/api/media?path=%2Ftmp%2Fdata.xlsx' }],
+        }]}
+        loading={false}
+        streaming={false}
+      />
+    );
+
+    fireEvent.click(screen.getByTitle('data.xlsx'));
+
+    expect(mockBlobDownload).toHaveBeenCalledWith(
+      '/api/media?path=%2Ftmp%2Fdata.xlsx&dl=1',
+      'data.xlsx',
+    );
   });
 });

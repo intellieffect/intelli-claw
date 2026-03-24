@@ -129,8 +129,26 @@ export async function handleMediaDownload(input: {
     return { saved: false, error: "No download source" };
   }
 
+  // Build file type filters from mimeType for better UX
+  const filters: Electron.FileFilter[] = [];
+  if (input.mimeType) {
+    const ext = input.fileName.split(".").pop()?.toLowerCase();
+    if (ext) {
+      const mimeLabel: Record<string, string> = {
+        "application/pdf": "PDF",
+        "image/jpeg": "Images", "image/png": "Images", "image/gif": "Images", "image/webp": "Images",
+        "video/mp4": "Videos", "video/webm": "Videos", "video/quicktime": "Videos",
+        "audio/mpeg": "Audio", "audio/wav": "Audio", "audio/ogg": "Audio",
+      };
+      const label = mimeLabel[input.mimeType] || ext.toUpperCase();
+      filters.push({ name: label, extensions: [ext] });
+    }
+    filters.push({ name: "All Files", extensions: ["*"] });
+  }
+
   const { canceled, filePath } = await dialog.showSaveDialog({
     defaultPath: input.fileName,
+    filters: filters.length > 0 ? filters : undefined,
   });
 
   if (canceled || !filePath) {
@@ -147,6 +165,11 @@ export async function handleMediaDownload(input: {
     }
 
     if (source.startsWith("/")) {
+      try {
+        await stat(source);
+      } catch {
+        return { saved: false, error: `파일을 찾을 수 없습니다: ${basename(source)}` };
+      }
       await copyFile(source, filePath);
       return { saved: true, path: filePath };
     }
