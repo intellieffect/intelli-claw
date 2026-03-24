@@ -1,3 +1,4 @@
+import { Component, type ReactNode } from "react";
 import { GatewayProvider } from "@/lib/gateway/hooks";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ChatView } from "@/components/chat/chat-view";
@@ -18,12 +19,73 @@ function AppContent() {
   return <ChatView />;
 }
 
+class AppErrorBoundary extends Component<
+  { children: ReactNode },
+  { hasError: boolean }
+> {
+  state = { hasError: false };
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error) {
+    console.error("[App] Render error caught by boundary:", error);
+  }
+
+  private handleReset = () => {
+    try { sessionStorage.clear(); } catch {}
+    const SESSION_DBS = [
+      "intelli-claw-messages",
+      "intelli-claw-topics",
+      "intelli-claw-input-history",
+    ];
+    try {
+      Promise.all(
+        SESSION_DBS.map(
+          (name) =>
+            new Promise<void>((res) => {
+              const req = indexedDB.deleteDatabase(name);
+              req.onsuccess = req.onerror = () => res();
+            }),
+        ),
+      ).then(() => window.location.reload());
+    } catch {
+      window.location.reload();
+    }
+  };
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex h-dvh items-center justify-center bg-background text-foreground">
+          <div className="flex flex-col items-center gap-4 p-8">
+            <p className="text-lg font-semibold">앱 렌더링 오류</p>
+            <p className="text-sm text-muted-foreground">
+              캐시 데이터에 문제가 있을 수 있습니다.
+            </p>
+            <button
+              onClick={this.handleReset}
+              className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+            >
+              캐시 초기화 후 새로고침
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export function App() {
   return (
-    <GatewayProvider>
-      <TooltipProvider>
-        <AppContent />
-      </TooltipProvider>
-    </GatewayProvider>
+    <AppErrorBoundary>
+      <GatewayProvider>
+        <TooltipProvider>
+          <AppContent />
+        </TooltipProvider>
+      </GatewayProvider>
+    </AppErrorBoundary>
   );
 }
