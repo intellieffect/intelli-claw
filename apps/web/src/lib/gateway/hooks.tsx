@@ -836,7 +836,7 @@ export function useChat(sessionKey?: string) {
   // Throttle streaming UI updates to once per animation frame
   const streamRafRef = useRef<number | null>(null);
   const pendingStreamUpdate = useRef<(() => void) | null>(null);
-  const sendContextBridgeRef = useRef<(() => Promise<void>) | null>(null);
+
   const buildContextSummaryRef = useRef<(() => string | null) | null>(null);
 
   // Stable per-tab device identifier for cross-device message dedup (#120)
@@ -2543,18 +2543,7 @@ export function useChat(sessionKey?: string) {
     return full.length > 4000 ? full.slice(0, 3997) + "…" : full;
   }, [messages]);
 
-  const sendContextBridge = useCallback(async () => {
-    if (!client || state !== "connected" || !sessionKey) return;
-    const summary = buildContextSummary();
-    if (!summary) return;
-    try {
-      await client.request("chat.send", { message: summary, idempotencyKey: `context-bridge-${Date.now()}`, sessionKey });
-      console.log("[AWF] Context bridge sent to new session");
-    } catch (err) { console.error("[AWF] Context bridge send error:", err); }
-  }, [client, state, sessionKey, buildContextSummary]);
-
-  // Keep refs in sync so the mount-time onSessionReset handler sees the latest closures
-  useEffect(() => { sendContextBridgeRef.current = sendContextBridge; }, [sendContextBridge]);
+  // Keep ref in sync so the mount-time onSessionReset handler sees the latest closure
   useEffect(() => { buildContextSummaryRef.current = buildContextSummary; }, [buildContextSummary]);
 
   useEffect(() => {
@@ -2594,7 +2583,7 @@ export function useChat(sessionKey?: string) {
   return {
     messages, streaming, loading, agentStatus,
     sendMessage, sendCommand, addUserMessage, addLocalMessage, clearMessages,
-    cancelQueued, abort, reload: loadHistory, sendContextBridge,
+    cancelQueued, abort, reload: loadHistory,
     replyingTo, setReplyTo, clearReplyTo,
   };
 }
