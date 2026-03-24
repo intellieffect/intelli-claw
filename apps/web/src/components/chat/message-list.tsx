@@ -87,8 +87,26 @@ function FileAttachmentCard({ att, onDownload }: { att: DisplayAttachment; onDow
   );
 }
 
-/** Assistant image with error fallback */
-function AssistantImage({ src, fileName }: { src: string; fileName: string }) {
+async function downloadAttachment(att: DisplayAttachment): Promise<void> {
+  const url = att.downloadUrl || att.dataUrl;
+  if (!url) return;
+
+  const electronDownload = window.electronAPI?.platform?.downloadFile;
+  if (typeof electronDownload === "function") {
+    await electronDownload({
+      url: att.downloadUrl,
+      dataUrl: att.dataUrl,
+      fileName: att.fileName,
+      mimeType: att.mimeType,
+    });
+    return;
+  }
+
+  await blobDownload(forceDownloadUrl(url), att.fileName);
+}
+
+/** Assistant image with error fallback + download button */
+function AssistantImage({ src, fileName, att }: { src: string; fileName: string; att?: DisplayAttachment }) {
   const [error, setError] = useState(false);
   if (error) {
     return (
@@ -98,14 +116,28 @@ function AssistantImage({ src, fileName }: { src: string; fileName: string }) {
     );
   }
   return (
-    <a href={src} target="_blank" rel="noopener noreferrer" className="block">
-      <img
-        src={src}
-        alt={fileName}
-        className="max-h-80 max-w-full md:max-w-md rounded-lg border border-zinc-700 object-contain hover:opacity-90 transition"
-        onError={() => setError(true)}
-      />
-    </a>
+    <div className="relative group/img inline-block">
+      <a href={src} target="_blank" rel="noopener noreferrer" className="block">
+        <img
+          src={src}
+          alt={fileName}
+          className="max-h-80 max-w-full md:max-w-md rounded-lg border border-zinc-700 object-contain hover:opacity-90 transition"
+          onError={() => setError(true)}
+        />
+      </a>
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          if (att) { void downloadAttachment(att); }
+          else { void blobDownload(forceDownloadUrl(src), fileName); }
+        }}
+        className="absolute bottom-2 right-2 flex items-center gap-1 rounded-lg bg-black/70 px-2.5 py-1.5 text-xs text-zinc-200 opacity-0 group-hover/img:opacity-100 transition hover:bg-black/90"
+        title={`다운로드 ${fileName}`}
+      >
+        <Download size={14} />
+        저장
+      </button>
+    </div>
   );
 }
 
@@ -942,7 +974,7 @@ const MessageBubble = React.memo(React.forwardRef<HTMLDivElement, { message: Dis
 
                   if (isImage && (att.dataUrl || url)) {
                     return (
-                      <AssistantImage key={i} src={(att.dataUrl || url)!} fileName={att.fileName} />
+                      <AssistantImage key={i} src={(att.dataUrl || url)!} fileName={att.fileName} att={att} />
                     );
                   }
 
@@ -976,7 +1008,7 @@ const MessageBubble = React.memo(React.forwardRef<HTMLDivElement, { message: Dis
                       <FileAttachmentCard
                         key={i}
                         att={att}
-                        onDownload={() => blobDownload(forceDownloadUrl(url), att.fileName)}
+                        onDownload={() => { void downloadAttachment(att); }}
                       />
                     );
                   }
@@ -986,7 +1018,7 @@ const MessageBubble = React.memo(React.forwardRef<HTMLDivElement, { message: Dis
               </div>
             )}
             {/* Render content only when not using segments (segments already include text) */}
-            {!message.segments && message.content && (
+            {!message.segments && message.content && message.content !== "(첨부 파일)" && (
               <MarkdownRenderer content={message.content} />
             )}
             {message.streaming && (
