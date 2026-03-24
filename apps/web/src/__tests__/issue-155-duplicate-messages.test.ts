@@ -167,3 +167,40 @@ describe("#155 — mergeLiveStreamingIntoHistory", () => {
     expect(result).toHaveLength(1);
   });
 });
+
+// ---- #218 regression: tool-call content merge discrepancy ----
+
+describe("#218 — dedup with tool-call content merge differences", () => {
+  it("should dedup when gateway merges consecutive assistant msgs differently from streaming", () => {
+    // Streaming produces one long message; gateway splits by tool boundaries then
+    // mergeConsecutiveAssistant joins with \n\n. Minor whitespace/ordering diffs.
+    const streamContent = "Let me check that.\n\nHere are the results:\n- Item 1\n- Item 2\n\nDone.";
+    const gatewayContent = "Let me check that.\n\nHere are the results:\n- Item 1\n- Item 2\n\nDone.";
+    const msgs = [
+      makeMsg({ id: "hist-3", content: gatewayContent, timestamp: "2026-03-10T01:23:00.000Z" }),
+      makeMsg({ id: "stream-1741234567890-1", content: streamContent, timestamp: "2026-03-10T01:23:05.000Z" }),
+    ];
+    const result = deduplicateMessages(msgs);
+    expect(result).toHaveLength(1);
+  });
+
+  it("should dedup long tool-call response even with minor prefix differences", () => {
+    const base = "Analysis complete. ".repeat(30); // > 200 chars
+    const msgs = [
+      makeMsg({ id: "hist-5", content: base, timestamp: "2026-03-10T01:24:00.000Z" }),
+      makeMsg({ id: "stream-abc", content: base, timestamp: "2026-03-10T01:24:10.000Z" }),
+    ];
+    const result = deduplicateMessages(msgs);
+    expect(result).toHaveLength(1);
+  });
+
+  it("should NOT dedup genuinely different long messages that share a prefix", () => {
+    const prefix = "Starting analysis. ".repeat(20); // > 200 chars
+    const msgs = [
+      makeMsg({ id: "hist-1", content: prefix + "Result A: success", timestamp: "2026-03-10T01:24:00.000Z" }),
+      makeMsg({ id: "hist-2", content: prefix + "Result B: failure", timestamp: "2026-03-10T01:24:05.000Z" }),
+    ];
+    const result = deduplicateMessages(msgs);
+    expect(result).toHaveLength(2);
+  });
+});

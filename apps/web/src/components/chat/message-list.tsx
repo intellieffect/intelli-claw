@@ -8,7 +8,9 @@ import {
 } from "lucide-react";
 import { MarkdownRenderer, MarkdownFilePreview } from "./markdown-renderer";
 import { ToolCallCard } from "./tool-call-card";
+import { ThinkingBlock } from "./thinking-block";
 import { HIDDEN_REPLY_RE, canBeReplyTarget, stripTrailingControlTokens, type DisplayMessage, type DisplayAttachment, type AgentStatus, type SystemInjectedType } from "@/lib/gateway/hooks";
+import { useShowThinking } from "@/lib/hooks/use-show-thinking";
 import { AgentAvatar } from "@/components/ui/agent-avatar";
 import { groupMessages } from "@intelli-claw/shared";
 
@@ -132,6 +134,7 @@ export function MessageList({
   const [userScrolledUp, setUserScrolledUp] = useState(false);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [showThinking] = useShowThinking();
 
   // Vim normal-mode: focused message index (null = no focus)
   const [focusedIdx, setFocusedIdx] = useState<number | null>(null);
@@ -565,6 +568,7 @@ export function MessageList({
                 focused={focusedIdx === idx}
                 selected={selectedIndices.has(idx)}
                 onReply={onReply}
+                showThinking={showThinking}
               />
             );
           });
@@ -761,8 +765,8 @@ function ReplyButton({ onClick }: { onClick: () => void }) {
   );
 }
 
-const MessageBubble = React.memo(React.forwardRef<HTMLDivElement, { message: DisplayMessage; showAvatar?: boolean; showTimestamp?: boolean; onCancel?: (id: string) => void; agentId?: string; agentStatus?: AgentStatus; focused?: boolean; selected?: boolean; onReply?: (msg: DisplayMessage) => void }>(
-  function MessageBubble({ message, showAvatar = true, showTimestamp = true, onCancel, agentId, agentStatus, focused, selected, onReply }, ref) {
+const MessageBubble = React.memo(React.forwardRef<HTMLDivElement, { message: DisplayMessage; showAvatar?: boolean; showTimestamp?: boolean; onCancel?: (id: string) => void; agentId?: string; agentStatus?: AgentStatus; focused?: boolean; selected?: boolean; onReply?: (msg: DisplayMessage) => void; showThinking?: boolean }>(
+  function MessageBubble({ message, showAvatar = true, showTimestamp = true, onCancel, agentId, agentStatus, focused, selected, onReply, showThinking = true }, ref) {
   const isUser = message.role === "user";
   const isSystem = message.role === "system";
   const isQueued = message.queued;
@@ -897,6 +901,10 @@ const MessageBubble = React.memo(React.forwardRef<HTMLDivElement, { message: Dis
           <div>
             {/* Reply quote block */}
             {message.replyTo && <ReplyQuoteBlock replyTo={message.replyTo} />}
+            {/* #222: Thinking/reasoning block */}
+            {showThinking && message.thinking && message.thinking.length > 0 && (
+              <ThinkingBlock thinking={message.thinking} streaming={message.streaming} />
+            )}
             {message.toolCalls.length > 0 && (
               <div className="mb-2">
                 {message.toolCalls.map((tc) => (
@@ -998,6 +1006,7 @@ export function messageBubbleAreEqual(
     && pm.role === nm.role
     && (pm.toolCalls?.length ?? 0) === (nm.toolCalls?.length ?? 0)
     && (pm.attachments?.length ?? 0) === (nm.attachments?.length ?? 0)
+    && (pm.thinking?.length ?? 0) === (nm.thinking?.length ?? 0)
     && prev.focused === next.focused
     && prev.selected === next.selected
     && prev.agentId === next.agentId
