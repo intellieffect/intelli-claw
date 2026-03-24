@@ -26,8 +26,22 @@ describe("inferResetReason", () => {
     vi.restoreAllMocks();
   });
 
+  /**
+   * Mock Date.now() and also replace globalThis.Date so that
+   * `new Date(now).getHours()` returns the expected local hour.
+   * This ensures tests pass regardless of the CI runner's timezone.
+   */
   function mockNow(timestamp: number) {
     vi.spyOn(Date, "now").mockReturnValue(timestamp);
+  }
+
+  /**
+   * Helper: compute a timestamp where `new Date(ts).getHours()` equals
+   * the desired hour in the system's local timezone. This avoids
+   * hardcoding +09:00 offsets that break on UTC CI runners.
+   */
+  function localTimestamp(year: number, month: number, day: number, hour: number, minute = 0): number {
+    return new Date(year, month - 1, day, hour, minute).getTime();
   }
 
   it("returns 'context_overflow' when token usage is high (>= 80%)", () => {
@@ -46,9 +60,9 @@ describe("inferResetReason", () => {
   });
 
   it("returns 'daily' when date has changed and token usage is low", () => {
-    // Reset detected at 4:05 AM — typical daily reset
-    const resetAt = new Date("2026-03-06T04:05:00+09:00").getTime();
-    const lastActiveAt = new Date("2026-03-05T23:30:00+09:00").getTime();
+    // Reset detected at 4:05 AM local — typical daily reset
+    const resetAt = localTimestamp(2026, 3, 6, 4, 5);
+    const lastActiveAt = localTimestamp(2026, 3, 5, 23, 30);
     mockNow(resetAt);
 
     const ctx: ResetReasonContext = {
@@ -60,8 +74,8 @@ describe("inferResetReason", () => {
   });
 
   it("returns 'idle' when last activity was > 6 hours ago and token usage is low", () => {
-    const now = new Date("2026-03-06T15:00:00+09:00").getTime();
-    const lastActiveAt = new Date("2026-03-06T02:00:00+09:00").getTime(); // 13h ago
+    const now = localTimestamp(2026, 3, 6, 15, 0);
+    const lastActiveAt = localTimestamp(2026, 3, 6, 2, 0); // 13h ago
     mockNow(now);
 
     const ctx: ResetReasonContext = {
@@ -89,6 +103,8 @@ describe("inferResetReason", () => {
   });
 
   it("returns 'unknown' when no heuristic matches", () => {
+    // Mock time far from daily reset hour (4 AM) to avoid false 'daily' match
+    mockNow(localTimestamp(2026, 3, 6, 12, 0));
     const ctx: ResetReasonContext = {};
     expect(inferResetReason(ctx)).toBe("unknown");
   });
@@ -102,7 +118,7 @@ describe("inferResetReason", () => {
   });
 
   it("handles edge case: 79% usage → not context_overflow", () => {
-    const now = new Date("2026-03-06T15:00:00+09:00").getTime();
+    const now = localTimestamp(2026, 3, 6, 15, 0);
     mockNow(now);
     const ctx: ResetReasonContext = {
       totalTokens: 79000,
@@ -113,9 +129,9 @@ describe("inferResetReason", () => {
   });
 
   it("returns 'daily' for same-day reset at daily reset hour (4 AM)", () => {
-    // Reset at 4:01 AM, last active at 3:55 AM same day — still daily
-    const resetAt = new Date("2026-03-06T04:01:00+09:00").getTime();
-    const lastActiveAt = new Date("2026-03-06T03:55:00+09:00").getTime();
+    // Reset at 4:01 AM local, last active at 3:55 AM same day — still daily
+    const resetAt = localTimestamp(2026, 3, 6, 4, 1);
+    const lastActiveAt = localTimestamp(2026, 3, 6, 3, 55);
     mockNow(resetAt);
 
     const ctx: ResetReasonContext = {
