@@ -1,4 +1,5 @@
-import { readFile, stat, open, mkdir, writeFile } from "node:fs/promises";
+import { dialog, net } from "electron";
+import { readFile, stat, open, mkdir, writeFile, copyFile } from "node:fs/promises";
 import { extname, basename, join } from "node:path";
 import { homedir } from "node:os";
 import { randomUUID } from "node:crypto";
@@ -115,4 +116,76 @@ export async function handleMediaUpload(
   await writeFile(outPath, buffer);
 
   return { path: outPath };
+}
+
+export async function handleMediaDownload(input: {
+  url?: string;
+  dataUrl?: string;
+  fileName: string;
+  mimeType?: string;
+}): Promise<{ saved: boolean; canceled?: boolean; path?: string; error?: string }> {
+  const source = input.url || input.dataUrl;
+  if (!source) {
+    return { saved: false, error: "No download source" };
+  }
+
+  // Build file type filters from mimeType for better UX
+  const filters: Electron.FileFilter[] = [];
+  if (input.mimeType) {
+    const ext = input.fileName.split(".").pop()?.toLowerCase();
+    if (ext) {
+      const mimeLabel: Record<string, string> = {
+        "application/pdf": "PDF",
+        "image/jpeg": "Images", "image/png": "Images", "image/gif": "Images", "image/webp": "Images",
+        "video/mp4": "Videos", "video/webm": "Videos", "video/quicktime": "Videos",
+        "audio/mpeg": "Audio", "audio/wav": "Audio", "audio/ogg": "Audio",
+      };
+      const label = mimeLabel[input.mimeType] || ext.toUpperCase();
+      filters.push({ name: label, extensions: [ext] });
+    }
+    filters.push({ name: "All Files", extensions: ["*"] });
+  }
+
+  const { canceled, filePath } = await dialog.showSaveDialog({
+    defaultPath: input.fileName,
+    filters: filters.length > 0 ? filters : undefined,
+  });
+
+  if (canceled || !filePath) {
+    return { saved: false, canceled: true };
+  }
+
+  try {
+    if (source.startsWith("data:")) {
+      const comma = source.indexOf(",");
+      if (comma < 0) throw new Error("Invalid data URL");
+      const base64 = source.slice(comma + 1);
+      await writeFile(filePath, Buffer.from(base64, "base64"));
+      return { saved: true, path: filePath };
+    }
+
+    if (source.startsWith("/")) {
+      try {
+        await stat(source);
+      } catch {
+        return { saved: false, error: `파일을 찾을 수 없습니다: ${basename(source)}` };
+      }
+      await copyFile(source, filePath);
+      return { saved: true, path: filePath };
+    }
+
+    const res = await net.fetch(source);
+    if (!res.ok) {
+      return { saved: false, error: `Download failed: ${res.status} ${res.statusText}` };
+    }
+    const ab = await res.arrayBuffer();
+    const buf = Buffer.from(ab);
+    if (buf.length === 0) {
+      return { saved: false, error: "Empty file" };
+    }
+    await writeFile(filePath, buf);
+    return { saved: true, path: filePath };
+  } catch (err) {
+    return { saved: false, error: err instanceof Error ? err.message : String(err) };
+  }
 }

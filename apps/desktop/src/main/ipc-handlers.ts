@@ -1,5 +1,5 @@
 import { app, ipcMain } from "electron";
-import { handleMediaServe, handleMediaRange, handleMediaInfo, handleMediaUpload } from "./media-handler";
+import { handleMediaServe, handleMediaRange, handleMediaInfo, handleMediaUpload, handleMediaDownload } from "./media-handler";
 import { handleShowcaseList, handleShowcaseServe } from "./showcase-handler";
 import { NodeConnectionManager } from "./node-connection";
 
@@ -16,6 +16,9 @@ export function registerIpcHandlers(nodeConn?: NodeConnectionManager) {
   );
   ipcMain.handle("media:upload", (_event, data: string, mimeType: string, fileName?: string) =>
     handleMediaUpload(data, mimeType, fileName),
+  );
+  ipcMain.handle("media:download", (_event, input: { url?: string; dataUrl?: string; fileName: string; mimeType?: string }) =>
+    handleMediaDownload(input),
   );
   ipcMain.handle("showcase:list", () => handleShowcaseList());
   ipcMain.handle("showcase:serve", (_event, relPath: string) => handleShowcaseServe(relPath));
