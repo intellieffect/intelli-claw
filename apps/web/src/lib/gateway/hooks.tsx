@@ -114,6 +114,13 @@ import {
 
 import { getTopicHistory } from "./topic-store";
 
+// --- Streaming Timeout Constants (#154, #264) ---
+// Exported for testing — values must stay in sync with startStreamingTimeout().
+export const THINKING_TIMEOUT_MS = 45_000;
+export const TOOL_TIMEOUT_MS = 120_000;
+export const WRITING_TIMEOUT_MS = 90_000;
+export const LIFECYCLE_END_GRACE_MS = 10_000;
+
 // --- Web Config Persistence ---
 
 export function loadGatewayConfig(): GatewayConfig {
@@ -656,6 +663,7 @@ export function useChat(sessionKey?: string) {
     };
   }, []);
 
+  // Tiered streaming timeouts — see module-level constants (#154, #264)
   // #142: Scope queue key per browser tab to prevent cross-tab queue collision
   const queueStorageKey = sessionKey ? `awf:${windowStoragePrefix()}queue:${sessionKey}` : null;
   const pendingStreamStorageKey = sessionKey ? `${PENDING_STREAM_SESSION_KEY_PREFIX}${sessionKey}` : null;
