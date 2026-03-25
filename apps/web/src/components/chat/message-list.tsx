@@ -10,6 +10,7 @@ import { MarkdownRenderer, MarkdownFilePreview } from "./markdown-renderer";
 import { ToolCallCard } from "./tool-call-card";
 import { ThinkingBlock } from "./thinking-block";
 import { HIDDEN_REPLY_RE, canBeReplyTarget, stripTrailingControlTokens, type DisplayMessage, type DisplayAttachment, type AgentStatus, type SystemInjectedType } from "@/lib/gateway/hooks";
+import type { ToolCall } from "@intelli-claw/shared";
 import { useShowThinking } from "@/lib/hooks/use-show-thinking";
 import { AgentAvatar } from "@/components/ui/agent-avatar";
 import { groupMessages } from "@intelli-claw/shared";
@@ -118,6 +119,7 @@ export function MessageList({
   agentStatus,
   onOpenTopicHistory,
   onReply,
+  onToolClick,
 }: {
   messages: DisplayMessage[];
   loading: boolean;
@@ -127,6 +129,7 @@ export function MessageList({
   agentStatus?: AgentStatus;
   onOpenTopicHistory?: () => void;
   onReply?: (msg: DisplayMessage) => void;
+  onToolClick?: (tc: ToolCall) => void;
 }) {
   const PAGE_SIZE = 50;
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -568,6 +571,7 @@ export function MessageList({
                 focused={focusedIdx === idx}
                 selected={selectedIndices.has(idx)}
                 onReply={onReply}
+                onToolClick={onToolClick}
                 showThinking={showThinking}
               />
             );
@@ -765,8 +769,8 @@ function ReplyButton({ onClick }: { onClick: () => void }) {
   );
 }
 
-const MessageBubble = React.memo(React.forwardRef<HTMLDivElement, { message: DisplayMessage; showAvatar?: boolean; showTimestamp?: boolean; onCancel?: (id: string) => void; agentId?: string; agentStatus?: AgentStatus; focused?: boolean; selected?: boolean; onReply?: (msg: DisplayMessage) => void; showThinking?: boolean }>(
-  function MessageBubble({ message, showAvatar = true, showTimestamp = true, onCancel, agentId, agentStatus, focused, selected, onReply, showThinking = true }, ref) {
+const MessageBubble = React.memo(React.forwardRef<HTMLDivElement, { message: DisplayMessage; showAvatar?: boolean; showTimestamp?: boolean; onCancel?: (id: string) => void; agentId?: string; agentStatus?: AgentStatus; focused?: boolean; selected?: boolean; onReply?: (msg: DisplayMessage) => void; showThinking?: boolean; onToolClick?: (tc: ToolCall) => void }>(
+  function MessageBubble({ message, showAvatar = true, showTimestamp = true, onCancel, agentId, agentStatus, focused, selected, onReply, showThinking = true, onToolClick }, ref) {
   const isUser = message.role === "user";
   const isSystem = message.role === "system";
   const isQueued = message.queued;
@@ -905,12 +909,27 @@ const MessageBubble = React.memo(React.forwardRef<HTMLDivElement, { message: Dis
             {showThinking && message.thinking && message.thinking.length > 0 && (
               <ThinkingBlock thinking={message.thinking} streaming={message.streaming} />
             )}
-            {message.toolCalls.length > 0 && (
-              <div className="mb-2">
-                {message.toolCalls.map((tc) => (
-                  <ToolCallCard key={tc.callId} toolCall={tc} />
-                ))}
+            {/* #231: Interleaved segments (text↔tool in order) */}
+            {message.segments && message.segments.length > 0 ? (
+              <div className="mb-2 space-y-2 min-w-0 overflow-hidden">
+                {message.segments.map((seg, i) =>
+                  seg.type === "text" ? (
+                    <MarkdownRenderer key={`seg-text-${i}`} content={seg.text} />
+                  ) : (
+                    <ToolCallCard key={seg.toolCall.callId} toolCall={seg.toolCall} onViewDetail={onToolClick} />
+                  )
+                )}
               </div>
+            ) : (
+              <>
+                {message.toolCalls.length > 0 && (
+                  <div className="mb-2">
+                    {message.toolCalls.map((tc) => (
+                      <ToolCallCard key={tc.callId} toolCall={tc} onViewDetail={onToolClick} />
+                    ))}
+                  </div>
+                )}
+              </>
             )}
             {/* Assistant attachments (images + files) */}
             {message.attachments && message.attachments.length > 0 && (
@@ -966,9 +985,10 @@ const MessageBubble = React.memo(React.forwardRef<HTMLDivElement, { message: Dis
                 })}
               </div>
             )}
-            {message.content && (() => {
-              return message.content ? <MarkdownRenderer content={message.content} /> : null;
-            })()}
+            {/* Render content only when not using segments (segments already include text) */}
+            {!message.segments && message.content && (
+              <MarkdownRenderer content={message.content} />
+            )}
             {message.streaming && (
               <span className="inline-block h-4 w-1.5 animate-pulse rounded-sm bg-primary" />
             )}
@@ -1007,6 +1027,7 @@ export function messageBubbleAreEqual(
     && (pm.toolCalls?.length ?? 0) === (nm.toolCalls?.length ?? 0)
     && (pm.attachments?.length ?? 0) === (nm.attachments?.length ?? 0)
     && (pm.thinking?.length ?? 0) === (nm.thinking?.length ?? 0)
+    && (pm.segments?.length ?? 0) === (nm.segments?.length ?? 0)
     && prev.focused === next.focused
     && prev.selected === next.selected
     && prev.agentId === next.agentId

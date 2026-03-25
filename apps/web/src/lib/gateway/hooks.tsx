@@ -7,6 +7,7 @@ import {
   type ReactNode,
   type SetStateAction,
 } from "react";
+import { usePageVisibility } from "@/lib/hooks/use-page-visibility";
 import { getMimeType } from "@/lib/mime-types";
 import { windowStoragePrefix } from "@/lib/utils";
 import { validateMediaPath, sanitizeAttachmentPath } from "@/lib/platform/media-path";
@@ -15,6 +16,7 @@ import type {
   EventFrame,
   Session,
   ChatMessage,
+  ContentPart,
   ToolCall,
 } from "@intelli-claw/shared";
 
@@ -45,6 +47,9 @@ import {
   mergeConsecutiveAssistant,
   ChatStreamProcessor,
   stripTemplateVars,
+  buildStreamSegments,
+  extractThinking,
+  type MessageSegment,
 } from "@intelli-claw/shared";
 
 // Re-export everything from shared for backward compatibility
@@ -69,6 +74,7 @@ export {
   type SystemInjectedType,
   type ToolStreamRefs,
   type ToolStreamEntry,
+  type MessageSegment,
   HIDDEN_REPLY_RE,
   INTERNAL_PROMPT_RE,
   TRAILING_CONTROL_TOKEN_RE,
@@ -113,6 +119,44 @@ import {
 } from "./message-store";
 
 import { getTopicHistory } from "./topic-store";
+
+// --- Label Preservation (#216) ---
+
+export interface SessionLabelSnapshot {
+  key: string;
+  sessionId: string;
+  label?: string;
+}
+
+/**
+ * Detect session resets and determine which labels need restoring.
+ * Pure function extracted for testability (#216).
+ */
+export function detectLabelsToRestore(
+  trackedSessionIds: Map<string, string>,
+  preservedLabels: Map<string, string>,
+  sessions: SessionLabelSnapshot[],
+): Map<string, string> {
+  const labelsToRestore = new Map<string, string>();
+
+  for (const s of sessions) {
+    if (!s.key || !s.sessionId) continue;
+
+    if (s.label) {
+      preservedLabels.set(s.key, s.label);
+    }
+
+    const oldSessionId = trackedSessionIds.get(s.key);
+    if (oldSessionId && oldSessionId !== s.sessionId) {
+      const previousLabel = preservedLabels.get(s.key);
+      if (previousLabel && !s.label) {
+        labelsToRestore.set(s.key, previousLabel);
+      }
+    }
+  }
+
+  return labelsToRestore;
+}
 
 // --- Streaming Timeout Constants (#154, #264) ---
 // Exported for testing — values must stay in sync with startStreamingTimeout().
@@ -230,6 +274,7 @@ export function useSessions() {
   const trackedSessionIdsRef = useRef<Map<string, string>>(new Map());
   /** Preserve user-set labels across session resets (#216) */
   const preservedLabelsRef = useRef<Map<string, string>>(new Map());
+  const visible = usePageVisibility();
 
   const fetchSessions = useCallback(async () => {
     if (!client || state !== "connected") return;
@@ -238,30 +283,16 @@ export function useSessions() {
       const res = await client.request<{ sessions: Array<Record<string, unknown>> }>("sessions.list", { limit: 200 });
 
       // #216: Detect session resets and preserve labels BEFORE updating UI state.
-      // This ensures the UI never flashes an empty/wrong label on reset.
-      const labelsToRestore = new Map<string, string>();
-
-      for (const s of res?.sessions || []) {
-        const key = String(s.key || "");
-        const newSessionId = s.sessionId ? String(s.sessionId) : undefined;
-        if (!key || !newSessionId) continue;
-
-        const serverLabel = s.label ? String(s.label) : undefined;
-        const oldSessionId = trackedSessionIdsRef.current.get(key);
-
-        // Track non-empty labels so we can restore them if a reset clears them
-        if (serverLabel) {
-          preservedLabelsRef.current.set(key, serverLabel);
-        }
-
-        if (oldSessionId && oldSessionId !== newSessionId) {
-          // Session reset detected — check if label needs preservation
-          const previousLabel = preservedLabelsRef.current.get(key);
-          if (previousLabel && !serverLabel) {
-            labelsToRestore.set(key, previousLabel);
-          }
-        }
-      }
+      const sessionSnapshots: SessionLabelSnapshot[] = (res?.sessions || []).map((s) => ({
+        key: String(s.key || ""),
+        sessionId: s.sessionId ? String(s.sessionId) : "",
+        label: s.label ? String(s.label) : undefined,
+      }));
+      const labelsToRestore = detectLabelsToRestore(
+        trackedSessionIdsRef.current,
+        preservedLabelsRef.current,
+        sessionSnapshots,
+      );
 
       const mapped = (res?.sessions || []).map((s) => {
         const key = String(s.key || "");
@@ -323,10 +354,24 @@ export function useSessions() {
           const existing = await getCurrentSessionId(key);
           if (!existing || existing !== newSessionId) {
             if (existing) {
+              // #216: On first poll after refresh, if session reset happened while offline,
+              // try to recover label from IndexedDB before marking the old session ended.
+              const serverLabel = s.label ? String(s.label) : undefined;
+              if (!serverLabel) {
+                try {
+                  const topics = await getTopicHistory(key);
+                  const prevTopic = topics.find((t: any) => t.sessionId === existing);
+                  if (prevTopic?.label) {
+                    labelsToRestore.set(key, prevTopic.label);
+                    preservedLabelsRef.current.set(key, prevTopic.label);
+                    client.request("sessions.patch", { key, label: prevTopic.label }).catch(() => {});
+                  }
+                } catch { /* best-effort */ }
+              }
               markSessionEnded(key, existing).catch(() => {});
             }
             trackSessionId(key, newSessionId, {
-              label: s.label ? String(s.label) : undefined,
+              label: s.label ? String(s.label) : labelsToRestore.get(key),
             }).catch(() => {});
           }
         }
@@ -371,6 +416,14 @@ export function useSessions() {
     });
     return unsub;
   }, [client, refreshThrottled]);
+
+  // #260: Only run 15s polling when page is visible; refresh immediately on becoming visible
+  useEffect(() => {
+    if (state !== "connected" || !visible) return;
+    refreshThrottled();
+    const id = setInterval(() => { refreshThrottled(); }, 15000);
+    return () => clearInterval(id);
+  }, [state, visible, refreshThrottled]);
 
   const patchSession = useCallback((key: string, patch: Record<string, unknown>) => {
     setSessions((prev) => prev.map((s) => (s.key === key ? { ...s, ...patch } : s)));
@@ -563,6 +616,17 @@ export function truncateForPreview(content: string, maxLen = 100): string {
   return oneLine.slice(0, maxLen - 1) + "…";
 }
 
+/**
+ * Extract thinking blocks from message content (#222).
+ * Wraps extractThinking from shared.
+ */
+export function extractThinkingFromContent(
+  content: string | ContentPart[] | Array<Record<string, unknown>>,
+): { thinking: Array<{ text: string }>; cleanContent: string } {
+  const result = extractThinking(content as string | ContentPart[]);
+  return { thinking: result.thinking, cleanContent: result.cleanContent };
+}
+
 /** Check if a message can be used as a reply target */
 export function canBeReplyTarget(msg: DisplayMessage): boolean {
   if (msg.role === "system" || msg.role === "session-boundary") return false;
@@ -611,6 +675,8 @@ export function useChat(sessionKey?: string) {
   const loadHistoryRef = useRef<(() => void) | null>(null);
   // #155: Track recently finalized stream IDs so loadHistory can skip duplicates
   const finalizedStreamIdsRef = useRef<Set<string>>(new Set());
+  // #155 / #218: Track finalized stream content for robust matching
+  const finalizedStreamContentRef = useRef<Map<string, { contentKey: string; ts: number }>>(new Map());
   const messagesRef = useRef<DisplayMessage[]>([]);
   // Throttle streaming UI updates to once per animation frame
   const streamRafRef = useRef<number | null>(null);
@@ -877,6 +943,7 @@ export function useChat(sessionKey?: string) {
         }
         runIdRef.current = null;
         finalizedStreamIdsRef.current.clear();
+        finalizedStreamContentRef.current.clear();
       }
       // Clear the OLD session's pending stream, not the new one's.
       // This prevents wiping a snapshot that beforeunload saved for the new session.
@@ -982,13 +1049,26 @@ export function useChat(sessionKey?: string) {
           let textContent = '';
           const imgAttachments: DisplayAttachment[] = [];
 
+          // #222: Extract thinking blocks from content
+          let thinkingBlocks: Array<{ text: string }> = [];
+          const orderedSegments: MessageSegment[] = [];
+
           if (typeof m.content === 'string') {
-            textContent = m.content;
+            const extracted = extractThinkingFromContent(m.content);
+            thinkingBlocks = extracted.thinking;
+            textContent = extracted.thinking.length > 0
+              ? extracted.cleanContent
+              : m.content;
           } else if (Array.isArray(m.content)) {
             const parts = m.content as Array<Record<string, unknown>>;
             const hasToolUse = parts.some(p => p.type === 'tool_use');
+
+            // Extract thinking blocks first
+            const extracted = extractThinkingFromContent(parts);
+            thinkingBlocks = extracted.thinking;
+
             for (const p of parts) {
-              // #249: Skip thinking content blocks — strip from display
+              // #222: Skip thinking — already extracted above
               if (p.type === 'thinking') continue;
               if (p.type === 'text' && typeof p.text === 'string') {
                 if (hasToolUse && m.role === 'assistant') {
@@ -998,6 +1078,24 @@ export function useChat(sessionKey?: string) {
                   if (!hasMedia && text.length < 100 && !text.includes('\n')) continue;
                 }
                 textContent += p.text;
+                // #231: Add text segment
+                if ((p.text as string).trim()) {
+                  orderedSegments.push({ type: "text", text: p.text as string });
+                }
+              } else if (p.type === 'tool_use') {
+                // #231: Add tool segment from content block
+                const toolId = (p.id as string) || `tool-${orderedSegments.length}`;
+                const toolName = (p.name as string) || 'unknown';
+                orderedSegments.push({
+                  type: "tool",
+                  toolCall: {
+                    callId: toolId,
+                    name: toolName,
+                    args: p.input ? JSON.stringify(p.input) : undefined,
+                    status: "done" as const,
+                    result: undefined,
+                  },
+                });
               } else if (p.type === 'image_url' || p.type === 'image') {
                 let url: string | undefined;
                 if (typeof p.image_url === 'object' && p.image_url) {
@@ -1070,6 +1168,8 @@ export function useChat(sessionKey?: string) {
             toolCalls: m.toolCalls || [],
             attachments: allAttachments.length > 0 ? allAttachments : undefined,
             systemType: systemType ?? undefined,
+            thinking: thinkingBlocks.length > 0 ? thinkingBlocks : undefined,
+            segments: orderedSegments.length > 1 ? orderedSegments : undefined,
           };
         })
         .filter((m) => {
@@ -1285,19 +1385,31 @@ export function useChat(sessionKey?: string) {
       }
       mergedMsgs = mergeLiveStreamingIntoHistory(mergedMsgs, liveStreaming);
 
-      // #155: Remove finalized stream messages that now have a gateway equivalent.
-      // After finalizeActiveStream, both the finalized msg (stream-...) and the
-      // gateway version (hist-N) can coexist. Remove the stream version if
-      // a gateway message with matching content already exists.
+      // #155 / #218: Remove finalized stream messages that now have a gateway equivalent.
+      // Uses both exact ID matching and content-based fuzzy matching for robustness.
       if (finalizedStreamIdsRef.current.size > 0 && dedupedHistMsgs.length > 0) {
-        const gwContentKeys = new Set(
-          dedupedHistMsgs.map((m) => `${m.role}:${normalizeContentForDedup(m.content)}`),
-        );
+        const gwEntries = dedupedHistMsgs.map((m) => ({
+          role: m.role,
+          contentKey: normalizeContentForDedup(m.content),
+          ts: new Date(m.timestamp).getTime(),
+        }));
         mergedMsgs = mergedMsgs.filter((m) => {
           if (!finalizedStreamIdsRef.current.has(m.id)) return true;
-          // Keep if no gateway equivalent exists (gateway hasn't caught up yet)
-          const key = `${m.role}:${normalizeContentForDedup(m.content)}`;
-          return !gwContentKeys.has(key);
+          // Exact content match
+          const key = normalizeContentForDedup(m.content);
+          if (gwEntries.some((g) => g.role === m.role && g.contentKey === key)) return false;
+          // #218: Fuzzy match — prefix (first 80 chars) + timestamp proximity (<30s)
+          const finalized = finalizedStreamContentRef.current.get(m.id);
+          if (finalized) {
+            const prefix = finalized.contentKey.slice(0, 80);
+            const fuzzyMatch = gwEntries.some((g) =>
+              g.role === m.role &&
+              Math.abs(g.ts - finalized.ts) < 30_000 &&
+              g.contentKey.slice(0, 80) === prefix
+            );
+            if (fuzzyMatch) return false;
+          }
+          return true;
         });
       }
 
@@ -1531,11 +1643,19 @@ export function useChat(sessionKey?: string) {
         requestHistoryReload: () => loadHistoryRef.current?.(),
         onPersistPendingStream: () => persistPendingStream(),
         onClearPersistedStream: () => clearPersistedPendingStream(),
-        onStreamFinalized: (streamId, content, toolCalls) => {
-          // #155: Record finalized stream ID so loadHistory can skip duplicates
+        onStreamFinalized: (streamId, content, toolCalls, segments, thinking) => {
+          // #155 / #218: Record finalized stream ID + content for robust dedup
           finalizedStreamIdsRef.current.add(streamId);
-          // Auto-expire after 30s to prevent unbounded growth
-          setTimeout(() => finalizedStreamIdsRef.current.delete(streamId), 30_000);
+          const finalContentKey = normalizeContentForDedup(content);
+          finalizedStreamContentRef.current.set(streamId, {
+            contentKey: finalContentKey,
+            ts: Date.now(),
+          });
+          // Auto-expire after 60s (#218: slow loadHistory could arrive after TTL)
+          setTimeout(() => {
+            finalizedStreamIdsRef.current.delete(streamId);
+            finalizedStreamContentRef.current.delete(streamId);
+          }, 60_000);
           // Save finalized message to local store
           const saveKey = boundSessionKey;
           if (saveKey && !HIDDEN_REPLY_RE.test(content.trim())) {
@@ -1546,6 +1666,9 @@ export function useChat(sessionKey?: string) {
               content,
               timestamp: new Date().toISOString(),
               toolCalls,
+              streaming: false,
+              ...(thinking ? { thinking } : {}),
+              ...(segments && segments.length > 0 ? { segments } : {}),
             }]).catch(() => {});
           }
         },

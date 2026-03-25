@@ -187,6 +187,16 @@ export function mergeConsecutiveAssistant(
                 ...(m.attachments || []),
               ]
             : undefined,
+        // #222: Merge thinking blocks from consecutive assistant messages
+        thinking:
+          acc.thinking || m.thinking
+            ? [...(acc.thinking || []), ...(m.thinking || [])]
+            : undefined,
+        // #231: Merge segments from consecutive assistant messages
+        segments:
+          acc.segments || m.segments
+            ? [...(acc.segments || []), ...(m.segments || [])]
+            : undefined,
       };
     } else {
       if (accumulator) result.push(accumulator);

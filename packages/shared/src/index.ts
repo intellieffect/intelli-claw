@@ -104,6 +104,7 @@ export {
   type AgentStatus,
   type ToolStreamEntry,
   type ToolStreamRefs,
+  type MessageSegment,
 } from "./gateway/chat-stream-types";
 export {
   createToolStreamRefs,
@@ -112,6 +113,7 @@ export {
   hasActiveStream,
   buildStreamContent,
   buildStreamToolCalls,
+  buildStreamSegments,
 } from "./gateway/tool-stream";
 export {
   HIDDEN_REPLY_RE,

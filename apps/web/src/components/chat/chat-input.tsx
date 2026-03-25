@@ -1,7 +1,7 @@
 
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowUp, Paperclip, Square, X, Reply, History, Trash2 } from "lucide-react";
+import { ArrowUp, Paperclip, Square, X, Reply, History, Trash2, ListPlus } from "lucide-react";
 
 import { cn, windowStoragePrefix } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -646,13 +646,20 @@ export function ChatInput({
             ) : (
               <Button
                 type="button"
-                size="icon-sm"
-                className="shrink-0 rounded-lg transition-opacity min-w-[44px] min-h-[44px] md:min-w-0 md:min-h-0"
-                aria-label="전송"
+                size={streaming ? "sm" : "icon-sm"}
+                className={`shrink-0 rounded-lg transition-opacity min-w-[44px] min-h-[44px] md:min-w-0 md:min-h-0 ${streaming ? "gap-1 px-2.5" : ""}`}
+                aria-label={streaming ? "대기열에 추가" : "전송"}
                 onClick={handleSend}
                 disabled={disabled || !canSend}
               >
-                <ArrowUp className="size-4" strokeWidth={2.5} />
+                {streaming ? (
+                  <>
+                    <ListPlus className="size-3.5" />
+                    <span className="text-[11px] hidden sm:inline">대기열</span>
+                  </>
+                ) : (
+                  <ArrowUp className="size-4" strokeWidth={2.5} />
+                )}
               </Button>
             )}
           </div>

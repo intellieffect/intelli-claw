@@ -28,6 +28,8 @@ import { TopicHistory } from "./topic-history";
 import { TopicNameDialog } from "./topic-name-dialog";
 import { resolveInitialSessionState, getRememberedSessionForAgent } from "@/lib/session-continuity";
 import { platform } from "@/lib/platform";
+import { ToolSidebar } from "./tool-sidebar";
+import type { ToolCall } from "@intelli-claw/shared";
 
 export interface ChatPanelProps {
   /** Show header controls (agent selector, session switcher) */
@@ -43,6 +45,8 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
 
   const [sessionKey, setSessionKeyRaw] = useState<string | undefined>(undefined);
   const [agentId, setAgentId] = useState<string>(import.meta.env.VITE_DEFAULT_AGENT || "default");
+  // #232: Tool sidebar state
+  const [sidebarTool, setSidebarTool] = useState<ToolCall | null>(null);
 
   // Load persisted state on mount (client only)
   useEffect(() => {
@@ -59,6 +63,7 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
 
   const setSessionKey = useCallback((key: string | undefined) => {
     setSessionKeyRaw(key);
+    setSidebarTool(null); // #232: Close sidebar on session switch
     if (typeof window !== "undefined") {
       if (key) {
         localStorage.setItem(`${storagePrefix}sessionKey`, key);
@@ -863,24 +868,35 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
         />
       )}
 
-      {/* Messages */}
-      <DropZone onDrop={addFiles}>
-        <MessageList
-          messages={messages}
-          loading={loading}
-          streaming={streaming}
-          onCancelQueued={cancelQueued}
-          agentId={currentAgentId}
-          agentStatus={agentStatus}
-          onOpenTopicHistory={() => setTopicHistoryOpen(true)}
-          onReply={setReplyTo}
-          onClearMessages={() => {
-            if (window.confirm("채팅 내용을 모두 비우시겠습니까?")) {
-              clearMessages();
-            }
-          }}
-        />
-      </DropZone>
+      {/* Messages + Tool Sidebar */}
+      <div className="flex flex-1 min-h-0 overflow-hidden">
+        <DropZone onDrop={addFiles}>
+          <MessageList
+            messages={messages}
+            loading={loading}
+            streaming={streaming}
+            onCancelQueued={cancelQueued}
+            agentId={currentAgentId}
+            agentStatus={agentStatus}
+            onOpenTopicHistory={() => setTopicHistoryOpen(true)}
+            onReply={setReplyTo}
+            onToolClick={setSidebarTool}
+            onClearMessages={() => {
+              if (window.confirm("채팅 내용을 모두 비우시겠습니까?")) {
+                clearMessages();
+              }
+            }}
+          />
+        </DropZone>
+        {/* #232: Tool output sidebar */}
+        {sidebarTool && (
+          <ToolSidebar
+            toolCall={sidebarTool}
+            onClose={() => setSidebarTool(null)}
+            overlay={isMobile}
+          />
+        )}
+      </div>
 
       {/* Input with integrated toolbar */}
       <ChatInput
