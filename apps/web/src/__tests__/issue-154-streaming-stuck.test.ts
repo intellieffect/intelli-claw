@@ -190,7 +190,7 @@ describe("#154 — tiered streaming timeout", () => {
     expect(result.current.agentStatus.phase).toBe("idle");
   });
 
-  it("should have longer timeout once writing starts", async () => {
+  it("should use uniform 45s timeout regardless of phase", async () => {
     const { result } = renderHook(() => useChat("test:agent"));
     await act(async () => { vi.advanceTimersByTime(100); });
 
@@ -206,12 +206,12 @@ describe("#154 — tiered streaming timeout", () => {
 
     expect(result.current.agentStatus.phase).toBe("writing");
 
-    // At 45 seconds — should NOT have timed out because writing timeout is longer
-    await act(async () => { vi.advanceTimersByTime(44_980); });
+    // Just before 45 seconds from last event — should still be streaming
+    await act(async () => { vi.advanceTimersByTime(44_900); });
     expect(result.current.streaming).toBe(true);
 
-    // At 90 seconds — should timeout
-    await act(async () => { vi.advanceTimersByTime(45_000); });
+    // At 45 seconds from last event — should timeout (uniform timeout)
+    await act(async () => { vi.advanceTimersByTime(200); });
     expect(result.current.streaming).toBe(false);
   });
 });

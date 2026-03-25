@@ -12,7 +12,6 @@ const DEFAULT_STATE: ChatState = {
   streaming: false,
   agentStatus: { phase: "idle" },
   loading: false,
-  streamBuf: null,
   runId: null,
   historyLoaded: false,
   lastAccessedAt: 0,
