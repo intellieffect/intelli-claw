@@ -51,7 +51,16 @@ export interface DisplayMessage {
   isError?: boolean;
   /** Local image URIs for user-sent attachments (mobile display only) */
   imageUris?: string[];
+  /** #222: Extracted thinking/reasoning blocks from the model */
+  thinking?: Array<{ text: string }>;
+  /** #231: Ordered segments preserving text↔tool interleave */
+  segments?: MessageSegment[];
 }
+
+/** #231: A single segment in an interleaved text↔tool response */
+export type MessageSegment =
+  | { type: "text"; text: string }
+  | { type: "tool"; toolCall: ToolCall };
 
 export type AgentStatus =
   | { phase: "idle" }

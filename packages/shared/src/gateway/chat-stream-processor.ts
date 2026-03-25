@@ -17,6 +17,7 @@ import type {
   ToolStreamRefs,
   ToolStreamEntry,
 } from "./chat-stream-types";
+import type { MessageSegment } from "./chat-stream-types";
 import {
   createToolStreamRefs,
   resetAllStreamRefs,
@@ -24,6 +25,7 @@ import {
   hasActiveStream,
   buildStreamContent,
   buildStreamToolCalls,
+  buildStreamSegments,
 } from "./tool-stream";
 import {
   HIDDEN_REPLY_RE,
@@ -56,6 +58,8 @@ export interface ChatStreamCallbacks {
     streamId: string,
     content: string,
     toolCalls: ToolCall[],
+    segments?: MessageSegment[],
+    thinking?: Array<{ text: string }>,
   ) => void;
   /**
    * Optional: transform final content before display (web: stripTemplateVars + extractMediaAttachments).
@@ -93,37 +97,41 @@ export interface ChatStreamProcessorConfig {
   timeoutMs?: number;
 }
 
-// ── Helper: extract text from chat delta payload ──
+// ── Helper: extract text and thinking from chat delta payload ──
 
-function extractDeltaText(
+function extractDeltaTextAndThinking(
   chatPayload: Record<string, unknown>,
-): string {
+): { text: string; thinking: Array<{ text: string }> } {
+  const thinking: Array<{ text: string }> = [];
   // Primary: payload.message with ContentPart[] (OpenClaw protocol)
   const chatMsg = chatPayload.message as
     | Record<string, unknown>
     | undefined;
   if (chatMsg) {
     if (typeof chatMsg.content === "string") {
-      return chatMsg.content;
+      return { text: chatMsg.content, thinking };
     }
     if (Array.isArray(chatMsg.content)) {
       let text = "";
       for (const p of chatMsg.content as Array<
         Record<string, unknown>
       >) {
-        if (p.type === "thinking") continue;
+        if (p.type === "thinking" && typeof p.text === "string") {
+          thinking.push({ text: p.text });
+          continue;
+        }
         if (p.type === "text" && typeof p.text === "string") {
           text += p.text;
         }
       }
-      return text;
+      return { text, thinking };
     }
   }
   // Fallback: payload.text (older gateway versions)
   if (typeof chatPayload.text === "string") {
-    return chatPayload.text as string;
+    return { text: chatPayload.text as string, thinking };
   }
-  return "";
+  return { text: "", thinking };
 }
 
 // ── Helper: build a final event dedup key ──
@@ -158,6 +166,8 @@ export class ChatStreamProcessor {
   private streamIdCounter = 0;
   private runId: string | null = null;
   private aborted = false;
+  /** #222: Accumulated thinking blocks during streaming */
+  private thinkingBlocks: Array<{ text: string }> = [];
 
   // Deferred history reload gate
   private pendingHistoryReload = false;
@@ -234,6 +244,7 @@ export class ChatStreamProcessor {
     this.pendingHistoryReload = false;
     this.finalizedEventKeys.clear();
     this.streamIdCounter = 0;
+    this.thinkingBlocks = [];
   }
 
   /** Clean up timers. Call when disposing. */
@@ -265,8 +276,21 @@ export class ChatStreamProcessor {
   }
 
   private handleChatDelta(chatPayload: Record<string, unknown>): void {
-    const text = extractDeltaText(chatPayload);
-    if (!text) return;
+    const { text, thinking } = extractDeltaTextAndThinking(chatPayload);
+
+    // #222: Accumulate thinking blocks
+    if (thinking.length > 0) {
+      this.thinkingBlocks = thinking;
+    }
+
+    if (!text) {
+      // Show thinking indicator even without text content
+      if (thinking.length > 0) {
+        this.cb.onStreamingChange(true);
+        this.cb.onAgentStatusChange({ phase: "thinking" });
+      }
+      return;
+    }
 
     // First suppress check: raw incoming text
     if (shouldSuppressStreamingPreview(text)) return;
@@ -298,6 +322,8 @@ export class ChatStreamProcessor {
     }
 
     const snapTools = buildStreamToolCalls(this.streamRefs);
+    const snapSegments = buildStreamSegments(this.streamRefs);
+    const snapThinking = this.thinkingBlocks.length > 0 ? [...this.thinkingBlocks] : undefined;
     const msg: DisplayMessage = {
       id: snapId,
       role: "assistant",
@@ -305,6 +331,8 @@ export class ChatStreamProcessor {
       timestamp: new Date().toISOString(),
       toolCalls: snapTools,
       streaming: true,
+      ...(snapSegments.length > 0 ? { segments: snapSegments } : {}),
+      ...(snapThinking ? { thinking: snapThinking } : {}),
     };
 
     this.cb.onMessagesUpdate((prev) => {
@@ -446,6 +474,8 @@ export class ChatStreamProcessor {
     const snapId = this.streamRefs.chatStreamId.current;
     const snapContent = buildStreamContent(this.streamRefs);
     const snapTools = buildStreamToolCalls(this.streamRefs);
+    const snapSegments = buildStreamSegments(this.streamRefs);
+    const snapThinking = this.thinkingBlocks.length > 0 ? [...this.thinkingBlocks] : undefined;
 
     this.cb.onMessagesUpdate((prev) => {
       const idx = prev.findIndex((m) => m.id === snapId);
@@ -456,6 +486,8 @@ export class ChatStreamProcessor {
         timestamp: new Date().toISOString(),
         toolCalls: snapTools,
         streaming: true,
+        ...(snapSegments.length > 0 ? { segments: snapSegments } : {}),
+        ...(snapThinking ? { thinking: snapThinking } : {}),
       };
       if (idx >= 0) {
         const next = [...prev];
@@ -484,11 +516,16 @@ export class ChatStreamProcessor {
       const snapId = this.streamRefs.chatStreamId.current;
       if (snapId) {
         const snapTools = buildStreamToolCalls(this.streamRefs);
+        const snapSegments = buildStreamSegments(this.streamRefs);
         this.cb.onMessagesUpdate((prev) => {
           const idx = prev.findIndex((m) => m.id === snapId);
           if (idx >= 0) {
             const next = [...prev];
-            next[idx] = { ...next[idx], toolCalls: snapTools };
+            next[idx] = {
+              ...next[idx],
+              toolCalls: snapTools,
+              ...(snapSegments.length > 0 ? { segments: snapSegments } : {}),
+            };
             return next;
           }
           return prev;
@@ -565,6 +602,8 @@ export class ChatStreamProcessor {
       buildStreamContent(this.streamRefs),
     );
     const finalToolCalls = buildStreamToolCalls(this.streamRefs);
+    const finalSegments = buildStreamSegments(this.streamRefs);
+    const finalThinking = this.thinkingBlocks.length > 0 ? [...this.thinkingBlocks] : undefined;
 
     // Platform-specific content transform (web: stripTemplateVars + extractMediaAttachments)
     let finalAttachments: DisplayMessage["attachments"];
@@ -581,6 +620,11 @@ export class ChatStreamProcessor {
     } else {
       this.cb.onMessagesUpdate((prev) => {
         const idx = prev.findIndex((m) => m.id === finalId);
+        const extras = {
+          ...(finalAttachments ? { attachments: finalAttachments } : {}),
+          ...(finalThinking ? { thinking: finalThinking } : {}),
+          ...(finalSegments.length > 0 ? { segments: finalSegments } : {}),
+        };
         if (idx >= 0) {
           const next = [...prev];
           next[idx] = {
@@ -588,9 +632,7 @@ export class ChatStreamProcessor {
             content: finalContent,
             toolCalls: finalToolCalls,
             streaming: false,
-            ...(finalAttachments
-              ? { attachments: finalAttachments }
-              : {}),
+            ...extras,
           };
           return next;
         }
@@ -603,17 +645,16 @@ export class ChatStreamProcessor {
             timestamp: new Date().toISOString(),
             toolCalls: finalToolCalls,
             streaming: false,
-            ...(finalAttachments
-              ? { attachments: finalAttachments }
-              : {}),
+            ...extras,
           },
         ];
       });
 
-      this.cb.onStreamFinalized?.(finalId, finalContent, finalToolCalls);
+      this.cb.onStreamFinalized?.(finalId, finalContent, finalToolCalls, finalSegments, finalThinking);
     }
 
     resetAllStreamRefs(this.streamRefs);
+    this.thinkingBlocks = [];
     this.runId = null;
     this.cb.onRunIdChange(null);
     this.cb.onClearPersistedStream?.();
