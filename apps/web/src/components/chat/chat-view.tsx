@@ -70,7 +70,7 @@ export function ChatView() {
         </div>
       </header>
 
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 min-w-0 overflow-hidden">
         <ChatPanel />
       </div>
 

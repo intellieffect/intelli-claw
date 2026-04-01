@@ -527,7 +527,7 @@ export function MessageList({
 
   return (
     <div className="relative flex-1 min-h-0 min-w-0 overflow-hidden">
-    <div ref={containerRef} onScroll={handleScroll} className="h-full overflow-y-auto overflow-x-hidden px-[3%] pt-3 pb-8 md:px-[5%] lg:px-[7%] md:pt-4 md:pb-12" style={{ WebkitOverflowScrolling: "touch" }}>
+    <div ref={containerRef} onScroll={handleScroll} className="h-full w-full max-w-full overflow-y-auto overflow-x-hidden px-[3%] pt-3 pb-8 md:px-[5%] lg:px-[7%] md:pt-4 md:pb-12" style={{ WebkitOverflowScrolling: "touch" }}>
       <div className="mx-auto max-w-[1200px] space-y-3 md:space-y-4">
         {/* Load-more sentinel — auto-loads when scrolled into view */}
         {hasMore && (

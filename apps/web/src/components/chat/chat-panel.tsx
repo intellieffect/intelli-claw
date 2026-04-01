@@ -869,7 +869,7 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
       )}
 
       {/* Messages + Tool Sidebar */}
-      <div className="flex flex-1 min-h-0 overflow-hidden">
+      <div className="flex flex-1 min-w-0 min-h-0 overflow-hidden">
         <DropZone onDrop={addFiles}>
           <MessageList
             messages={messages}
