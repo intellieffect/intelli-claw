@@ -847,7 +847,7 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
     <div
       ref={panelRef}
       data-chat-panel
-      className="relative flex h-full flex-col bg-background"
+      className="relative flex h-full flex-col bg-background min-w-0 overflow-hidden"
       style={isMobile && keyboardHeight > 0 ? { paddingBottom: keyboardHeight } : undefined}
       onClick={undefined}
     >

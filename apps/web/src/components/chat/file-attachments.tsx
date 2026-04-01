@@ -255,7 +255,8 @@ export function DropZone({
 
   return (
     <div
-      className="relative flex-1 flex flex-col min-h-0"
+      className="relative flex-1 flex flex-col min-h-0 min-w-0 overflow-hidden"
+      style={{ minWidth: 0, overflow: 'hidden' }}
       onDragEnter={handleDragEnter}
       onDragLeave={handleDragLeave}
       onDragOver={handleDragOver}
