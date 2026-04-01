@@ -526,7 +526,7 @@ export function MessageList({
   }
 
   return (
-    <div className="relative flex-1 min-h-0">
+    <div className="relative flex-1 min-h-0 min-w-0 overflow-hidden">
     <div ref={containerRef} onScroll={handleScroll} className="h-full overflow-y-auto overflow-x-hidden px-[3%] pt-3 pb-8 md:px-[5%] lg:px-[7%] md:pt-4 md:pb-12" style={{ WebkitOverflowScrolling: "touch" }}>
       <div className="mx-auto max-w-[1200px] space-y-3 md:space-y-4">
         {/* Load-more sentinel — auto-loads when scrolled into view */}
@@ -792,7 +792,7 @@ const MessageBubble = React.memo(React.forwardRef<HTMLDivElement, { message: Dis
   }
 
   return (
-    <div ref={ref} data-msg-id={message.id} className={`group flex gap-3 transition-colors duration-500 ${isUser ? "justify-end" : ""} [&.reply-highlight]:bg-primary/10 [&.reply-highlight]:rounded-xl`}>
+    <div ref={ref} data-msg-id={message.id} className={`group flex min-w-0 gap-3 transition-colors duration-500 ${isUser ? "justify-end" : ""} [&.reply-highlight]:bg-primary/10 [&.reply-highlight]:rounded-xl`}>
       {/* Action buttons for user messages (left of bubble) */}
       {isUser && (
         <div className="flex items-start gap-0.5 pt-2">
