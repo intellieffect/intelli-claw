@@ -17,6 +17,16 @@ interface AgentFormData {
 
 const EMPTY_FORM: AgentFormData = { id: "", name: "", model: "", description: "", systemPrompt: "" };
 
+/** Safely render model value — gateway may return {primary, fallbacks} object */
+function displayModel(model: unknown): string {
+  if (!model) return "";
+  if (typeof model === "string") return model;
+  if (typeof model === "object" && model !== null && "primary" in model) {
+    return String((model as Record<string, unknown>).primary || "");
+  }
+  return String(model);
+}
+
 // --- New Session Picker (agent selection → callback) ---
 
 export function NewSessionPicker({
@@ -104,7 +114,7 @@ export function NewSessionPicker({
                     <div className="text-xs text-zinc-500 truncate">{agent.description}</div>
                   )}
                   {agent.model && (
-                    <div className="text-[10px] text-zinc-600 truncate">{agent.model}</div>
+                    <div className="text-[10px] text-zinc-600 truncate">{displayModel(agent.model)}</div>
                   )}
                 </div>
                 <ChevronRight size={14} className={isFocused ? "text-zinc-300" : "text-zinc-600"} />
@@ -342,7 +352,7 @@ export function AgentManager({
                     <AgentAvatar agentId={agent.id} size={32} />
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-medium text-zinc-200 truncate">{agent.name || agent.id}</div>
-                      <div className="text-[10px] text-zinc-600 truncate">{agent.id} · {agent.model || "default"}</div>
+                      <div className="text-[10px] text-zinc-600 truncate">{agent.id} · {displayModel(agent.model) || "default"}</div>
                     </div>
                     <div className="flex items-center gap-1">
                       <button
