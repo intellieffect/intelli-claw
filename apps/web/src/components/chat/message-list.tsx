@@ -821,7 +821,8 @@ const MessageBubble = React.memo(React.forwardRef<HTMLDivElement, { message: Dis
       )}
 
       <div
-        className={`min-w-0 max-w-[90%] md:max-w-[85%] overflow-hidden ${
+        style={{ maxWidth: '90%', overflow: 'hidden', minWidth: 0 }}
+        className={`
           isUser
             ? `rounded-2xl rounded-br-md px-3.5 py-2 md:px-4 md:py-2.5 text-foreground ${isQueued ? "bg-primary/15 border border-primary/20" : "bg-primary/15 border border-primary/10"}${selected ? " outline outline-2 outline-amber-500 bg-amber-500/10" : focused ? " outline outline-2 outline-amber-500/50" : ""}`
             : `rounded-2xl rounded-bl-md px-3.5 py-2 md:px-4 md:py-2.5 bg-zinc-800/60 border border-zinc-700/50${selected ? " outline outline-2 outline-amber-500 bg-amber-500/10" : focused ? " outline outline-2 outline-amber-500/50" : ""}`

@@ -144,17 +144,11 @@ body {
 /* Markdown prose */
 .prose {
   max-width: 100%;
+  width: 100%;
   line-height: 1.5;
   overflow-wrap: break-word;
   word-break: break-word;
-  overflow-x: hidden;
-}
-
-/* Force all prose descendants to respect container width */
-.prose * {
-  max-width: 100%;
-  overflow-wrap: break-word;
-  word-break: break-word;
+  overflow: hidden;
 }
 
 .prose p {
