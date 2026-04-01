@@ -769,12 +769,38 @@ function ReplyButton({ onClick }: { onClick: () => void }) {
   );
 }
 
-const MessageBubble = React.memo(React.forwardRef<HTMLDivElement, { message: DisplayMessage; showAvatar?: boolean; showTimestamp?: boolean; onCancel?: (id: string) => void; agentId?: string; agentStatus?: AgentStatus; focused?: boolean; selected?: boolean; onReply?: (msg: DisplayMessage) => void; showThinking?: boolean; onToolClick?: (tc: ToolCall) => void }>(
-  function MessageBubble({ message, showAvatar = true, showTimestamp = true, onCancel, agentId, agentStatus, focused, selected, onReply, showThinking = true, onToolClick }, ref) {
+interface MessageBubbleProps {
+  message: DisplayMessage;
+  showAvatar?: boolean;
+  showTimestamp?: boolean;
+  onCancel?: (id: string) => void;
+  agentId?: string;
+  agentStatus?: AgentStatus;
+  focused?: boolean;
+  selected?: boolean;
+  onReply?: (msg: DisplayMessage) => void;
+  showThinking?: boolean;
+  onToolClick?: (tc: ToolCall) => void;
+}
+
+const MessageBubble = React.memo(React.forwardRef(
+  function MessageBubble({ message, showAvatar = true, showTimestamp = true, onCancel, agentId, agentStatus, focused, selected, onReply, showThinking = true, onToolClick }: MessageBubbleProps, ref: React.ForwardedRef<HTMLDivElement>) {
   const isUser = message.role === "user";
   const isSystem = message.role === "system";
   const isQueued = message.queued;
   const time = formatTime(message.timestamp);
+
+  const outlineClass = selected
+    ? " outline outline-2 outline-amber-500 bg-amber-500/10"
+    : focused
+      ? " outline outline-2 outline-amber-500/50"
+      : "";
+  const bubbleClassName = isUser
+    ? "rounded-2xl rounded-br-md px-3.5 py-2 md:px-4 md:py-2.5 text-foreground "
+      + (isQueued ? "bg-primary/15 border border-primary/20" : "bg-primary/15 border border-primary/10")
+      + outlineClass
+    : "rounded-2xl rounded-bl-md px-3.5 py-2 md:px-4 md:py-2.5 bg-zinc-800/60 border border-zinc-700/50"
+      + outlineClass;
 
   // System messages: centered, muted style — collapsible for compaction/memory-flush (#187)
   if (isSystem) {
@@ -792,7 +818,7 @@ const MessageBubble = React.memo(React.forwardRef<HTMLDivElement, { message: Dis
   }
 
   return (
-    <div ref={ref} data-msg-id={message.id} className={`group flex min-w-0 gap-3 transition-colors duration-500 ${isUser ? "justify-end" : ""} [&.reply-highlight]:bg-primary/10 [&.reply-highlight]:rounded-xl`}>
+    <div ref={ref} data-msg-id={message.id} style={{ maxWidth: '100%', overflow: 'hidden' }} className={`group flex min-w-0 gap-3 transition-colors duration-500 ${isUser ? "justify-end" : ""} [&.reply-highlight]:bg-primary/10 [&.reply-highlight]:rounded-xl`}>
       {/* Action buttons for user messages (left of bubble) */}
       {isUser && (
         <div className="flex items-start gap-0.5 pt-2">
@@ -822,14 +848,10 @@ const MessageBubble = React.memo(React.forwardRef<HTMLDivElement, { message: Dis
 
       <div
         style={{ maxWidth: '90%', overflow: 'hidden', minWidth: 0 }}
-        className={`
-          isUser
-            ? `rounded-2xl rounded-br-md px-3.5 py-2 md:px-4 md:py-2.5 text-foreground ${isQueued ? "bg-primary/15 border border-primary/20" : "bg-primary/15 border border-primary/10"}${selected ? " outline outline-2 outline-amber-500 bg-amber-500/10" : focused ? " outline outline-2 outline-amber-500/50" : ""}`
-            : `rounded-2xl rounded-bl-md px-3.5 py-2 md:px-4 md:py-2.5 bg-zinc-800/60 border border-zinc-700/50${selected ? " outline outline-2 outline-amber-500 bg-amber-500/10" : focused ? " outline outline-2 outline-amber-500/50" : ""}`
-        }`}
+        className={bubbleClassName}
       >
         {isUser ? (
-          <div>
+          <div style={{ minWidth: 0, overflow: 'hidden' }}>
             {/* Reply quote block */}
             {message.replyTo && <ReplyQuoteBlock replyTo={message.replyTo} />}
             {/* Attachment images */}
@@ -903,7 +925,7 @@ const MessageBubble = React.memo(React.forwardRef<HTMLDivElement, { message: Dis
             )}
           </div>
         ) : (
-          <div>
+          <div style={{ minWidth: 0, overflow: 'hidden' }}>
             {/* Reply quote block */}
             {message.replyTo && <ReplyQuoteBlock replyTo={message.replyTo} />}
             {/* #222: Thinking/reasoning block */}
