@@ -380,7 +380,7 @@ app.whenReady().then(() => {
       submenu: [
         {
           label: "New Window",
-          accelerator: "CmdOrCtrl+N",
+          accelerator: process.platform === "darwin" ? "Cmd+N" : "Ctrl+N",
           click: () => {
             // Duplicate current session in new window (#170)
             const focused = BrowserWindow.getFocusedWindow();

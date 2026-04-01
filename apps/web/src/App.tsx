@@ -33,26 +33,32 @@ class AppErrorBoundary extends Component<
     console.error("[App] Render error caught by boundary:", error);
   }
 
-  private handleReset = () => {
+  private handleReset = async () => {
+    // Clear all in-memory web storage (including localStorage for migration flags)
     try { sessionStorage.clear(); } catch {}
+    try { localStorage.clear(); } catch {}
+
     const SESSION_DBS = [
       "intelli-claw-messages",
       "intelli-claw-topics",
       "intelli-claw-input-history",
     ];
+
     try {
-      Promise.all(
+      await Promise.all(
         SESSION_DBS.map(
           (name) =>
-            new Promise<void>((res) => {
+            new Promise<void>((resolve) => {
               const req = indexedDB.deleteDatabase(name);
-              req.onsuccess = req.onerror = () => res();
+              req.onsuccess = req.onerror = () => resolve();
             }),
         ),
-      ).then(() => window.location.reload());
+      );
     } catch {
-      window.location.reload();
+      // Best-effort — proceed to reload regardless
     }
+
+    window.location.reload();
   };
 
   render() {
@@ -65,7 +71,7 @@ class AppErrorBoundary extends Component<
               캐시 데이터에 문제가 있을 수 있습니다.
             </p>
             <button
-              onClick={this.handleReset}
+              onClick={() => void this.handleReset()}
               className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
             >
               캐시 초기화 후 새로고침
