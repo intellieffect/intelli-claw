@@ -145,10 +145,17 @@ body {
 .prose {
   max-width: 100%;
   width: 100%;
+  min-width: 0;
   line-height: 1.5;
   overflow-wrap: break-word;
   word-break: break-word;
   overflow: hidden;
+}
+
+.prose > * {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: break-word;
 }
 
 .prose p {
@@ -172,6 +179,8 @@ body {
   margin: 0.75em 0;
   border-radius: var(--radius);
   overflow-x: auto;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .prose code {

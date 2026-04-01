@@ -204,7 +204,7 @@ function CodeBlock({ className, children, rawChildren }: { className?: string; c
   }, [code]);
 
   return (
-    <div className="group relative my-3">
+    <div className="group relative my-3" style={{ maxWidth: '100%', overflow: 'hidden' }}>
       <div className="flex items-center justify-between rounded-t-lg bg-muted px-4 py-1.5 text-xs text-muted-foreground">
         <span>{lang}</span>
         <button
@@ -700,7 +700,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
   // Collapse 3+ consecutive newlines to 2 (one blank line)
   const cleaned = withoutMedia.replace(/\n{3,}/g, "\n\n").trim();
   return (
-    <div className="prose" style={{ minWidth: 0, overflow: 'hidden', maxWidth: '100%' }}>
+    <div className="prose" style={{ minWidth: 0, overflow: 'hidden', maxWidth: '100%', width: '100%' }}>
       {mediaEntries.length > 0 && (
         <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-thin">
           {mediaEntries.map((entry, i) => (
