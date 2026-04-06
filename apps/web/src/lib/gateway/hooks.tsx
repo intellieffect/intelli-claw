@@ -2164,7 +2164,7 @@ export function useChat(sessionKey?: string) {
   return {
     messages, streaming, loading, agentStatus,
     sendMessage, sendCommand, addUserMessage, addLocalMessage, clearMessages,
-    cancelQueued, abort, reload: loadHistory, sendContextBridge,
+    cancelQueued, abort, reload: loadHistory,
     replyingTo, setReplyTo, clearReplyTo,
   };
 }
