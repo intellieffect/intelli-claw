@@ -214,8 +214,9 @@ function createWindow(opts?: CreateWindowOpts): BrowserWindow {
 }
 
 // ---- API server URL for remote media fallback (#110) ----
-// Derive from VITE_GATEWAY_URL (wss://host:port → https://host:4001)
-// The API server is exposed via Tailscale Serve (HTTPS) on port 4001.
+// Derive from VITE_GATEWAY_URL — the API server scheme follows the gateway:
+//   wss://host:port → https://host:4001  (Tailscale Serve / TLS gateway)
+//   ws://host:port  → http://host:4001   (plain HTTP gateway, e.g. local LAN)
 function getApiBaseUrl(): string | null {
   // Allow explicit override via VITE_API_URL
   const explicit = process.env.VITE_API_URL;
@@ -225,8 +226,8 @@ function getApiBaseUrl(): string | null {
   if (!gwUrl) return null;
   try {
     const u = new URL(gwUrl);
-    // Use HTTPS (Tailscale Serve wraps the HTTP API server)
-    return `https://${u.hostname}:${process.env.API_PORT || "4001"}`;
+    const httpScheme = u.protocol === "wss:" ? "https" : "http";
+    return `${httpScheme}://${u.hostname}:${process.env.API_PORT || "4001"}`;
   } catch {
     return null;
   }
