@@ -132,6 +132,9 @@ pnpm lint
 - `apps/web/src/components/ui/` 내 shadcn 컴포넌트를 직접 수정하지 말 것 (래퍼 만들어 확장)
 - `/api/media`, `/api/showcase` 하드코딩 금지 — `platform` API 사용
 - shared 패키지에 web-specific API (localStorage, IndexedDB, import.meta.env) 사용 금지
+- **Electron renderer에서 sessionStorage 사용 금지** — 토큰/사용자 데이터는 localStorage. Electron은 탭 닫기 개념이 없어 sessionStorage가 매 재시작마다 초기화됨. 환경 감지: `"electronAPI" in window`. 상세: `docs/troubleshooting-electron-connection.md`
+- **WebSocket Origin 재작성 시 host:port 하드코딩 금지** — 게이트웨이 자기 자신 origin (`scheme://host:port`)으로 재작성. 게이트웨이 `allowedOrigins` 변경에 즉시 깨짐
+- **Derived URL scheme 하드코딩 금지** — gateway URL에서 API URL 도출 시 `wss://`→`https://`, `ws://`→`http://` 매핑. plain HTTP gateway에서 SSL 에러 발생
 
 ## Conventions
 
