@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useGateway } from "@/lib/gateway/hooks";
 import type { EventFrame } from "@/lib/gateway/protocol";
 import {
+  AlertTriangle,
   Bot,
   ChevronDown,
   ChevronUp,
@@ -16,6 +17,40 @@ import {
   Wrench,
   Zap,
 } from "lucide-react";
+
+// --- #292: Proactive progress helpers ---
+
+/**
+ * How long a running sub-agent can go without a new event before we flag it
+ * as potentially stalled. The card keeps displaying as "running" but adds a
+ * warning glyph and a "stalled?" hint so the user can decide whether to
+ * abort.
+ */
+export const SUBAGENT_STALL_THRESHOLD_MS = 30_000;
+
+/** Humanise an elapsed duration in ms. */
+export function formatElapsed(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) return "0s";
+  const seconds = Math.floor(ms / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  return `${minutes}m ${seconds % 60}s`;
+}
+
+/**
+ * Decide whether a sub-agent is stalled — i.e. still marked as running but
+ * hasn't emitted an event in a while. `pending` is NOT stalled because it
+ * hasn't started yet. `done` is obviously not stalled.
+ */
+export function isSubagentStalled(params: {
+  phase: "pending" | "running" | "done";
+  updatedAt: number;
+  now: number;
+}): boolean {
+  const { phase, updatedAt, now } = params;
+  if (phase !== "running") return false;
+  return now - updatedAt > SUBAGENT_STALL_THRESHOLD_MS;
+}
 
 interface SubagentStatus {
   content: string;
@@ -70,7 +105,15 @@ export function SubagentCard({
     updatedAt: Date.now(),
   });
   const [expanded, setExpanded] = useState(false);
+  // #292: tick every 1s so elapsed/stalled state advances even without events
+  const [now, setNow] = useState(() => Date.now());
   const lastSeqRef = useRef(-1);
+
+  useEffect(() => {
+    if (status.phase === "done") return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [status.phase]);
 
   useEffect(() => {
     if (!client || !sessionKey) return;
@@ -119,13 +162,16 @@ export function SubagentCard({
     return unsub;
   }, [client, sessionKey]);
 
-  const elapsed = Math.floor(
-    (status.updatedAt - status.startedAt) / 1000
-  );
-  const elapsedStr =
-    elapsed < 60
-      ? `${elapsed}s`
-      : `${Math.floor(elapsed / 60)}m ${elapsed % 60}s`;
+  // #292: elapsed counts from start to "now" (tick-driven), not last event.
+  // This way the user sees time advance even when the agent is thinking.
+  const referenceNow = status.phase === "done" ? status.updatedAt : now;
+  const elapsedMs = referenceNow - status.startedAt;
+  const elapsedStr = formatElapsed(elapsedMs);
+  const stalled = isSubagentStalled({
+    phase: status.phase,
+    updatedAt: status.updatedAt,
+    now,
+  });
 
   const lastLines = status.content
     .split("\n")
@@ -172,6 +218,17 @@ export function SubagentCard({
           <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
             <Wrench size={10} />
             {status.toolName}
+          </span>
+        )}
+
+        {/* #292: Stalled warning — visible before the user has to guess */}
+        {stalled && (
+          <span
+            className="flex items-center gap-1 rounded-full bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-500"
+            title="30초 동안 새 이벤트가 없습니다. 느린 도구 호출이거나 멈춘 상태일 수 있습니다."
+          >
+            <AlertTriangle size={10} />
+            멈춤?
           </span>
         )}
 
