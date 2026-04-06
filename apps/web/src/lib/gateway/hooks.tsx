@@ -180,6 +180,57 @@ export function formatTimeoutMessage(elapsedMs: number): string {
   return `⚠️ 에이전트가 ${seconds}초 내에 응답하지 않았습니다. 연결 상태를 확인하고 다시 시도해주세요.`;
 }
 
+/**
+ * #290: Handle a thinking-phase timeout. Called from the `ChatStreamProcessor`
+ * `onTimeout` callback when the streaming watchdog fires (most commonly while
+ * the agent is still in the "thinking" phase with no deltas arriving).
+ *
+ * The `ChatStreamProcessor` already calls `onStreamingChange(false)` before
+ * firing `onTimeout`, but the queued-message code path in `useChat` relies on
+ * `streamingRef.current` to unblock. This helper provides a defensive,
+ * order-independent cleanup:
+ *
+ *   1. `streamingRef.current = false`  — unblock `processQueue`'s poll loop.
+ *   2. `setStreaming(false)`           — re-fire the `useEffect`-driven
+ *      `processQueue` trigger even if React had a pending stale `true`.
+ *   3. `setAgentStatus({ phase: "idle" })` — reset the status indicator.
+ *   4. Append a `system` / `isError` message so the user sees *why* the
+ *      queued messages suddenly start flushing.
+ *
+ * Extracted as a pure helper so it can be unit-tested without mounting the
+ * provider (same pattern as `formatTimeoutMessage`).
+ */
+export function handleThinkingTimeout(params: {
+  streamingRef: { current: boolean };
+  setMessages: (
+    updater: (prev: DisplayMessage[]) => DisplayMessage[],
+  ) => void;
+  setStreaming: (val: boolean) => void;
+  setAgentStatus: (status: AgentStatus) => void;
+}): void {
+  const { streamingRef, setMessages, setStreaming, setAgentStatus } = params;
+
+  // 1. Sync ref first so the next 300ms poll in processQueue observes it.
+  streamingRef.current = false;
+  // 2. Drive the React-state path too (useEffect on [streaming] → processQueue).
+  setStreaming(false);
+  // 3. Clear the status badge.
+  setAgentStatus({ phase: "idle" });
+  // 4. Surface a user-visible notice — reuse the formatter so the wording
+  //    stays consistent with the #266 queue-level timeout banner.
+  setMessages((prev) => [
+    ...prev,
+    {
+      id: `thinking-timeout-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      role: "system",
+      content: `⏳ 에이전트가 생각 중 멈췄습니다. 대기 중인 메시지를 다시 전송합니다.`,
+      timestamp: new Date().toISOString(),
+      toolCalls: [],
+      isError: true,
+    },
+  ]);
+}
+
 // --- Web Config Persistence ---
 
 export function loadGatewayConfig(): GatewayConfig {
@@ -699,6 +750,9 @@ export function useChat(sessionKey?: string) {
   const sendContextBridgeRef = useRef<(() => Promise<void>) | null>(null);
   const buildContextSummaryRef = useRef<(() => string | null) | null>(null);
   const runIdRef = useRef<string | null>(null);
+  // #296: retry timer + pending token for robust stop/cancel delivery
+  const abortRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingAbortRef = useRef<{ runId: string | undefined } | null>(null);
 
   // Stable per-tab device identifier for cross-device message dedup (#120)
   const deviceIdRef = useRef<string>(
@@ -1698,15 +1752,19 @@ export function useChat(sessionKey?: string) {
           return { content: transformed, attachments };
         },
         onTimeout: () => {
-          // #242: Show timeout feedback message to user
-          setMessages((prev) => [...prev, {
-            id: `timeout-${Date.now()}`,
-            role: "assistant" as const,
-            content: "⏳ 에이전트로부터 응답이 없습니다. 다시 시도해주세요.",
-            timestamp: new Date().toISOString(),
-            toolCalls: [],
-            isError: true,
-          }]);
+          // #290: Defensively unblock the queue when the thinking-phase
+          // watchdog fires. ChatStreamProcessor has already called
+          // `onStreamingChange(false)` by this point, but doing it again
+          // through `handleThinkingTimeout` guarantees both the ref (polled
+          // by processQueue) and the React state (watched by the
+          // queue-drain useEffect) are consistent before the next poll, and
+          // surfaces a user-visible notice explaining the auto-retry.
+          handleThinkingTimeout({
+            streamingRef,
+            setMessages,
+            setStreaming,
+            setAgentStatus: setAgentStatusDebug,
+          });
         },
         onUnhandledAgentEvent: (stream, raw, data) => {
           // Handle exec.approval, compaction, inbound events (web-specific)
@@ -1989,17 +2047,74 @@ export function useChat(sessionKey?: string) {
   }, []);
 
   const abort = useCallback(() => {
-    // Use processor.abort() which clears internal state and returns previousRunId
+    // #296: Capture runId synchronously BEFORE any side effects so a later
+    // mutation (processor.abort() clears it via onRunIdChange) can't race with
+    // the value we send to the gateway.
+    const capturedRunId = runIdRef.current;
     const processor = processorRef.current;
     const { previousRunId } = processor
       ? processor.abort()
-      : { previousRunId: runIdRef.current };
+      : { previousRunId: capturedRunId };
     runIdRef.current = null;
-    // Fire-and-forget the gateway abort
-    if (client && state === "connected") {
-      client.request("chat.abort", { sessionKey, runId: previousRunId ?? undefined })
-        .catch((err: unknown) => console.warn("[AWF] chat.abort failed:", String(err)));
+    const abortRunId = (previousRunId ?? capturedRunId) ?? undefined;
+
+    // Cancel any in-flight retry from a previous abort — a fresh click
+    // supersedes the older attempt.
+    if (abortRetryTimerRef.current) {
+      clearTimeout(abortRetryTimerRef.current);
+      abortRetryTimerRef.current = null;
     }
+
+    if (!client || state !== "connected") {
+      pendingAbortRef.current = null;
+      return;
+    }
+
+    // #296: Identity token — later callbacks check against this to detect
+    // whether they belong to the most recent abort invocation.
+    const pending = { runId: abortRunId };
+    pendingAbortRef.current = pending;
+
+    const sendOnce = () =>
+      client.request("chat.abort", { sessionKey, runId: abortRunId });
+
+    sendOnce()
+      .then(() => {
+        // Gateway acknowledged — drop the pending retry if still current.
+        if (pendingAbortRef.current === pending) {
+          pendingAbortRef.current = null;
+          if (abortRetryTimerRef.current) {
+            clearTimeout(abortRetryTimerRef.current);
+            abortRetryTimerRef.current = null;
+          }
+        }
+      })
+      .catch((err: unknown) => {
+        console.warn("[AWF] chat.abort failed:", String(err));
+        // #296: Retry immediately on error — the gateway likely didn't see it.
+        if (pendingAbortRef.current === pending) {
+          pendingAbortRef.current = null;
+          if (abortRetryTimerRef.current) {
+            clearTimeout(abortRetryTimerRef.current);
+            abortRetryTimerRef.current = null;
+          }
+          sendOnce().catch((e: unknown) =>
+            console.warn("[AWF] chat.abort retry failed:", String(e)),
+          );
+        }
+      });
+
+    // #296: Fallback retry — if the gateway never ack'd within 1.5s, resend
+    // once. `pendingAbortRef` guards against firing after success/supersession.
+    abortRetryTimerRef.current = setTimeout(() => {
+      abortRetryTimerRef.current = null;
+      if (pendingAbortRef.current !== pending) return;
+      pendingAbortRef.current = null;
+      console.warn("[AWF] chat.abort retry after 1500ms timeout");
+      sendOnce().catch((e: unknown) =>
+        console.warn("[AWF] chat.abort retry failed:", String(e)),
+      );
+    }, 1500);
   }, [client, state, sessionKey]);
 
   const sendCommand = useCallback(
