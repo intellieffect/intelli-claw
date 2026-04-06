@@ -105,6 +105,27 @@ const TEXT_EXTS = new Set([
   "csv", "txt", "json", "md", "mdx", "log", "xml", "yaml", "yml", "tsv",
 ]);
 
+/**
+ * #287: Extension → MIME fallback for text files.
+ *
+ * Some browsers leave `File.type` empty or set it to `application/octet-stream`
+ * for CSV/TSV/LOG/etc. The gateway then fails to recognise the attachment as
+ * text and the agent cannot read it. We derive a sensible MIME from the
+ * extension whenever the browser-provided type is missing or generic.
+ */
+const EXT_TO_MIME: Record<string, string> = {
+  csv: "text/csv",
+  txt: "text/plain",
+  log: "text/plain",
+  json: "application/json",
+  yml: "application/yaml",
+  yaml: "application/yaml",
+  tsv: "text/tab-separated-values",
+  xml: "application/xml",
+  md: "text/markdown",
+  mdx: "text/markdown",
+};
+
 /** Maximum characters to inline into the message (50 KB). Larger files are truncated. */
 export const TEXT_INLINE_LIMIT = 50_000;
 
@@ -112,6 +133,26 @@ export const TEXT_INLINE_LIMIT = 50_000;
 export function isTextFile(name: string): boolean {
   const ext = name.split(".").pop()?.toLowerCase();
   return !!ext && TEXT_EXTS.has(ext);
+}
+
+/**
+ * #287: Resolve the effective MIME type for a file.
+ *
+ * Prefers the browser-provided `File.type`, but falls back to an
+ * extension-based lookup when the browser value is empty or the generic
+ * `application/octet-stream`. Returns `application/octet-stream` as a last
+ * resort so the shape of the result never changes.
+ */
+export function resolveMimeType(file: File): string {
+  const browserType = file.type?.trim();
+  if (browserType && browserType !== "application/octet-stream") {
+    return browserType;
+  }
+  const ext = file.name.split(".").pop()?.toLowerCase();
+  if (ext && EXT_TO_MIME[ext]) {
+    return EXT_TO_MIME[ext];
+  }
+  return browserType || "application/octet-stream";
 }
 
 // ---- Attachment preview bar ----
@@ -460,7 +501,7 @@ async function rawPayload(att: ChatAttachment): Promise<AttachmentPayload> {
   const base64 = await fileToBase64(att.file);
   return {
     fileName: att.file.name,
-    mimeType: att.file.type || "application/octet-stream",
+    mimeType: resolveMimeType(att.file),
     content: base64,
   };
 }
