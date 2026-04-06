@@ -21,14 +21,17 @@ function readEnvFile(): Record<string, string> {
 }
 const envVars = readEnvFile();
 
-// Derive API base URL for renderer (same logic as main process getApiBaseUrl)
+// Derive API base URL for renderer (same logic as main process getApiBaseUrl).
+// The API server scheme follows the gateway scheme — wss:// → https://, ws:// → http://
+// — so a plain-HTTP gateway doesn't trigger TLS handshakes against an HTTP API.
 function deriveApiUrl(): string {
   if (envVars.VITE_API_URL) return envVars.VITE_API_URL;
   const gwUrl = envVars.VITE_GATEWAY_URL;
   if (!gwUrl) return "";
   try {
     const u = new URL(gwUrl);
-    return `https://${u.hostname}:4001`;
+    const httpScheme = u.protocol === "wss:" ? "https" : "http";
+    return `${httpScheme}://${u.hostname}:4001`;
   } catch {
     return "";
   }
