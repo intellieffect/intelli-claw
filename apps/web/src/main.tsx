@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { initCryptoAdapter } from "@intelli-claw/shared";
 import { WebCryptoAdapter } from "./adapters/crypto";
 import { App } from "./App";
+import { ThemeProvider } from "./lib/theme";
 import "./styles/globals.css";
 
 // Initialize platform adapters
@@ -15,6 +16,8 @@ if ("electronAPI" in window) {
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <App />
+    <ThemeProvider>
+      <App />
+    </ThemeProvider>
   </StrictMode>,
 );

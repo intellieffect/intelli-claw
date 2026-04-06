@@ -11,6 +11,24 @@
     <link rel="manifest" href="/manifest.json" />
     <title>iClaw</title>
     <meta name="description" content="OpenClaw Agentic Workflow" />
+    <!--
+      #235: Apply stored theme before any paint to prevent FOUC.
+      Reads `awf:theme` from localStorage, resolves "system" against
+      prefers-color-scheme, then toggles the `dark` class on <html>.
+      Defaults to dark so existing installs keep current behaviour.
+    -->
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem("awf:theme");
+          var theme = stored === "light" || stored === "dark" || stored === "system" ? stored : "dark";
+          var resolved = theme === "system"
+            ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
+            : theme;
+          document.documentElement.classList.toggle("dark", resolved === "dark");
+        } catch (_) { /* keep default dark class */ }
+      })();
+    </script>
   </head>
   <body class="antialiased safe-left safe-right">
     <div id="root"></div>
