@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { View, Text, Pressable, Modal, Alert, StyleSheet } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { validateGatewayUrl, normalizeToken } from "../lib/validate-gateway-url";
 
 interface QRScannerProps {
   visible: boolean;
@@ -22,35 +23,45 @@ export function QRScanner({ visible, onClose, onScanned }: QRScannerProps) {
     if (scanned) return;
     setScanned(true);
 
+    let parsed: unknown;
     try {
-      const parsed = JSON.parse(data);
-      if (!parsed.url || typeof parsed.url !== "string") {
-        Alert.alert("오류", "유효하지 않은 QR 코드입니다. Gateway URL이 포함되어야 합니다.", [
-          { text: "다시 스캔", onPress: () => setScanned(false) },
-        ]);
-        return;
-      }
-
-      // Confirm before applying
-      Alert.alert(
-        "Gateway 연결",
-        `다음 Gateway에 연결하시겠습니까?\n\n${parsed.url}`,
-        [
-          { text: "취소", style: "cancel", onPress: () => setScanned(false) },
-          {
-            text: "연결",
-            onPress: () => {
-              onScanned({ url: parsed.url, token: parsed.token || "" });
-              onClose();
-            },
-          },
-        ],
-      );
+      parsed = JSON.parse(data);
     } catch {
       Alert.alert("오류", "QR 코드를 읽을 수 없습니다. IntelliClaw QR 코드를 스캔해주세요.", [
         { text: "다시 스캔", onPress: () => setScanned(false) },
       ]);
+      return;
     }
+
+    // #268: Validate + sanitise URL so stray whitespace / missing scheme
+    // doesn't reach `new WebSocket(url)` and throw a silent error.
+    const rawUrl = (parsed as { url?: unknown })?.url;
+    const rawToken = (parsed as { token?: unknown })?.token;
+    const validation = validateGatewayUrl(rawUrl);
+    if (!validation.ok) {
+      Alert.alert("오류", validation.error ?? "유효하지 않은 QR 코드입니다.", [
+        { text: "다시 스캔", onPress: () => setScanned(false) },
+      ]);
+      return;
+    }
+    const cleanUrl = validation.url!;
+    const cleanToken = normalizeToken(rawToken);
+
+    // Confirm before applying
+    Alert.alert(
+      "Gateway 연결",
+      `다음 Gateway에 연결하시겠습니까?\n\n${cleanUrl}`,
+      [
+        { text: "취소", style: "cancel", onPress: () => setScanned(false) },
+        {
+          text: "연결",
+          onPress: () => {
+            onScanned({ url: cleanUrl, token: cleanToken });
+            onClose();
+          },
+        },
+      ],
+    );
   };
 
   if (!visible) return null;
