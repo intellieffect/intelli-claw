@@ -1321,7 +1321,7 @@ export function useChat(sessionKey?: string) {
 
           // #222: Extract thinking blocks from content
           let thinkingBlocks: Array<{ text: string }> = [];
-          let orderedSegments: MessageSegment[] = [];
+          const orderedSegments: MessageSegment[] = [];
 
           if (typeof m.content === 'string') {
             const extracted = extractThinkingFromContent(m.content);
