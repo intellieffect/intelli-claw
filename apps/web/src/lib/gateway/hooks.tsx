@@ -359,9 +359,25 @@ export function loadGatewayConfig(): GatewayConfig {
       }
 
       // Read the effective token: sessionStorage in web, localStorage in Electron.
-      const effectiveToken = useSession
+      let effectiveToken = useSession
         ? (sessionStorage.getItem(GATEWAY_TOKEN_SESSION_KEY) || "")
         : (parsed.token ?? "");
+
+      // #229 follow-up: if localStorage has a URL but no token AND env
+      // provides a token for the SAME URL, use the env token as a fallback.
+      // This recovers Electron users who ran the buggy v0.2.23 migration
+      // (sessionStorage wiped on restart) and dev environments where
+      // .env.local holds the canonical token.
+      if (!effectiveToken && envToken && envUrl && envUrl === parsed.url) {
+        effectiveToken = envToken;
+        if (!useSession) {
+          // Write it back to localStorage so the next launch doesn't need env.
+          localStorage.setItem(
+            GATEWAY_CONFIG_STORAGE_KEY,
+            JSON.stringify({ url: parsed.url, token: envToken }),
+          );
+        }
+      }
 
       // Trust localStorage if URL is non-default OR we have a token.
       if (parsed.url && (effectiveToken || parsed.url !== DEFAULT_GATEWAY_URL)) {
