@@ -31,6 +31,38 @@ import { platform } from "@/lib/platform";
 import { ToolSidebar } from "./tool-sidebar";
 import type { ToolCall } from "@intelli-claw/shared";
 
+/**
+ * Tight regex matching only known auto-generated session label formats.
+ * - `{agent}/작업-NNNN-NNNN` (default from makeDefaultThreadLabel)
+ * - `작업-NNNN-NNNN` (without agent prefix)
+ * - Legacy patterns: `스레드/토픽/thread/topic #N`
+ * - Scaffold placeholders: `New Chat/Thread/Session`, `chat-N`, `session-N`
+ *
+ * Keep this strict so user-renamed labels like "버그 수정" or "topic-discussion"
+ * are never matched (fixes #288).
+ */
+const AUTO_LABEL_PATTERN =
+  /^(?:(?:[^/]+\/)?작업-\d{4}-\d{4}|(?:스레드|토픽|thread|topic)\s*#\s*\d+|new\s+(?:chat|thread|session)|(?:chat|session)-\d+)$/i;
+
+/**
+ * Pure predicate: should the auto-label flow overwrite this session's label?
+ *
+ * Returns true only when:
+ * 1. `isUserRenamed` is falsy, AND
+ * 2. The current label is empty OR matches a known auto-generated pattern.
+ *
+ * Exported so it can be unit-tested without rendering the React tree.
+ */
+export function shouldAutoLabel(
+  currentLabel: string | undefined,
+  isUserRenamed?: boolean,
+): boolean {
+  if (isUserRenamed) return false;
+  const label = (currentLabel || "").trim();
+  if (!label) return true;
+  return AUTO_LABEL_PATTERN.test(label);
+}
+
 export interface ChatPanelProps {
   /** Show header controls (agent selector, session switcher) */
   showHeader?: boolean;
@@ -451,12 +483,11 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
     if (parsed.type !== "thread" && parsed.type !== "main") return;
 
     const session = (sessions as GatewaySession[]).find((s) => s.key === key);
-    const currentLabel = (session?.label || "").trim();
-    const isAutoOrEmpty =
-      !currentLabel ||
-      /스레드\s*#|토픽\s*#|thread\s*#|topic\s*#|^thread[:\s-]|^topic[:\s-]|작업-\d{4}/i.test(currentLabel);
+    const currentLabel = session?.label;
 
-    if (!isAutoOrEmpty) return;
+    // #288: Only auto-label when the current label is empty or matches a
+    // strict auto-generated pattern. Prevents overwriting user-renamed topics.
+    if (!shouldAutoLabel(currentLabel)) return;
 
     // Skip slash commands
     const clean = text.replace(/^\/(new|reset|status|help|reasoning|model\s+\S+|think\S*|verbose\S*)\b/gi, "").trim();
