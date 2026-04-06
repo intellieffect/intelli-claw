@@ -37,6 +37,10 @@ export interface AgentChatPageProps {
   onAgentTabPress?: (index: number) => void;
   streamingAgentIds?: Set<string>;
   unreadCounts?: Map<string, number>;
+  /** #291: swipe mode toggle (agent ↔ topic) */
+  swipeMode?: import("../../hooks/useSwipeMode").SwipeMode;
+  onSwipeModeChange?: (next: import("../../hooks/useSwipeMode").SwipeMode) => void;
+  swipeModeToggleVisible?: boolean;
 }
 
 // ─── AgentChatPage ───
@@ -51,6 +55,9 @@ export function AgentChatPage({
   onAgentTabPress,
   streamingAgentIds,
   unreadCounts,
+  swipeMode,
+  onSwipeModeChange,
+  swipeModeToggleVisible,
 }: AgentChatPageProps) {
   const insets = useSafeAreaInsets();
   const { state } = useGateway();
@@ -219,6 +226,9 @@ export function AgentChatPage({
         onAgentTabPress={onAgentTabPress}
         streamingAgentIds={streamingAgentIds}
         unreadCounts={unreadCounts}
+        swipeMode={swipeMode}
+        onSwipeModeChange={onSwipeModeChange}
+        swipeModeToggleVisible={swipeModeToggleVisible}
       />
     </KeyboardAvoidingView>
   );

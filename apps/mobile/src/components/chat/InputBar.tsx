@@ -4,6 +4,8 @@ import { ArrowUp, Square } from "lucide-react-native";
 import { cn } from "@/lib/utils";
 import { AttachButton } from "../FileAttachments";
 import { AgentTabBar } from "./AgentTabBar";
+import { SwipeModeToggle } from "./SwipeModeToggle";
+import type { SwipeMode } from "../../hooks/useSwipeMode";
 
 interface InputBarProps {
   text: string;
@@ -29,6 +31,10 @@ interface InputBarProps {
   onAgentTabPress?: (index: number) => void;
   streamingAgentIds?: Set<string>;
   unreadCounts?: Map<string, number>;
+  /** #291: swipe mode toggle (agent ↔ topic). Only rendered when handler provided. */
+  swipeMode?: SwipeMode;
+  onSwipeModeChange?: (next: SwipeMode) => void;
+  swipeModeToggleVisible?: boolean;
 }
 
 export function InputBar({
@@ -47,9 +53,14 @@ export function InputBar({
   onAgentTabPress,
   streamingAgentIds,
   unreadCounts,
+  swipeMode,
+  onSwipeModeChange,
+  swipeModeToggleVisible = true,
 }: InputBarProps) {
   // #293: Show agent selector inside the InputBar only when there are 2+ agents.
   const showAgentBar = !!agents && agents.length >= 2 && !!onAgentTabPress;
+  // #291: Show swipe mode toggle when both swipeMode and handler are wired.
+  const showSwipeToggle = !!swipeMode && !!onSwipeModeChange && swipeModeToggleVisible;
   const sendScale = useRef(new Animated.Value(1)).current;
   const sendOpacity = useRef(new Animated.Value(0)).current;
   const canSend = connected && hasContent;
@@ -75,16 +86,26 @@ export function InputBar({
       className="px-3 pt-2.5 bg-background"
       style={{ paddingBottom: keyboardVisible ? 8 : Math.max(12, bottomInset) }}
     >
-      {/* #293: Inline agent tab bar above the text field */}
-      {showAgentBar && (
-        <View className="mb-2">
-          <AgentTabBar
-            agents={agents!}
-            activeIndex={activeAgentIndex}
-            onTabPress={onAgentTabPress!}
-            streamingAgentIds={streamingAgentIds}
-            unreadCounts={unreadCounts}
-          />
+      {/* #293 + #291: Inline tab bar + swipe mode toggle row */}
+      {(showAgentBar || showSwipeToggle) && (
+        <View className="mb-2 flex-row items-center gap-2">
+          {showAgentBar && (
+            <View className="flex-1">
+              <AgentTabBar
+                agents={agents!}
+                activeIndex={activeAgentIndex}
+                onTabPress={onAgentTabPress!}
+                streamingAgentIds={streamingAgentIds}
+                unreadCounts={unreadCounts}
+              />
+            </View>
+          )}
+          {showSwipeToggle && (
+            <SwipeModeToggle
+              mode={swipeMode!}
+              onChange={onSwipeModeChange!}
+            />
+          )}
         </View>
       )}
       <View className="flex-row items-end bg-card rounded-[28px] border border-border px-3 py-2.5 min-h-[56px]">

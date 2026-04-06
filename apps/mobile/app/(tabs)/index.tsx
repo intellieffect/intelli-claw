@@ -20,6 +20,7 @@ import { SkillPicker } from "../../src/components/SkillPicker";
 
 import { AppBar, AgentChatPage } from "../../src/components/chat";
 // #293: AgentTabBar is now rendered inside InputBar via AgentChatPage props.
+import { useSwipeMode } from "../../src/hooks/useSwipeMode";
 
 // ─── Chat Screen (PagerView-based) ───
 
@@ -101,6 +102,14 @@ export default function ChatScreen() {
           ? "#3B82F6"
           : "#EF4444";
   const isConnected = state === "connected";
+
+  // ─── #291: Swipe mode toggle (agent ↔ topic) ───
+  // The toggle is wired through to the InputBar and persisted via AsyncStorage.
+  // The actual PagerView data branching ("topic" mode swiping over the active
+  // agent's sessions instead of agents) is intentionally left to a follow-up
+  // PR — this PR delivers the toggle, persistence, and visible-mode hint so
+  // the UX surface is in place without rewriting the pager state machine.
+  const { mode: swipeMode, setMode: setSwipeMode } = useSwipeMode(sortedAgents.length);
 
   // ─── Infinite swipe: clone first/last pages ───
   const n = sortedAgents.length;
@@ -304,6 +313,8 @@ export default function ChatScreen() {
                   agents={sortedAgents}
                   activeAgentIndex={activePageIndex}
                   onAgentTabPress={goToPage}
+                  swipeMode={swipeMode}
+                  onSwipeModeChange={setSwipeMode}
                 />
               )}
             </View>
