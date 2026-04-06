@@ -286,6 +286,14 @@ export function handleThinkingTimeout(params: {
 }
 
 // --- Web Config Persistence ---
+//
+// #229: The gateway token is stored in **sessionStorage** (scoped to the tab,
+// cleared on close) while the URL stays in **localStorage** for UX (users
+// shouldn't re-type a long Tailscale URL every session). A one-shot migration
+// in `loadGatewayConfig` moves legacy tokens out of localStorage.
+
+/** sessionStorage key holding the gateway auth token. */
+export const GATEWAY_TOKEN_SESSION_KEY = "awf:gateway-token";
 
 export function loadGatewayConfig(): GatewayConfig {
   const envUrl = import.meta.env.VITE_GATEWAY_URL || "";
@@ -295,16 +303,45 @@ export function loadGatewayConfig(): GatewayConfig {
     const saved = localStorage.getItem(GATEWAY_CONFIG_STORAGE_KEY);
     if (saved) {
       const parsed = JSON.parse(saved) as Partial<GatewayConfig>;
-      // Trust localStorage if: (a) URL is non-default (user explicitly configured), or (b) token is set.
-      // Stale entries with default URL + empty token should fall through to env vars.
-      if (parsed.url && (parsed.token || parsed.url !== DEFAULT_GATEWAY_URL)) {
+      // #229 migration: if legacy entry still has a token field, move it to
+      // sessionStorage (unless sessionStorage already holds a fresher one),
+      // then rewrite the localStorage entry without the token.
+      if (parsed.token) {
+        const existingSession = sessionStorage.getItem(GATEWAY_TOKEN_SESSION_KEY);
+        if (!existingSession) {
+          sessionStorage.setItem(GATEWAY_TOKEN_SESSION_KEY, parsed.token);
+        }
+        // Scrub the token out of localStorage in-place so a later reload
+        // doesn't re-run the migration and doesn't leak the token.
+        localStorage.setItem(
+          GATEWAY_CONFIG_STORAGE_KEY,
+          JSON.stringify({ url: parsed.url }),
+        );
+        parsed.token = undefined;
+      }
+
+      // #229: the token now lives in sessionStorage only.
+      const sessionToken = sessionStorage.getItem(GATEWAY_TOKEN_SESSION_KEY) || "";
+
+      // Trust localStorage if URL is non-default OR we have a (session) token.
+      // Stale entries with default URL + empty token fall through to env vars.
+      if (parsed.url && (sessionToken || parsed.url !== DEFAULT_GATEWAY_URL)) {
         // If env var provides a specific (non-default) URL that differs from localStorage,
         // the deployment target changed — env var wins and stale localStorage is cleared.
         if (envUrl && envUrl !== DEFAULT_GATEWAY_URL && envUrl !== parsed.url) {
           localStorage.removeItem(GATEWAY_CONFIG_STORAGE_KEY);
+          sessionStorage.removeItem(GATEWAY_TOKEN_SESSION_KEY);
           return { url: envUrl, token: envToken } as GatewayConfig;
         }
-        return { url: parsed.url, token: parsed.token ?? "" } as GatewayConfig;
+        return { url: parsed.url, token: sessionToken } as GatewayConfig;
+      }
+    } else {
+      // No localStorage entry at all — still honor a standalone sessionStorage
+      // token paired with env URL (e.g. fresh install where the user pasted
+      // a token in-tab via the settings UI before URL was persisted).
+      const sessionToken = sessionStorage.getItem(GATEWAY_TOKEN_SESSION_KEY) || "";
+      if (sessionToken && envUrl) {
+        return { url: envUrl, token: sessionToken } as GatewayConfig;
       }
     }
   } catch { /* ignore */ }
@@ -315,12 +352,14 @@ export function loadGatewayConfig(): GatewayConfig {
 }
 
 function saveConfig(url: string, token: string): void {
-  const data = JSON.stringify({ url, token });
-  localStorage.setItem(GATEWAY_CONFIG_STORAGE_KEY, data);
-  // Verify persistence
-  const stored = localStorage.getItem(GATEWAY_CONFIG_STORAGE_KEY);
-  if (stored !== data) {
-    console.warn("[GW] Config save verification failed — stored value does not match");
+  // #229: URL stays in localStorage (convenience), token goes to sessionStorage
+  // (security). We intentionally only persist the URL here so a page refresh
+  // doesn't reintroduce the legacy combined entry.
+  localStorage.setItem(GATEWAY_CONFIG_STORAGE_KEY, JSON.stringify({ url }));
+  if (token) {
+    sessionStorage.setItem(GATEWAY_TOKEN_SESSION_KEY, token);
+  } else {
+    sessionStorage.removeItem(GATEWAY_TOKEN_SESSION_KEY);
   }
 }
 

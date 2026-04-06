@@ -136,12 +136,22 @@ const mockLocalStorage = {
   clear: () => { lsStore = {}; },
 };
 
+// --- sessionStorage mock (#229: token storage) ---
+let ssStore: Record<string, string> = {};
+const mockSessionStorage = {
+  getItem: (key: string) => ssStore[key] ?? null,
+  setItem: (key: string, value: string) => { ssStore[key] = value; },
+  removeItem: (key: string) => { delete ssStore[key]; },
+  clear: () => { ssStore = {}; },
+};
+
 // --- Test Suite ---
 describe("첫 사용자 시나리오", () => {
   let originalWebSocket: typeof globalThis.WebSocket;
 
   beforeEach(() => {
     lsStore = {};
+    ssStore = {};
     MockWebSocket.instances = [];
     mockClearDeviceIdentity.mockClear();
     mockGetOrCreateDevice.mockClear();
@@ -153,6 +163,7 @@ describe("첫 사용자 시나리오", () => {
     globalThis.WebSocket = MockWebSocket;
 
     vi.stubGlobal("localStorage", mockLocalStorage);
+    vi.stubGlobal("sessionStorage", mockSessionStorage);
 
     Object.defineProperty(navigator, "clipboard", {
       value: mockClipboard,
@@ -382,10 +393,11 @@ describe("첫 사용자 시나리오", () => {
       const saveBtn = screen.getByText(/저장/);
       fireEvent.click(saveBtn);
 
-      // localStorage에 저장됐는지 확인
+      // #229: URL → localStorage, token → sessionStorage
       const saved = JSON.parse(mockLocalStorage.getItem(GATEWAY_CONFIG_STORAGE_KEY) || "{}");
       expect(saved.url).toBe("ws://new-server:9999");
-      expect(saved.token).toBe("my-secret-token");
+      expect(saved.token).toBeUndefined();
+      expect(mockSessionStorage.getItem("awf:gateway-token")).toBe("my-secret-token");
 
       // 새 WebSocket 연결이 생성됐는지 확인
       await new Promise((r) => setTimeout(r, 20));
