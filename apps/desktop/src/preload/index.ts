@@ -16,6 +16,8 @@ const electronAPI = {
       ipcRenderer.invoke("media:range", filePath, start, end),
     mediaUpload: (data: string, mimeType: string, fileName?: string) =>
       ipcRenderer.invoke("media:upload", data, mimeType, fileName) as Promise<{ path: string }>,
+    downloadFile: (input: { url?: string; dataUrl?: string; fileName: string; mimeType?: string }) =>
+      ipcRenderer.invoke("media:download", input) as Promise<{ saved: boolean; canceled?: boolean; path?: string; error?: string }>,
     showcaseList: () => ipcRenderer.invoke("showcase:list"),
     showcaseServe: (relPath: string) => ipcRenderer.invoke("showcase:serve", relPath),
   },

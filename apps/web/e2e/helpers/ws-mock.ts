@@ -20,6 +20,7 @@ export interface MockChatMessage {
   content: string | Array<Record<string, unknown>>;
   timestamp?: string;
   toolCalls?: Array<{ callId: string; name: string; status: string }>;
+  attachments?: Array<Record<string, unknown>>;
 }
 
 export interface MockSession {

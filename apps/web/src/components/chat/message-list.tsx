@@ -4,7 +4,7 @@ import {
   User, Bot, Clock, X, Copy, Check, ArrowDown, Download,
   FileText, Music, Video, File, Image as ImageIcon,
   FileSpreadsheet, FileCode, FileArchive, FileAudio, FileVideo,
-  RefreshCw, History, Loader2, Reply, ChevronDown,
+  History, Loader2, Reply, ChevronDown,
 } from "lucide-react";
 import { MarkdownRenderer, MarkdownFilePreview } from "./markdown-renderer";
 import { ToolCallCard } from "./tool-call-card";
@@ -87,8 +87,26 @@ function FileAttachmentCard({ att, onDownload }: { att: DisplayAttachment; onDow
   );
 }
 
-/** Assistant image with error fallback */
-function AssistantImage({ src, fileName }: { src: string; fileName: string }) {
+async function downloadAttachment(att: DisplayAttachment): Promise<void> {
+  const url = att.downloadUrl || att.dataUrl;
+  if (!url) return;
+
+  const electronDownload = window.electronAPI?.platform?.downloadFile;
+  if (typeof electronDownload === "function") {
+    await electronDownload({
+      url: att.downloadUrl,
+      dataUrl: att.dataUrl,
+      fileName: att.fileName,
+      mimeType: att.mimeType,
+    });
+    return;
+  }
+
+  await blobDownload(forceDownloadUrl(url), att.fileName);
+}
+
+/** Assistant image with error fallback + download button */
+function AssistantImage({ src, fileName, att }: { src: string; fileName: string; att?: DisplayAttachment }) {
   const [error, setError] = useState(false);
   if (error) {
     return (
@@ -98,14 +116,28 @@ function AssistantImage({ src, fileName }: { src: string; fileName: string }) {
     );
   }
   return (
-    <a href={src} target="_blank" rel="noopener noreferrer" className="block">
-      <img
-        src={src}
-        alt={fileName}
-        className="max-h-80 max-w-full md:max-w-md rounded-lg border border-zinc-700 object-contain hover:opacity-90 transition"
-        onError={() => setError(true)}
-      />
-    </a>
+    <div className="relative group/img inline-block">
+      <a href={src} target="_blank" rel="noopener noreferrer" className="block">
+        <img
+          src={src}
+          alt={fileName}
+          className="max-h-80 max-w-full md:max-w-md rounded-lg border border-zinc-700 object-contain hover:opacity-90 transition"
+          onError={() => setError(true)}
+        />
+      </a>
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          if (att) { void downloadAttachment(att); }
+          else { void blobDownload(forceDownloadUrl(src), fileName); }
+        }}
+        className="absolute bottom-2 right-2 flex items-center gap-1 rounded-lg bg-black/70 px-2.5 py-1.5 text-xs text-zinc-200 opacity-0 group-hover/img:opacity-100 transition hover:bg-black/90"
+        title={`다운로드 ${fileName}`}
+      >
+        <Download size={14} />
+        저장
+      </button>
+    </div>
   );
 }
 
@@ -117,7 +149,6 @@ export function MessageList({
   onCancelQueued,
   agentId,
   agentStatus,
-  onLoadPreviousContext,
   onOpenTopicHistory,
   onReply,
   onToolClick,
@@ -128,7 +159,6 @@ export function MessageList({
   onCancelQueued?: (id: string) => void;
   agentId?: string;
   agentStatus?: AgentStatus;
-  onLoadPreviousContext?: () => void | Promise<void>;
   onOpenTopicHistory?: () => void;
   onReply?: (msg: DisplayMessage) => void;
   onToolClick?: (tc: ToolCall) => void;
@@ -552,7 +582,6 @@ export function MessageList({
                 <SessionBoundary
                   key={msg.id}
                   reason={msg.resetReason}
-                  onLoadContext={onLoadPreviousContext}
                   onViewHistory={onOpenTopicHistory}
                 />
               );
@@ -643,25 +672,9 @@ function SessionBoundary({
   onViewHistory,
 }: {
   reason?: string;
-  onLoadContext?: () => void | Promise<void>;
   onViewHistory?: () => void;
 }) {
   const label = resetReasonLabel((reason || "unknown") as ResetReason);
-  const [bridgeSent, setBridgeSent] = useState(false);
-  const [sending, setSending] = useState(false);
-
-  const handleLoadContext = useCallback(async () => {
-    if (bridgeSent || sending || !onLoadContext) return;
-    setSending(true);
-    try {
-      await onLoadContext();
-      setBridgeSent(true);
-    } catch {
-      // 실패 시 재시도 가능하도록 상태 유지
-    } finally {
-      setSending(false);
-    }
-  }, [onLoadContext, bridgeSent, sending]);
 
   return (
     <div className="flex items-center gap-3 py-3">
@@ -671,47 +684,15 @@ function SessionBoundary({
           <span>{label.icon}</span>
           <span>{label.text}</span>
         </div>
-        <div className="flex items-center gap-2">
-          {onLoadContext && (
-            <button
-              onClick={handleLoadContext}
-              disabled={bridgeSent || sending}
-              className={`flex items-center gap-1 rounded-md border px-2.5 py-1 text-[10px] transition ${
-                bridgeSent
-                  ? "border-emerald-600/30 bg-emerald-900/20 text-emerald-400 cursor-default"
-                  : sending
-                    ? "border-amber-600/30 bg-amber-900/20 text-amber-400/60 cursor-wait"
-                    : "border-amber-600/30 bg-amber-900/20 text-amber-400 hover:bg-amber-900/40 hover:border-amber-500/50"
-              }`}
-            >
-              {bridgeSent ? (
-                <>
-                  <Check size={10} />
-                  맥락 전송됨
-                </>
-              ) : sending ? (
-                <>
-                  <Loader2 size={10} className="animate-spin" />
-                  전송 중...
-                </>
-              ) : (
-                <>
-                  <RefreshCw size={10} />
-                  이전 맥락 불러오기
-                </>
-              )}
-            </button>
-          )}
-          {onViewHistory && (
-            <button
-              onClick={onViewHistory}
-              className="flex items-center gap-1 rounded-md border border-zinc-600/30 bg-zinc-800/40 px-2.5 py-1 text-[10px] text-zinc-400 transition hover:bg-zinc-700/40 hover:text-zinc-300"
-            >
-              <History size={10} />
-              이전 대화 보기
-            </button>
-          )}
-        </div>
+        {onViewHistory && (
+          <button
+            onClick={onViewHistory}
+            className="flex items-center gap-1 rounded-md border border-zinc-600/30 bg-zinc-800/40 px-2.5 py-1 text-[10px] text-zinc-400 transition hover:bg-zinc-700/40 hover:text-zinc-300"
+          >
+            <History size={10} />
+            이전 대화 보기
+          </button>
+        )}
       </div>
       <div className="flex-1 border-t border-dashed border-amber-600/40" />
     </div>
@@ -993,7 +974,7 @@ const MessageBubble = React.memo(React.forwardRef<HTMLDivElement, { message: Dis
 
                   if (isImage && (att.dataUrl || url)) {
                     return (
-                      <AssistantImage key={i} src={(att.dataUrl || url)!} fileName={att.fileName} />
+                      <AssistantImage key={i} src={(att.dataUrl || url)!} fileName={att.fileName} att={att} />
                     );
                   }
 
@@ -1001,7 +982,16 @@ const MessageBubble = React.memo(React.forwardRef<HTMLDivElement, { message: Dis
                     return (
                       <div key={i} className="w-full max-w-sm">
                         <audio controls src={url} className="w-full rounded-lg" />
-                        <div className="mt-1 text-[10px] text-zinc-500">{att.fileName}</div>
+                        <div className="mt-1 flex items-center justify-between">
+                          <div className="text-[10px] text-zinc-500 truncate">{att.fileName}</div>
+                          <button
+                            onClick={() => { void downloadAttachment(att); }}
+                            className="flex items-center gap-1 rounded bg-zinc-700/60 px-2 py-0.5 text-[10px] text-zinc-300 hover:bg-zinc-600 transition"
+                            title={`다운로드 ${att.fileName}`}
+                          >
+                            <Download size={10} /> 저장
+                          </button>
+                        </div>
                       </div>
                     );
                   }
@@ -1010,7 +1000,16 @@ const MessageBubble = React.memo(React.forwardRef<HTMLDivElement, { message: Dis
                     return (
                       <div key={i} className="w-full max-w-md">
                         <video controls src={url} className="w-full rounded-lg border border-zinc-700" />
-                        <div className="mt-1 text-[10px] text-zinc-500">{att.fileName}</div>
+                        <div className="mt-1 flex items-center justify-between">
+                          <div className="text-[10px] text-zinc-500 truncate">{att.fileName}</div>
+                          <button
+                            onClick={() => { void downloadAttachment(att); }}
+                            className="flex items-center gap-1 rounded bg-zinc-700/60 px-2 py-0.5 text-[10px] text-zinc-300 hover:bg-zinc-600 transition"
+                            title={`다운로드 ${att.fileName}`}
+                          >
+                            <Download size={10} /> 저장
+                          </button>
+                        </div>
                       </div>
                     );
                   }
@@ -1027,7 +1026,7 @@ const MessageBubble = React.memo(React.forwardRef<HTMLDivElement, { message: Dis
                       <FileAttachmentCard
                         key={i}
                         att={att}
-                        onDownload={() => blobDownload(forceDownloadUrl(url), att.fileName)}
+                        onDownload={() => { void downloadAttachment(att); }}
                       />
                     );
                   }
@@ -1037,7 +1036,7 @@ const MessageBubble = React.memo(React.forwardRef<HTMLDivElement, { message: Dis
               </div>
             )}
             {/* Render content only when not using segments (segments already include text) */}
-            {!message.segments && message.content && (
+            {!message.segments && message.content && message.content !== "(첨부 파일)" && (
               <MarkdownRenderer content={message.content} />
             )}
             {message.streaming && (

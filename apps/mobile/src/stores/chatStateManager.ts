@@ -2,33 +2,28 @@
  * Central chat state manager — owns per-session state and processes gateway
  * events so that multiple screens can subscribe without duplicating listeners.
  *
- * Migrated from apps/mobile/src/hooks/useChat.ts event handling logic.
+ * Delegates all event processing to the shared ChatStreamProcessor.
+ * This class only manages multi-session orchestration, subscriptions
+ * (useSyncExternalStore), and history loading.
  */
 import type {
   GatewayClient,
   EventFrame,
   ChatMessage,
-  ToolCall,
+  DisplayMessage,
+  AgentStatus,
 } from "@intelli-claw/shared";
 
-// ─── Re-export types originally defined in useChat ───
+import {
+  ChatStreamProcessor,
+  isHiddenMessage,
+  stripInboundMeta,
+  stripTrailingControlTokens,
+  INTERNAL_PROMPT_RE,
+} from "@intelli-claw/shared";
 
-export interface DisplayMessage {
-  id: string;
-  role: "user" | "assistant" | "system";
-  content: string;
-  timestamp: string;
-  toolCalls: ToolCall[];
-  streaming?: boolean;
-  /** Local image URIs for user-sent attachments (display only) */
-  imageUris?: string[];
-}
-
-export type AgentStatus =
-  | { phase: "idle" }
-  | { phase: "thinking" }
-  | { phase: "writing" }
-  | { phase: "tool"; toolName: string };
+// Re-export shared types for mobile consumers
+export type { DisplayMessage, AgentStatus } from "@intelli-claw/shared";
 
 // ─── Internal state per session ───
 
@@ -37,22 +32,10 @@ export interface ChatState {
   streaming: boolean;
   agentStatus: AgentStatus;
   loading: boolean;
-  // internal
-  streamBuf: {
-    id: string;
-    content: string;
-    toolCalls: Map<string, ToolCall>;
-  } | null;
   runId: string | null;
   historyLoaded: boolean;
   lastAccessedAt: number;
 }
-
-/** Messages matching this pattern are housekeeping noise — hide from the user. */
-const HIDDEN_RE =
-  /^(NO_REPLY|HEARTBEAT_OK|NO_)\s*$|^System:|^\[System|Pre-compaction memory flush|^Read HEARTBEAT\.md|reply with NO_REPLY|Store durable memories now/;
-
-const STREAMING_TIMEOUT_MS = 45_000;
 
 function createDefaultState(): ChatState {
   return {
@@ -60,7 +43,6 @@ function createDefaultState(): ChatState {
     streaming: false,
     agentStatus: { phase: "idle" },
     loading: false,
-    streamBuf: null,
     runId: null,
     historyLoaded: false,
     lastAccessedAt: Date.now(),
@@ -71,29 +53,32 @@ function createDefaultState(): ChatState {
 
 export class ChatStateManager {
   private states = new Map<string, ChatState>();
+  private processors = new Map<string, ChatStreamProcessor>();
   private subscribers = new Map<string, Set<() => void>>();
   private eventUnsub: (() => void) | null = null;
-  private streamingTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private boundClient: GatewayClient | null = null;
 
   // ── GatewayClient binding ──
 
   bind(client: GatewayClient): void {
     this.unbind();
+    this.boundClient = client;
     this.eventUnsub = client.onEvent((frame: EventFrame) => {
-      this.handleEvent(frame);
+      this.routeEvent(frame);
     });
   }
 
   unbind(): void {
+    this.boundClient = null;
     if (this.eventUnsub) {
       this.eventUnsub();
       this.eventUnsub = null;
     }
-    // Clear all streaming timers
-    for (const timer of this.streamingTimers.values()) {
-      clearTimeout(timer);
+    // Dispose all processors
+    for (const proc of this.processors.values()) {
+      proc.dispose();
     }
-    this.streamingTimers.clear();
+    this.processors.clear();
   }
 
   // ── State access ──
@@ -151,7 +136,10 @@ export class ChatStateManager {
               : Array.isArray(blocks)
                 ? blocks.map((b: any) => b?.text || "").join("")
                 : String(m.content || "");
-          return !HIDDEN_RE.test(raw.trim());
+          if (isHiddenMessage(m.role, raw)) return false;
+          if (m.role === "user" && INTERNAL_PROMPT_RE.test(raw.trim()))
+            return false;
+          return true;
         })
         .map((m, i) => {
           const blocks = m.content as any;
@@ -161,6 +149,8 @@ export class ChatStateManager {
               : Array.isArray(blocks)
                 ? blocks.map((b: any) => b?.text || "").join("")
                 : String(m.content || "");
+          text = stripInboundMeta(text);
+          text = stripTrailingControlTokens(text);
           text = text.replace(/\n{3,}/g, "\n\n").trim();
           return {
             id: `hist-${i}`,
@@ -185,44 +175,38 @@ export class ChatStateManager {
 
   // ── Memory management ──
 
-  /**
-   * Evict sessions that haven't been accessed in the last N ms and have no
-   * active subscribers.  Called externally (e.g. on a timer or navigation).
-   */
   trimInactive(maxAgeMs = 5 * 60_000): void {
     const now = Date.now();
     for (const [key, state] of this.states) {
       const subs = this.subscribers.get(key);
       if ((!subs || subs.size === 0) && now - state.lastAccessedAt > maxAgeMs) {
         this.states.delete(key);
-        this.clearStreamingTimeout(key);
+        const proc = this.processors.get(key);
+        if (proc) {
+          proc.dispose();
+          this.processors.delete(key);
+        }
       }
     }
   }
 
-  /**
-   * Append a user message to the session.  Called from useChat.sendMessage
-   * so the optimistic message shows immediately.
-   */
   appendUserMessage(sessionKey: string, msg: DisplayMessage): void {
     this.mutate(sessionKey, (s) => {
       s.messages = [...s.messages, msg];
     });
   }
 
-  /**
-   * Return the current runId for a session (used by abort).
-   */
   getRunId(sessionKey: string): string | null {
-    return this.getState(sessionKey).runId;
+    const proc = this.processors.get(sessionKey);
+    return proc ? proc.getRunId() : this.getState(sessionKey).runId;
   }
 
-  /**
-   * Eagerly clear the runId for a session, returning the previous value.
-   * Used by abort to capture the runId before clearing it, matching the
-   * web client's eager-clear pattern (#225).
-   */
   clearRunId(sessionKey: string): string | null {
+    const proc = this.processors.get(sessionKey);
+    if (proc) {
+      const result = proc.abort();
+      return result.previousRunId;
+    }
     const s = this.getState(sessionKey);
     const prev = s.runId;
     if (prev !== null) {
@@ -234,250 +218,87 @@ export class ChatStateManager {
   }
 
   // ══════════════════════════════════════════════════════════════════════
-  // Private — event handling (migrated from useChat.ts lines 130-283)
+  // Private — event routing and processor management
   // ══════════════════════════════════════════════════════════════════════
 
-  private handleEvent(frame: EventFrame): void {
-    if (frame.event !== "agent") return;
+  /**
+   * Route an event to the correct session's processor.
+   * Extracts sessionKey from the event payload.
+   */
+  private routeEvent(frame: EventFrame): void {
+    const sessionKey = this.extractSessionKey(frame);
+    if (!sessionKey) return;
 
-    const raw = frame.payload as Record<string, unknown>;
-    const stream = raw.stream as string | undefined;
-    const data = raw.data as Record<string, unknown> | undefined;
+    const processor = this.getOrCreateProcessor(sessionKey);
+    processor.processEvent(frame);
+  }
 
-    // Determine which session this event belongs to (#48)
-    const evtSessionKey = (raw.sessionKey ?? data?.sessionKey) as
-      | string
-      | undefined;
-    if (!evtSessionKey) return; // Cannot route without a session key
+  private extractSessionKey(frame: EventFrame): string | undefined {
+    const payload = frame.payload as Record<string, unknown>;
 
-    const sessionKey = evtSessionKey;
-
-    // ── assistant text delta ──
-    if (
-      stream === "assistant" &&
-      (typeof data?.delta === "string" || typeof data?.text === "string")
-    ) {
-      const chunk =
-        (data?.delta as string | undefined) ?? (data?.text as string);
-
-      this.mutate(sessionKey, (s) => {
-        s.streaming = true;
-        s.agentStatus = { phase: "writing" };
-
-        if (!s.streamBuf) {
-          s.streamBuf = {
-            id: `stream-${Date.now()}`,
-            content: "",
-            toolCalls: new Map(),
-          };
-        }
-        s.streamBuf.content += chunk;
-
-        const snap = s.streamBuf;
-        const msg: DisplayMessage = {
-          id: snap.id,
-          role: "assistant",
-          content: snap.content,
-          timestamp: new Date().toISOString(),
-          toolCalls: Array.from(snap.toolCalls.values()),
-          streaming: true,
-        };
-        const idx = s.messages.findIndex((m) => m.id === snap.id);
-        if (idx >= 0) {
-          s.messages = [...s.messages];
-          s.messages[idx] = msg;
-        } else {
-          s.messages = [...s.messages, msg];
-        }
-      });
-
-      this.startStreamingTimeout(sessionKey);
-
-      // ── tool start ──
-    } else if (stream === "tool-start" && data) {
-      const callId = String(data.toolCallId || data.callId || "");
-      const name = String(data.name || data.tool || "");
-
-      this.mutate(sessionKey, (s) => {
-        s.agentStatus = { phase: "tool", toolName: name };
-
-        if (!s.streamBuf) {
-          s.streamBuf = {
-            id: `stream-${Date.now()}`,
-            content: "",
-            toolCalls: new Map(),
-          };
-        }
-        s.streamBuf.toolCalls.set(callId, {
-          callId,
-          name,
-          status: "running",
-        });
-
-        const snap = s.streamBuf;
-        const msg: DisplayMessage = {
-          id: snap.id,
-          role: "assistant",
-          content: snap.content,
-          timestamp: new Date().toISOString(),
-          toolCalls: Array.from(snap.toolCalls.values()),
-          streaming: true,
-        };
-        const idx = s.messages.findIndex((m) => m.id === snap.id);
-        if (idx >= 0) {
-          s.messages = [...s.messages];
-          s.messages[idx] = msg;
-        } else {
-          s.messages = [...s.messages, msg];
-        }
-      });
-
-      // ── tool end ──
-    } else if (stream === "tool-end" && data) {
-      const callId = String(data.toolCallId || data.callId || "");
-      const result = data.result as string | undefined;
-
-      this.mutate(sessionKey, (s) => {
-        s.agentStatus = { phase: "thinking" };
-
-        if (s.streamBuf) {
-          const tc = s.streamBuf.toolCalls.get(callId);
-          if (tc) {
-            tc.status = "done";
-            tc.result = result;
-          }
-          const snap = s.streamBuf;
-          const idx = s.messages.findIndex((m) => m.id === snap.id);
-          if (idx >= 0) {
-            s.messages = [...s.messages];
-            s.messages[idx] = {
-              ...s.messages[idx],
-              toolCalls: Array.from(snap.toolCalls.values()),
-            };
-          }
-        }
-      });
-
-      // ── lifecycle start ──
-    } else if (stream === "lifecycle" && data?.phase === "start") {
-      this.mutate(sessionKey, (s) => {
-        s.streaming = true;
-        s.runId = (raw.runId as string) ?? null;
-        s.agentStatus = { phase: "thinking" };
-      });
-      this.startStreamingTimeout(sessionKey);
-
-      // ── lifecycle end ──
-    } else if (stream === "lifecycle" && data?.phase === "end") {
-      this.clearStreamingTimeout(sessionKey);
-
-      this.mutate(sessionKey, (s) => {
-        s.streaming = false;
-        s.agentStatus = { phase: "idle" };
-        s.runId = null;
-
-        if (s.streamBuf) {
-          const finalId = s.streamBuf.id;
-          const finalContent = s.streamBuf.content;
-          const finalTools = Array.from(s.streamBuf.toolCalls.values());
-          if (HIDDEN_RE.test(finalContent.trim())) {
-            s.messages = s.messages.filter((m) => m.id !== finalId);
-          } else {
-            s.messages = s.messages.map((m) =>
-              m.id === finalId
-                ? {
-                    ...m,
-                    content: finalContent,
-                    toolCalls: finalTools,
-                    streaming: false,
-                  }
-                : m,
-            );
-          }
-          s.streamBuf = null;
-        }
-      });
-
-      // ── done/end/finish (alternative end signals) ──
-    } else if (
-      stream === "done" ||
-      stream === "end" ||
-      stream === "finish"
-    ) {
-      this.clearStreamingTimeout(sessionKey);
-
-      this.mutate(sessionKey, (s) => {
-        s.streaming = false;
-        s.agentStatus = { phase: "idle" };
-        s.runId = null;
-
-        if (s.streamBuf) {
-          const finalId = s.streamBuf.id;
-          const finalContent =
-            (data?.text as string) || s.streamBuf.content;
-          const finalTools = Array.from(s.streamBuf.toolCalls.values());
-          if (HIDDEN_RE.test(finalContent.trim())) {
-            s.messages = s.messages.filter((m) => m.id !== finalId);
-          } else {
-            s.messages = s.messages.map((m) =>
-              m.id === finalId
-                ? {
-                    ...m,
-                    content: finalContent,
-                    toolCalls: finalTools,
-                    streaming: false,
-                  }
-                : m,
-            );
-          }
-          s.streamBuf = null;
-        }
-      });
-
-      // ── error ──
-    } else if (stream === "error") {
-      this.clearStreamingTimeout(sessionKey);
-      const errMsg = String(
-        data?.message || data?.error || "Unknown error",
-      );
-
-      this.mutate(sessionKey, (s) => {
-        s.streaming = false;
-        s.agentStatus = { phase: "idle" };
-        s.runId = null;
-
-        if (s.streamBuf) {
-          const errId = s.streamBuf.id;
-          s.messages = s.messages.map((m) =>
-            m.id === errId
-              ? {
-                  ...m,
-                  content: m.content + `\n\n**Error:** ${errMsg}`,
-                  streaming: false,
-                }
-              : m,
-          );
-          s.streamBuf = null;
-        }
-      });
+    if (frame.event === "chat") {
+      return payload.sessionKey as string | undefined;
     }
+
+    if (frame.event === "agent") {
+      const data = payload.data as Record<string, unknown> | undefined;
+      return (payload.sessionKey ?? data?.sessionKey) as string | undefined;
+    }
+
+    return undefined;
+  }
+
+  private getOrCreateProcessor(sessionKey: string): ChatStreamProcessor {
+    let proc = this.processors.get(sessionKey);
+    if (!proc) {
+      proc = new ChatStreamProcessor({
+        sessionKey,
+        callbacks: {
+          onMessagesUpdate: (updater) => {
+            this.mutate(sessionKey, (s) => {
+              s.messages = updater(s.messages);
+            });
+          },
+          onStreamingChange: (streaming) => {
+            this.mutate(sessionKey, (s) => {
+              s.streaming = streaming;
+            });
+          },
+          onAgentStatusChange: (status) => {
+            this.mutate(sessionKey, (s) => {
+              s.agentStatus = status;
+            });
+          },
+          onRunIdChange: (runId) => {
+            this.mutate(sessionKey, (s) => {
+              s.runId = runId;
+            });
+          },
+          requestHistoryReload: () => {
+            this.reloadHistory(sessionKey);
+          },
+        },
+      });
+      this.processors.set(sessionKey, proc);
+    }
+    return proc;
+  }
+
+  private reloadHistory(sessionKey: string): void {
+    if (!this.boundClient) return;
+    const state = this.getState(sessionKey);
+    state.historyLoaded = false;
+    this.loadHistory(this.boundClient, sessionKey);
   }
 
   // ── Helpers ──
 
-  /**
-   * Mutate a session's state and notify subscribers.
-   * The callback receives the current ChatState and may modify it in-place.
-   * After the callback, we replace the state reference so that
-   * useSyncExternalStore detects the change via identity comparison.
-   */
   private mutate(
     sessionKey: string,
     fn: (state: ChatState) => void,
   ): void {
     const prev = this.getState(sessionKey);
     fn(prev);
-    // Replace the reference so getSnapshot returns a new object
     const next = { ...prev };
     this.states.set(sessionKey, next);
     this.notify(sessionKey);
@@ -487,40 +308,6 @@ export class ChatStateManager {
     const subs = this.subscribers.get(sessionKey);
     if (subs) {
       for (const cb of subs) cb();
-    }
-  }
-
-  private startStreamingTimeout(sessionKey: string): void {
-    this.clearStreamingTimeout(sessionKey);
-    this.streamingTimers.set(
-      sessionKey,
-      setTimeout(() => {
-        console.warn(
-          "[ChatStateManager] streaming timeout — forcing idle for",
-          sessionKey,
-        );
-        this.mutate(sessionKey, (s) => {
-          s.streaming = false;
-          s.agentStatus = { phase: "idle" };
-          s.runId = null;
-          if (s.streamBuf) {
-            const finalId = s.streamBuf.id;
-            s.messages = s.messages.map((m) =>
-              m.id === finalId ? { ...m, streaming: false } : m,
-            );
-            s.streamBuf = null;
-          }
-        });
-        this.streamingTimers.delete(sessionKey);
-      }, STREAMING_TIMEOUT_MS),
-    );
-  }
-
-  private clearStreamingTimeout(sessionKey: string): void {
-    const timer = this.streamingTimers.get(sessionKey);
-    if (timer) {
-      clearTimeout(timer);
-      this.streamingTimers.delete(sessionKey);
     }
   }
 }

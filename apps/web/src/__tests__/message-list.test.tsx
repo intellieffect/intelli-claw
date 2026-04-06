@@ -480,13 +480,12 @@ describe("SessionBoundary", () => {
     expect(screen.getByText("새 세션이 시작되었습니다")).toBeInTheDocument();
   });
 
-  it("shows 이전 맥락 불러오기 button when onLoadPreviousContext is provided", () => {
-    const onLoad = vi.fn();
+  it("does NOT show 이전 맥락 불러오기 button (#267 — removed, Gateway handles context)", () => {
     const messages = [makeBoundaryMessage()];
     render(
-      <MessageList messages={messages} loading={false} streaming={false} onLoadPreviousContext={onLoad} />,
+      <MessageList messages={messages} loading={false} streaming={false} />,
     );
-    expect(screen.getByText("이전 맥락 불러오기")).toBeInTheDocument();
+    expect(screen.queryByText("이전 맥락 불러오기")).not.toBeInTheDocument();
   });
 
   it("shows 이전 대화 보기 button when onOpenTopicHistory is provided", () => {
@@ -496,16 +495,6 @@ describe("SessionBoundary", () => {
       <MessageList messages={messages} loading={false} streaming={false} onOpenTopicHistory={onOpen} />,
     );
     expect(screen.getByText("이전 대화 보기")).toBeInTheDocument();
-  });
-
-  it("calls onLoadPreviousContext when button is clicked", () => {
-    const onLoad = vi.fn();
-    const messages = [makeBoundaryMessage()];
-    render(
-      <MessageList messages={messages} loading={false} streaming={false} onLoadPreviousContext={onLoad} />,
-    );
-    fireEvent.click(screen.getByText("이전 맥락 불러오기"));
-    expect(onLoad).toHaveBeenCalledOnce();
   });
 
   it("calls onOpenTopicHistory when button is clicked", () => {
