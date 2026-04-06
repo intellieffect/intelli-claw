@@ -198,6 +198,18 @@ function createWindow(opts?: CreateWindowOpts): BrowserWindow {
   win.on("moved", debouncedSave);
   win.on("resized", debouncedSave);
 
+  const sendFocusState = (focused: boolean) => {
+    if (!win.isDestroyed()) {
+      win.webContents.send("window:focus-change", focused);
+    }
+  };
+
+  win.on("focus", () => sendFocusState(true));
+  win.on("blur", () => sendFocusState(false));
+  win.webContents.once("did-finish-load", () => {
+    sendFocusState(win.isFocused());
+  });
+
   win.on("closed", () => {
     windowMap.delete(windowId);
     if (!isQuitting) saveWindowStates();

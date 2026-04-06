@@ -15,6 +15,9 @@ export interface ShowcaseFileEntry {
 }
 
 export interface PlatformAPI {
+  /** Subscribe to window focus changes in desktop runtimes. Returns unsubscribe when supported. */
+  onWindowFocusChange?(callback: (focused: boolean) => void): (() => void) | void;
+
   /** Build a URL to serve a media file (for <img src>, <video src>, etc.) */
   mediaUrl(filePath: string, opts?: { dl?: boolean; info?: boolean }): string;
 

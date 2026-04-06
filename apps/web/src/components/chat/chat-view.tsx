@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { useGateway } from "@/lib/gateway/hooks";
 import { useIsMobile } from "@/lib/hooks/use-mobile";
+import { platform } from "@/lib/platform";
 import { ConnectionStatus } from "./connection-status";
 import { ConnectionSettings } from "@/components/settings/connection-settings";
 import { ChatPanel } from "./chat-panel";
@@ -34,11 +35,25 @@ export function ChatView() {
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, []);
 
+  useEffect(() => {
+    const root = document.documentElement;
+    const setWindowFocus = (focused: boolean) => {
+      root.setAttribute("data-window-focused", focused ? "true" : "false");
+    };
+
+    setWindowFocus(true);
+    const unsubscribe = platform.onWindowFocusChange?.(setWindowFocus);
+    return () => {
+      unsubscribe?.();
+      root.removeAttribute("data-window-focused");
+    };
+  }, []);
+
   if (!mounted) return <div className="h-dvh bg-background" />;
 
   return (
-    <div className="flex h-dvh flex-col bg-background overflow-x-hidden max-w-[100vw] pb-2 md:pb-3">
-      <header className="safe-top relative z-20 flex items-center justify-between border-b border-border bg-background/80 px-3 py-1.5 md:px-4 md:py-2.5 backdrop-blur-sm electron-drag electron-header-pad">
+    <div className="window-root flex h-dvh flex-col overflow-x-hidden bg-background pb-2 max-w-[100vw] md:pb-3">
+      <header className="app-header safe-top relative z-20 flex items-center justify-between border-b border-border bg-background/80 px-3 py-1.5 backdrop-blur-sm electron-drag electron-header-pad md:px-4 md:py-2.5">
         <div className="flex items-center gap-2 md:gap-3">
           {isMobile && (
             <button

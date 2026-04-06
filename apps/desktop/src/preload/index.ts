@@ -9,6 +9,11 @@ const electronAPI = {
   getVersion: () => ipcRenderer.invoke("app:version") as Promise<string>,
   /** Notify main process of current active session key (#170) */
   updateSessionKey: (sessionKey: string) => ipcRenderer.send("session:update", sessionKey),
+  onWindowFocusChange: (callback: (focused: boolean) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, focused: boolean) => callback(focused);
+    ipcRenderer.on("window:focus-change", listener);
+    return () => ipcRenderer.removeListener("window:focus-change", listener);
+  },
   platform: {
     mediaInfo: (filePath: string) => ipcRenderer.invoke("media:info", filePath),
     mediaServe: (filePath: string) => ipcRenderer.invoke("media:serve", filePath),

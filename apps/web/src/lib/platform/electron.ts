@@ -8,6 +8,10 @@ declare global {
 }
 
 export const electronPlatform: PlatformAPI = {
+  onWindowFocusChange(callback) {
+    return window.electronAPI.onWindowFocusChange(callback);
+  },
+
   mediaUrl(filePath) {
     // Use custom protocol for direct URL access (img, video, audio src)
     return `intelli-claw://${encodeURIComponent(filePath)}`;
