@@ -9,13 +9,15 @@
  * 5. DEFAULT_GATEWAY_URL과 동일한 stale entry가 fallthrough되는지
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { loadGatewayConfig, GATEWAY_CONFIG_STORAGE_KEY, DEFAULT_GATEWAY_URL } from "@/lib/gateway/hooks";
+import { loadGatewayConfig, GATEWAY_CONFIG_STORAGE_KEY, GATEWAY_TOKEN_SESSION_KEY, DEFAULT_GATEWAY_URL } from "@/lib/gateway/hooks";
 
 describe("#220 — Gateway config persistence across restarts", () => {
   let store: Record<string, string>;
+  let sessionStore: Record<string, string>;
 
   beforeEach(() => {
     store = {};
+    sessionStore = {};
     vi.stubEnv("VITE_GATEWAY_URL", "");
     vi.stubEnv("VITE_GATEWAY_TOKEN", "");
     vi.stubGlobal("localStorage", {
@@ -25,6 +27,14 @@ describe("#220 — Gateway config persistence across restarts", () => {
       clear: () => { store = {}; },
       get length() { return Object.keys(store).length; },
       key: (i: number) => Object.keys(store)[i] ?? null,
+    });
+    vi.stubGlobal("sessionStorage", {
+      getItem: (key: string) => sessionStore[key] ?? null,
+      setItem: (key: string, val: string) => { sessionStore[key] = val; },
+      removeItem: (key: string) => { delete sessionStore[key]; },
+      clear: () => { sessionStore = {}; },
+      get length() { return Object.keys(sessionStore).length; },
+      key: (i: number) => Object.keys(sessionStore)[i] ?? null,
     });
   });
 
@@ -38,11 +48,11 @@ describe("#220 — Gateway config persistence across restarts", () => {
     expect(config.token).toBe("");
   });
 
-  it("token과 URL 모두 있는 config를 정상 반환한다", () => {
+  it("token과 URL 모두 있는 config를 정상 반환한다 (#229: token in sessionStorage)", () => {
     store[GATEWAY_CONFIG_STORAGE_KEY] = JSON.stringify({
       url: "wss://custom:18789",
-      token: "secret-token-123",
     });
+    sessionStore[GATEWAY_TOKEN_SESSION_KEY] = "secret-token-123";
     const config = loadGatewayConfig();
     expect(config.url).toBe("wss://custom:18789");
     expect(config.token).toBe("secret-token-123");
@@ -61,21 +71,21 @@ describe("#220 — Gateway config persistence across restarts", () => {
     expect(config.token).toBe("env-token");
   });
 
-  it("default URL + non-empty token은 유효한 config로 취급한다", () => {
+  it("default URL + non-empty token은 유효한 config로 취급한다 (#229)", () => {
     store[GATEWAY_CONFIG_STORAGE_KEY] = JSON.stringify({
       url: DEFAULT_GATEWAY_URL,
-      token: "my-local-token",
     });
+    sessionStore[GATEWAY_TOKEN_SESSION_KEY] = "my-local-token";
     const config = loadGatewayConfig();
     expect(config.url).toBe(DEFAULT_GATEWAY_URL);
     expect(config.token).toBe("my-local-token");
   });
 
-  it("env var가 non-default이고 localStorage URL과 다르면 env가 우선한다", () => {
+  it("env var가 non-default이고 localStorage URL과 다르면 env가 우선한다 (#229)", () => {
     store[GATEWAY_CONFIG_STORAGE_KEY] = JSON.stringify({
       url: "wss://old-server:18789",
-      token: "old-token",
     });
+    sessionStore[GATEWAY_TOKEN_SESSION_KEY] = "old-token";
     vi.stubEnv("VITE_GATEWAY_URL", "wss://new-deploy:18789");
     vi.stubEnv("VITE_GATEWAY_TOKEN", "new-token");
 
@@ -84,6 +94,8 @@ describe("#220 — Gateway config persistence across restarts", () => {
     expect(config.token).toBe("new-token");
     // localStorage should be cleared
     expect(store[GATEWAY_CONFIG_STORAGE_KEY]).toBeUndefined();
+    // sessionStorage token should also be cleared on deploy target change
+    expect(sessionStore[GATEWAY_TOKEN_SESSION_KEY]).toBeUndefined();
   });
 
   it("env var가 default URL이면 localStorage를 삭제하지 않는다", () => {
@@ -100,16 +112,16 @@ describe("#220 — Gateway config persistence across restarts", () => {
     expect(store[GATEWAY_CONFIG_STORAGE_KEY]).toBeDefined();
   });
 
-  it("env var와 localStorage URL이 동일하면 localStorage를 유지한다", () => {
+  it("env var와 localStorage URL이 동일하면 localStorage를 유지한다 (#229: sessionStorage token wins)", () => {
     store[GATEWAY_CONFIG_STORAGE_KEY] = JSON.stringify({
       url: "wss://same-server:18789",
-      token: "stored-token",
     });
+    sessionStore[GATEWAY_TOKEN_SESSION_KEY] = "stored-token";
     vi.stubEnv("VITE_GATEWAY_URL", "wss://same-server:18789");
     vi.stubEnv("VITE_GATEWAY_TOKEN", "env-token-different");
 
     const config = loadGatewayConfig();
-    // localStorage wins when URLs match
+    // localStorage URL wins when URLs match; token comes from sessionStorage
     expect(config.url).toBe("wss://same-server:18789");
     expect(config.token).toBe("stored-token");
   });
