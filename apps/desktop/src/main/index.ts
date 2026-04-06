@@ -149,13 +149,18 @@ function createWindow(opts?: CreateWindowOpts): BrowserWindow {
     return { action: "deny" };
   });
 
-  // Rewrite Origin header for WebSocket connections to the gateway
-  // so the gateway's allowedOrigins check passes in Electron dev mode
+  // Rewrite Origin header for WebSocket connections to the gateway so the
+  // gateway's allowedOrigins check passes regardless of how the gateway was
+  // configured. We use the gateway's *own* origin (`http(s)://host:port`)
+  // because every reasonable allowedOrigins list will include self.
   win.webContents.session.webRequest.onBeforeSendHeaders(
     { urls: ["wss://*/*", "ws://*/*"] },
     (details, callback) => {
-      const gatewayUrl = new URL(details.url);
-      details.requestHeaders["Origin"] = `https://${gatewayUrl.hostname}:4000`;
+      try {
+        const gatewayUrl = new URL(details.url);
+        const httpScheme = gatewayUrl.protocol === "wss:" ? "https" : "http";
+        details.requestHeaders["Origin"] = `${httpScheme}://${gatewayUrl.host}`;
+      } catch { /* leave Origin untouched on parse failure */ }
       callback({ requestHeaders: details.requestHeaders });
     },
   );
