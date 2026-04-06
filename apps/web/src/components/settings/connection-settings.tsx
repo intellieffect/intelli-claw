@@ -6,6 +6,7 @@ import { getSetupGuide, classifyError } from "@/lib/gateway/setup-guide";
 import { STATUS_CONFIG } from "@/components/chat/connection-status";
 import { useNodeStatus } from "@/lib/hooks/use-node-status";
 import { MobileConnect } from "@/components/settings/mobile-connect";
+import { ThemeToggle } from "@/components/settings/theme-toggle";
 
 interface ConnectionSettingsProps {
   open: boolean;
@@ -168,6 +169,9 @@ export function ConnectionSettings({ open, onClose }: ConnectionSettingsProps) {
             </div>
           </div>
         )}
+
+        {/* #235: Theme toggle */}
+        <ThemeToggle />
 
         {/* Canvas Node Mode (Electron only) */}
         {nodeStatus && (

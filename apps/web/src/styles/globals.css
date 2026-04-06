@@ -5,8 +5,46 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/*
+ * #235 — Light/Dark theme variables.
+ *
+ * `@theme` defines the default Tailwind v4 tokens (light theme) so
+ * `bg-background`, `text-foreground`, etc. resolve to light values by default.
+ * The `.dark` overrides below re-bind the same CSS variables to dark values
+ * via the cascade, so toggling the `.dark` class on <html> flips the whole UI
+ * without any class-level `dark:` qualifiers (they still work as usual).
+ */
 @theme {
-  /* brxce.ai aligned dark theme */
+  /* brxce.ai aligned — LIGHT theme (default) */
+  --color-background: #ffffff;
+  --color-foreground: #0a0a0a;
+  --color-card: #ffffff;
+  --color-card-foreground: #0a0a0a;
+  --color-popover: #ffffff;
+  --color-popover-foreground: #0a0a0a;
+  --color-primary: #FF6B35;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #f5f5f5;
+  --color-secondary-foreground: #0a0a0a;
+  --color-muted: #f5f5f5;
+  --color-muted-foreground: #737373;
+  --color-accent: #f5f5f5;
+  --color-accent-foreground: #0a0a0a;
+  --color-destructive: #ef4444;
+  --color-destructive-foreground: #ffffff;
+  --color-border: #e5e5e5;
+  --color-input: #e5e5e5;
+  --color-ring: #FF6B35;
+  --radius: 0.625rem;
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "SF Mono", "Fira Code", "JetBrains Mono", ui-monospace, monospace;
+}
+
+/*
+ * Dark theme overrides — applied when <html class="dark"> is set by
+ * ThemeProvider in apps/web/src/lib/theme.tsx.
+ */
+.dark {
   --color-background: #0a0a0a;
   --color-foreground: #fafafa;
   --color-card: #141414;
@@ -26,9 +64,6 @@
   --color-border: #222222;
   --color-input: #222222;
   --color-ring: #FF6B35;
-  --radius: 0.625rem;
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "SF Mono", "Fira Code", "JetBrains Mono", ui-monospace, monospace;
 }
 
 * {
