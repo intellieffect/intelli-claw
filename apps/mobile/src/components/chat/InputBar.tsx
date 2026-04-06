@@ -3,6 +3,7 @@ import { View, TextInput, Pressable, Animated } from "react-native";
 import { ArrowUp, Square } from "lucide-react-native";
 import { cn } from "@/lib/utils";
 import { AttachButton } from "../FileAttachments";
+import { AgentTabBar } from "./AgentTabBar";
 
 interface InputBarProps {
   text: string;
@@ -15,6 +16,19 @@ interface InputBarProps {
   hasContent: boolean;
   bottomInset: number;
   keyboardVisible: boolean;
+  /**
+   * #293: agent selector merged into the InputBar.
+   *
+   * When provided, a compact horizontal AgentTabBar is rendered above the
+   * text input. The previously-separate AgentTabBar above the PagerView is
+   * removed by the parent. Single-agent setups (`agents.length <= 1`) hide
+   * the bar entirely so the InputBar collapses back to its old footprint.
+   */
+  agents?: Array<{ id: string; name?: string }>;
+  activeAgentIndex?: number;
+  onAgentTabPress?: (index: number) => void;
+  streamingAgentIds?: Set<string>;
+  unreadCounts?: Map<string, number>;
 }
 
 export function InputBar({
@@ -28,7 +42,14 @@ export function InputBar({
   hasContent,
   bottomInset,
   keyboardVisible,
+  agents,
+  activeAgentIndex = 0,
+  onAgentTabPress,
+  streamingAgentIds,
+  unreadCounts,
 }: InputBarProps) {
+  // #293: Show agent selector inside the InputBar only when there are 2+ agents.
+  const showAgentBar = !!agents && agents.length >= 2 && !!onAgentTabPress;
   const sendScale = useRef(new Animated.Value(1)).current;
   const sendOpacity = useRef(new Animated.Value(0)).current;
   const canSend = connected && hasContent;
@@ -54,6 +75,18 @@ export function InputBar({
       className="px-3 pt-2.5 bg-background"
       style={{ paddingBottom: keyboardVisible ? 8 : Math.max(12, bottomInset) }}
     >
+      {/* #293: Inline agent tab bar above the text field */}
+      {showAgentBar && (
+        <View className="mb-2">
+          <AgentTabBar
+            agents={agents!}
+            activeIndex={activeAgentIndex}
+            onTabPress={onAgentTabPress!}
+            streamingAgentIds={streamingAgentIds}
+            unreadCounts={unreadCounts}
+          />
+        </View>
+      )}
       <View className="flex-row items-end bg-card rounded-[28px] border border-border px-3 py-2.5 min-h-[56px]">
         {/* Attach */}
         <View className="w-11 h-11 items-center justify-center self-end">

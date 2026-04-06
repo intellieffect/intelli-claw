@@ -19,7 +19,7 @@ import { AgentSelector } from "../../src/components/AgentSelector";
 import { SkillPicker } from "../../src/components/SkillPicker";
 
 import { AppBar, AgentChatPage } from "../../src/components/chat";
-import { AgentTabBar } from "../../src/components/chat/AgentTabBar";
+// #293: AgentTabBar is now rendered inside InputBar via AgentChatPage props.
 
 // ─── Chat Screen (PagerView-based) ───
 
@@ -106,9 +106,8 @@ export default function ChatScreen() {
   const n = sortedAgents.length;
   const useInfinite = n >= 2;
 
-  // Header height for KeyboardAvoidingView offset
-  // AppBar (h-16 = 64) + AgentTabBar (44 when ≥2 agents) + safe area top
-  const headerHeight = insets.top + 64 + (useInfinite ? 44 : 0);
+  // #293: AgentTabBar moved into the InputBar — header is now AppBar only.
+  const headerHeight = insets.top + 64;
 
   // Pages: [clone-last, ...real, clone-first]  (offsets by +1)
   const pagerPages = useMemo(() => {
@@ -277,12 +276,7 @@ export default function ChatScreen() {
           onSkillPicker={() => setSkillPickerOpen(true)}
         />
 
-        {/* Agent tab bar (hidden when only 1 agent) */}
-        <AgentTabBar
-          agents={sortedAgents}
-          activeIndex={activePageIndex}
-          onTabPress={goToPage}
-        />
+        {/* #293: AgentTabBar moved into InputBar (see AgentChatPage props below) */}
       </View>
 
       {/* PagerView — native swipe between agent chats (infinite) */}
@@ -307,6 +301,9 @@ export default function ChatScreen() {
                   agentId={agent.id}
                   isActive={realIndex === activePageIndex}
                   headerHeight={headerHeight}
+                  agents={sortedAgents}
+                  activeAgentIndex={activePageIndex}
+                  onAgentTabPress={goToPage}
                 />
               )}
             </View>
