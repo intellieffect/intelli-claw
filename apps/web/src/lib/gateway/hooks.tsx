@@ -165,6 +165,21 @@ export const TOOL_TIMEOUT_MS = 120_000;
 export const WRITING_TIMEOUT_MS = 90_000;
 export const LIFECYCLE_END_GRACE_MS = 10_000;
 
+// --- Queue Processing Timeout (#266) ---
+// Max wait per queued message for streaming to finish before surfacing a
+// user-visible "no response" notice.
+export const PROCESS_QUEUE_TIMEOUT_MS = 60_000;
+
+/**
+ * #266: Build the user-visible system message shown when `processQueue` gives
+ * up waiting for the streaming response of a queued message. Pure helper so
+ * the wording/format can be unit-tested without mounting the provider.
+ */
+export function formatTimeoutMessage(elapsedMs: number): string {
+  const seconds = Math.max(1, Math.round(elapsedMs / 1000));
+  return `⚠️ 에이전트가 ${seconds}초 내에 응답하지 않았습니다. 연결 상태를 확인하고 다시 시도해주세요.`;
+}
+
 // --- Web Config Persistence ---
 
 export function loadGatewayConfig(): GatewayConfig {
@@ -1933,9 +1948,28 @@ export function useChat(sessionKey?: string) {
             const start = Date.now();
             const check = () => {
               setTimeout(() => {
-                if (!streamingRef.current) resolve();
-                else if (Date.now() - start > 60_000) { console.warn("[AWF] processQueue streaming wait timeout"); resolve(); }
-                else check();
+                if (!streamingRef.current) {
+                  resolve();
+                } else if (Date.now() - start > PROCESS_QUEUE_TIMEOUT_MS) {
+                  const elapsed = Date.now() - start;
+                  console.warn("[AWF] processQueue streaming wait timeout");
+                  // #266: Surface a user-visible system message so the user
+                  // knows the agent never responded and can retry.
+                  setMessages((prev) => [
+                    ...prev,
+                    {
+                      id: `queue-timeout-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+                      role: "system" as const,
+                      content: formatTimeoutMessage(elapsed),
+                      timestamp: new Date().toISOString(),
+                      toolCalls: [],
+                      isError: true,
+                    },
+                  ]);
+                  resolve();
+                } else {
+                  check();
+                }
               }, 300);
             };
             check();
