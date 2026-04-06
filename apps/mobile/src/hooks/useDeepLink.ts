@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { Alert } from "react-native";
 import * as Linking from "expo-linking";
 import { useGateway } from "@intelli-claw/shared";
+import { validateGatewayUrl, normalizeToken } from "../lib/validate-gateway-url";
 
 /**
  * Handles `intelli-claw://connect?url=<encoded>&token=<encoded>` deep links.
@@ -24,23 +25,25 @@ export function useDeepLink() {
       // Only handle "connect" path under intelli-claw:// scheme
       if (parsed.hostname !== "connect" && parsed.path !== "connect") return;
 
-      const gatewayUrl = parsed.queryParams?.url;
-      const token = parsed.queryParams?.token;
-
-      if (!gatewayUrl || typeof gatewayUrl !== "string") {
-        Alert.alert("오류", "Deep Link에 유효한 Gateway URL이 포함되어 있지 않습니다.");
+      // #268: Same defensive validation as QR scanner — trim whitespace,
+      // require wss:// or ws:// scheme, reject malformed hosts.
+      const validation = validateGatewayUrl(parsed.queryParams?.url);
+      if (!validation.ok) {
+        Alert.alert("오류", validation.error ?? "Deep Link에 유효한 Gateway URL이 포함되어 있지 않습니다.");
         return;
       }
+      const cleanUrl = validation.url!;
+      const cleanToken = normalizeToken(parsed.queryParams?.token);
 
       Alert.alert(
         "Gateway 연결",
-        `다음 Gateway에 연결하시겠습니까?\n\n${gatewayUrl}`,
+        `다음 Gateway에 연결하시겠습니까?\n\n${cleanUrl}`,
         [
           { text: "취소", style: "cancel" },
           {
             text: "연결",
             onPress: () => {
-              updateConfig(gatewayUrl, typeof token === "string" ? token : "");
+              updateConfig(cleanUrl, cleanToken);
               Alert.alert("연결됨", "Deep Link에서 읽은 Gateway 설정이 적용되었습니다. 재연결 중...");
             },
           },
