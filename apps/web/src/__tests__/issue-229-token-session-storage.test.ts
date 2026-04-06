@@ -32,6 +32,7 @@ function makeStorage(): Storage {
 import {
   loadGatewayConfig,
   GATEWAY_TOKEN_SESSION_KEY,
+  shouldUseSessionStorageForToken,
 } from "@/lib/gateway/hooks";
 import { GATEWAY_CONFIG_STORAGE_KEY } from "@intelli-claw/shared";
 
@@ -52,6 +53,9 @@ describe("#229 — gateway token in sessionStorage", () => {
       writable: true,
       configurable: true,
     });
+    // Ensure we're in web mode for the sessionStorage tests (no electronAPI).
+    const w = globalThis as unknown as { electronAPI?: unknown };
+    delete w.electronAPI;
     vi.stubEnv("VITE_GATEWAY_URL", "");
     vi.stubEnv("VITE_GATEWAY_TOKEN", "");
   });
@@ -118,5 +122,85 @@ describe("#229 — gateway token in sessionStorage", () => {
     // Legacy localStorage token field gets scrubbed on migration
     const rewritten = JSON.parse(localStore.getItem(GATEWAY_CONFIG_STORAGE_KEY) || "{}");
     expect(rewritten.token).toBeUndefined();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Electron environment: token stays in localStorage to survive app restarts
+// ─────────────────────────────────────────────────────────────────────────
+describe("#229 — Electron: token in localStorage (restart persistence)", () => {
+  let localStore: Storage;
+  let sessionStore: Storage;
+
+  beforeEach(() => {
+    localStore = makeStorage();
+    sessionStore = makeStorage();
+    Object.defineProperty(globalThis, "localStorage", {
+      value: localStore,
+      writable: true,
+      configurable: true,
+    });
+    Object.defineProperty(globalThis, "sessionStorage", {
+      value: sessionStore,
+      writable: true,
+      configurable: true,
+    });
+    // Simulate Electron renderer: presence of electronAPI.
+    (globalThis as unknown as { electronAPI: object }).electronAPI = {};
+    vi.stubEnv("VITE_GATEWAY_URL", "");
+    vi.stubEnv("VITE_GATEWAY_TOKEN", "");
+  });
+
+  afterEach(() => {
+    delete (globalThis as unknown as { electronAPI?: unknown }).electronAPI;
+  });
+
+  it("shouldUseSessionStorageForToken returns false in Electron", () => {
+    expect(shouldUseSessionStorageForToken()).toBe(false);
+  });
+
+  it("keeps token in localStorage on load (does not migrate to sessionStorage)", () => {
+    localStore.setItem(
+      GATEWAY_CONFIG_STORAGE_KEY,
+      JSON.stringify({ url: "wss://host:18789", token: "electron-token" }),
+    );
+
+    const cfg = loadGatewayConfig();
+    expect(cfg.url).toBe("wss://host:18789");
+    expect(cfg.token).toBe("electron-token");
+    // localStorage still has the token — not scrubbed
+    const after = JSON.parse(localStore.getItem(GATEWAY_CONFIG_STORAGE_KEY) || "{}");
+    expect(after.token).toBe("electron-token");
+    // sessionStorage was not touched
+    expect(sessionStore.getItem(GATEWAY_TOKEN_SESSION_KEY)).toBeNull();
+  });
+
+  it("recovers orphaned sessionStorage token on first Electron launch after v0.2.23", () => {
+    // User ran v0.2.23 (web-style migration) which moved token to sessionStorage
+    // and rewrote localStorage without token. When they restart v0.2.24+ the
+    // recovery path should copy the orphaned token back into localStorage.
+    localStore.setItem(
+      GATEWAY_CONFIG_STORAGE_KEY,
+      JSON.stringify({ url: "wss://host:18789" }),
+    );
+    sessionStore.setItem(GATEWAY_TOKEN_SESSION_KEY, "recovered-token");
+
+    const cfg = loadGatewayConfig();
+    expect(cfg.url).toBe("wss://host:18789");
+    expect(cfg.token).toBe("recovered-token");
+    // Recovery wrote the token back to localStorage
+    const after = JSON.parse(localStore.getItem(GATEWAY_CONFIG_STORAGE_KEY) || "{}");
+    expect(after.token).toBe("recovered-token");
+    // And cleared it from sessionStorage so the next launch is canonical.
+    expect(sessionStore.getItem(GATEWAY_TOKEN_SESSION_KEY)).toBeNull();
+  });
+
+  it("returns empty token when neither storage has one", () => {
+    localStore.setItem(
+      GATEWAY_CONFIG_STORAGE_KEY,
+      JSON.stringify({ url: "wss://host:18789" }),
+    );
+    const cfg = loadGatewayConfig();
+    expect(cfg.token).toBe("");
   });
 });
