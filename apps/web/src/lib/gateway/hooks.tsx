@@ -170,6 +170,60 @@ export const LIFECYCLE_END_GRACE_MS = 10_000;
 // user-visible "no response" notice.
 export const PROCESS_QUEUE_TIMEOUT_MS = 60_000;
 
+// --- Queue Merge Window (#298) ---
+// When the user types multiple messages in quick succession while the agent
+// is still streaming, consecutive queue appends within this window are merged
+// into the tail entry instead of creating separate queued messages.
+export const QUEUE_MERGE_WINDOW_MS = 2_000;
+
+/** Shape of a queued user message waiting for `processQueue` to drain it. */
+export interface QueueEntry {
+  id: string;
+  text: string;
+  /** Unix ms when this entry was pushed (or last merged into). */
+  timestamp: number;
+  attachments?: DisplayAttachment[];
+  replyTo?: { id: string; excerpt: string };
+}
+
+/**
+ * #298: Attempt to merge an incoming user message into the tail of the send
+ * queue. Mutates `queue` in-place (either by appending or by concatenating the
+ * tail's `text`). Returns a descriptor so callers can persist/log the outcome.
+ *
+ * Rules:
+ * - Tail must exist, have no attachments, and be within `windowMs` of `now`.
+ * - Incoming message must have no attachments and no `replyTo` (replies are
+ *   anchored to a specific prior message and must stay standalone).
+ * - Merged text format: `tail + "\n\n" + incoming` — mirrors how the agent
+ *   would render a multi-paragraph user turn.
+ * - On merge, the tail's timestamp advances to the incoming timestamp so a
+ *   chain of rapid messages keeps collapsing.
+ */
+export function mergeIntoQueue(
+  queue: QueueEntry[],
+  incoming: QueueEntry,
+  opts?: { windowMs?: number },
+): { merged: boolean; mergedIntoId?: string } {
+  const windowMs = opts?.windowMs ?? QUEUE_MERGE_WINDOW_MS;
+  const tail = queue[queue.length - 1];
+  const canMerge =
+    tail !== undefined &&
+    !tail.attachments?.length &&
+    !incoming.attachments?.length &&
+    !incoming.replyTo &&
+    incoming.timestamp - tail.timestamp <= windowMs;
+
+  if (!canMerge) {
+    queue.push(incoming);
+    return { merged: false };
+  }
+
+  tail.text = `${tail.text}\n\n${incoming.text}`;
+  tail.timestamp = incoming.timestamp;
+  return { merged: true, mergedIntoId: tail.id };
+}
+
 /**
  * #266: Build the user-visible system message shown when `processQueue` gives
  * up waiting for the streaming response of a queued message. Pure helper so
@@ -1914,12 +1968,26 @@ export function useChat(sessionKey?: string) {
     // loadHistory accessed via loadHistoryRef to avoid re-creating processor on state change
   ]);
 
-  // Message queue
-  const queueRef = useRef<{ id: string; text: string; attachments?: DisplayAttachment[] }[]>(
+  // Message queue (#298: uses QueueEntry with timestamp for merge-on-append)
+  const queueRef = useRef<QueueEntry[]>(
     (() => {
       if (queueStorageKey && typeof window !== "undefined") {
-        try { const saved = localStorage.getItem(queueStorageKey); return saved ? JSON.parse(saved) : []; }
-        catch { return []; }
+        try {
+          const saved = localStorage.getItem(queueStorageKey);
+          if (!saved) return [];
+          const parsed = JSON.parse(saved) as Array<Partial<QueueEntry>>;
+          // Migrate legacy entries without `timestamp` by stamping with now.
+          // Stale entries get the current time so they won't spuriously merge
+          // with a message sent moments after reload.
+          const now = Date.now();
+          return parsed.map((e) => ({
+            id: String(e.id ?? `q-${now}-${Math.random().toString(36).slice(2)}`),
+            text: String(e.text ?? ""),
+            timestamp: typeof e.timestamp === "number" ? e.timestamp : now,
+            attachments: e.attachments,
+            replyTo: e.replyTo,
+          }));
+        } catch { return []; }
       }
       return [];
     })()
@@ -2190,7 +2258,27 @@ export function useChat(sessionKey?: string) {
           ]);
           return;
         }
-        queueRef.current.push({ id: msgId, text });
+        // #298: Merge into tail if the previous queued message is still fresh.
+        // Merging happens in-place; if merged, the current user message bubble
+        // is redundant and must be removed from the rendered list so the user
+        // sees a single combined entry.
+        const mergeResult = mergeIntoQueue(queueRef.current, {
+          id: msgId,
+          text,
+          timestamp: Date.now(),
+          replyTo,
+        });
+        if (mergeResult.merged) {
+          const mergedId = mergeResult.mergedIntoId;
+          setMessages((prev) => {
+            const withoutCurrent = prev.filter((m) => m.id !== msgId);
+            return withoutCurrent.map((m) =>
+              m.id === mergedId
+                ? { ...m, content: `${m.content}\n\n${text}` }
+                : m,
+            );
+          });
+        }
         persistQueue();
       } else { doSend(text, msgId); }
     },
