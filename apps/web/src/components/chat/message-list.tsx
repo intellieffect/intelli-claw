@@ -25,6 +25,29 @@ export function getExt(name: string): string {
   return dot >= 0 ? name.slice(dot + 1).toLowerCase() : "";
 }
 
+/**
+ * Decide whether a ResizeObserver-triggered recheck should mark the user as
+ * "scrolled up" (issue #297).
+ *
+ * Option A: layout-induced resizes (textarea growth while composing, mobile
+ * keyboard appearing, etc.) must not flip `userScrolledUp` from false → true.
+ * Scroll intent is user-driven; shrinking the viewport is not an intent to
+ * leave the bottom. If the user was at the bottom before the resize, keep them
+ * there; otherwise re-evaluate against the threshold.
+ */
+export function shouldMarkScrolledUpOnResize({
+  wasAtBottom,
+  distanceFromBottom,
+  threshold = 80,
+}: {
+  wasAtBottom: boolean;
+  distanceFromBottom: number;
+  threshold?: number;
+}): boolean {
+  if (wasAtBottom) return false;
+  return distanceFromBottom >= threshold;
+}
+
 /** Render file icon by MIME type */
 export function renderFileIcon(mime: string, ext: string, size: number) {
   if (mime.startsWith("image/")) return <ImageIcon size={size} />;
@@ -241,14 +264,44 @@ export function MessageList({
     setUserScrolledUp(!atBottom);
   }, []);
 
+  // Mirror userScrolledUp into a ref so the ResizeObserver callback can read
+  // the latest value without being recreated on every state change (#297).
+  const userScrolledUpRef = useRef(userScrolledUp);
+  useEffect(() => {
+    userScrolledUpRef.current = userScrolledUp;
+  }, [userScrolledUp]);
+
   // Re-evaluate scroll position when container is resized
   // (e.g. textarea height change, mobile keyboard appear/disappear)
+  //
+  // Issue #297: while composing a multi-line message, useAutosizeTextArea
+  // grows the textarea on every keystroke, which shrinks this container and
+  // pushes `scrollHeight - scrollTop - clientHeight` past the 80px "at bottom"
+  // threshold. Previously we blindly set `userScrolledUp = !atBottom`, which
+  // incorrectly flipped the flag to true and killed auto-scroll mid-typing.
+  //
+  // Fix (Option A): preserve the prior at-bottom state across layout-only
+  // resizes. If the user was already at the bottom, keep `userScrolledUp`
+  // false AND actively re-pin scrollTop so the newly-exposed space below
+  // doesn't reveal the gap.
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
     const observer = new ResizeObserver(() => {
-      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-      setUserScrolledUp(!atBottom);
+      const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+      const wasAtBottom = !userScrolledUpRef.current;
+      const scrolledUp = shouldMarkScrolledUpOnResize({
+        wasAtBottom,
+        distanceFromBottom,
+      });
+      if (scrolledUp !== userScrolledUpRef.current) {
+        setUserScrolledUp(scrolledUp);
+      }
+      // If the user was at the bottom, re-pin after the layout change so the
+      // viewport tracks the tail of the content.
+      if (wasAtBottom && distanceFromBottom > 0) {
+        el.scrollTop = el.scrollHeight;
+      }
     });
     observer.observe(el);
     return () => observer.disconnect();
