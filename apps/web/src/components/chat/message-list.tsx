@@ -9,7 +9,7 @@ import {
 import { MarkdownRenderer, MarkdownFilePreview } from "./markdown-renderer";
 import { ToolCallCard } from "./tool-call-card";
 import { ThinkingBlock } from "./thinking-block";
-import { HIDDEN_REPLY_RE, canBeReplyTarget, stripTrailingControlTokens, type DisplayMessage, type DisplayAttachment, type AgentStatus, type SystemInjectedType } from "@/lib/gateway/hooks";
+import { HIDDEN_REPLY_RE, canBeReplyTarget, stripTrailingControlTokens, type DisplayMessage, type DisplayAttachment, type AgentStatus, type SystemInjectedType, type MessageSegment } from "@/lib/gateway/hooks";
 import type { ToolCall } from "@intelli-claw/shared";
 import { useShowThinking } from "@/lib/hooks/use-show-thinking";
 import { AgentAvatar } from "@/components/ui/agent-avatar";
