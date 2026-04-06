@@ -31,11 +31,27 @@ export interface AgentChatPageProps {
   isActive: boolean;
   /** Total height of fixed headers above PagerView (safe area + AppBar + TabBar) */
   headerHeight?: number;
+  /** #293: agent selector inside the InputBar (passed through) */
+  agents?: Array<{ id: string; name?: string }>;
+  activeAgentIndex?: number;
+  onAgentTabPress?: (index: number) => void;
+  streamingAgentIds?: Set<string>;
+  unreadCounts?: Map<string, number>;
 }
 
 // ─── AgentChatPage ───
 
-export function AgentChatPage({ sessionKey, agentId, isActive, headerHeight = 0 }: AgentChatPageProps) {
+export function AgentChatPage({
+  sessionKey,
+  agentId,
+  isActive,
+  headerHeight = 0,
+  agents,
+  activeAgentIndex,
+  onAgentTabPress,
+  streamingAgentIds,
+  unreadCounts,
+}: AgentChatPageProps) {
   const insets = useSafeAreaInsets();
   const { state } = useGateway();
 
@@ -198,6 +214,11 @@ export function AgentChatPage({ sessionKey, agentId, isActive, headerHeight = 0 
         hasContent={!!(text.trim() || attachments.length > 0)}
         bottomInset={insets.bottom}
         keyboardVisible={keyboardVisible}
+        agents={agents}
+        activeAgentIndex={activeAgentIndex}
+        onAgentTabPress={onAgentTabPress}
+        streamingAgentIds={streamingAgentIds}
+        unreadCounts={unreadCounts}
       />
     </KeyboardAvoidingView>
   );
