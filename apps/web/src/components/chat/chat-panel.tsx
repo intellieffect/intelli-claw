@@ -31,37 +31,14 @@ import { platform } from "@/lib/platform";
 import { ToolSidebar } from "./tool-sidebar";
 import type { ToolCall } from "@intelli-claw/shared";
 
-/**
- * Tight regex matching only known auto-generated session label formats.
- * - `{agent}/작업-NNNN-NNNN` (default from makeDefaultThreadLabel)
- * - `작업-NNNN-NNNN` (without agent prefix)
- * - Legacy patterns: `스레드/토픽/thread/topic #N`
- * - Scaffold placeholders: `New Chat/Thread/Session`, `chat-N`, `session-N`
- *
- * Keep this strict so user-renamed labels like "버그 수정" or "topic-discussion"
- * are never matched (fixes #288).
- */
-const AUTO_LABEL_PATTERN =
-  /^(?:(?:[^/]+\/)?작업-\d{4}-\d{4}|(?:스레드|토픽|thread|topic)\s*#\s*\d+|new\s+(?:chat|thread|session)|(?:chat|session)-\d+)$/i;
-
-/**
- * Pure predicate: should the auto-label flow overwrite this session's label?
- *
- * Returns true only when:
- * 1. `isUserRenamed` is falsy, AND
- * 2. The current label is empty OR matches a known auto-generated pattern.
- *
- * Exported so it can be unit-tested without rendering the React tree.
- */
-export function shouldAutoLabel(
-  currentLabel: string | undefined,
-  isUserRenamed?: boolean,
-): boolean {
-  if (isUserRenamed) return false;
-  const label = (currentLabel || "").trim();
-  if (!label) return true;
-  return AUTO_LABEL_PATTERN.test(label);
-}
+// Auto-labeling removed (OpenClaw alignment): the gateway is the canonical
+// source of session labels. Clients should only push a label when the user
+// explicitly sets one (TopicNameDialog or slash command). The previous
+// `maybeAutoLabelSession` / `shouldAutoLabel` / `AUTO_LABEL_PATTERN` flow
+// was diverging from `~/.openclaw/workspace/openclaw-repo` (no auto-label
+// logic exists there) and over-wrote labels other clients had observed as
+// empty. See: docs/troubleshooting-electron-connection.md, issue triage
+// 2026-04-07.
 
 export interface ChatPanelProps {
   /** Show header controls (agent selector, session switcher) */
@@ -466,41 +443,12 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
     return `${agent}/작업-${mm}${dd}-${hh}${min}`;
   }, []);
 
-  const summarizeLabelFromText = useCallback((text: string, agent: string) => {
-    const clean = text
-      .replace(/^\/(new|reset|status|help|reasoning|model\s+\S+|think\S*|verbose\S*)\b/gi, "")
-      .replace(/\s+/g, " ")
-      .trim();
-    if (!clean) return makeDefaultThreadLabel(agent);
-    const snippet = clean.length > 40 ? `${clean.slice(0, 38)}…` : clean;
-    return `${agent}/${snippet}`;
-  }, [makeDefaultThreadLabel]);
-
-  async function maybeAutoLabelSession(key: string | undefined, text: string) {
-    if (!client || !isConnected || !key) return;
-    const parsed = parseSessionKey(key);
-    // Only auto-label main and thread sessions
-    if (parsed.type !== "thread" && parsed.type !== "main") return;
-
-    const session = (sessions as GatewaySession[]).find((s) => s.key === key);
-    const currentLabel = session?.label;
-
-    // #288: Only auto-label when the current label is empty or matches a
-    // strict auto-generated pattern. Prevents overwriting user-renamed topics.
-    if (!shouldAutoLabel(currentLabel)) return;
-
-    // Skip slash commands
-    const clean = text.replace(/^\/(new|reset|status|help|reasoning|model\s+\S+|think\S*|verbose\S*)\b/gi, "").trim();
-    if (!clean) return;
-
-    try {
-      const label = summarizeLabelFromText(clean, parsed.agentId);
-      await client.request("sessions.patch", { key, label });
-      refreshSessions();
-    } catch (err) {
-      console.error("[AWF] auto-label session failed:", err);
-    }
-  }
+  // Note: `summarizeLabelFromText` and `maybeAutoLabelSession` were removed
+  // as part of the OpenClaw alignment cleanup. The reference Control UI
+  // (~/.openclaw/workspace/openclaw-repo/ui/src/ui/controllers/sessions.ts)
+  // never auto-labels — it only forwards explicit user input via
+  // sessions.patch. Mirroring that here so labels stay in sync across
+  // every OpenClaw client.
 
   const handleStatusCommand = useCallback(async () => {
     if (!client || !isConnected) return;
@@ -650,8 +598,6 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
       }
 
       if (attachments.length > 0) {
-        await maybeAutoLabelSession(effectiveSessionKey, text);
-
         // Separate all PDFs — pass path hint for agent's `pdf` tool instead of client-side extraction
         const pdfPathHints: string[] = [];
         const webPdfs: typeof attachments = [];
@@ -766,11 +712,10 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
         }
         clearAttachments();
       } else {
-        await maybeAutoLabelSession(effectiveSessionKey, text);
         sendMessage(text);
       }
     },
-    [attachments, client, isConnected, effectiveSessionKey, sessionKey, clearAttachments, sendMessage, sendCommand, addUserMessage, addLocalMessage, clearMessages, handleStatusCommand, patchSession, abort, refreshSessions, sessions, summarizeLabelFromText]
+    [attachments, client, isConnected, effectiveSessionKey, sessionKey, clearAttachments, sendMessage, sendCommand, addUserMessage, addLocalMessage, clearMessages, handleStatusCommand, patchSession, abort, refreshSessions, sessions]
   );
 
     const handleNewSession = () => {
