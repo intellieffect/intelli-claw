@@ -186,6 +186,33 @@ export function isTopicSession(key: string): boolean {
 }
 
 /**
+ * Whether a session can be closed by the user (Cmd+D close-topic).
+ *
+ * Closable types:
+ *   - `thread` — explicit topic/thread sessions (`agent:{id}:main:thread:{x}`)
+ *   - `main` **with a channel** — channel-routed sessions like
+ *     `agent:main:telegram:direct:{userId}`. Each channel chat is a
+ *     separate `main` session as far as `parseSessionKey` is concerned,
+ *     but from the user's perspective they're closable conversations.
+ *
+ * NOT closable:
+ *   - Plain `main` (`agent:{id}:main`) — the canonical main session per
+ *     agent should always remain open.
+ *   - `cron` / `subagent` / `a2a` — managed by the runtime, not the user.
+ *
+ * Bug context (2026-04-07): Cmd+D appeared to silently fail on channel
+ * sessions because the previous gate used `isTopicSession()`, which only
+ * looks for `:thread:` / `:topic:` substrings. Channel-routed mains have
+ * neither marker, so the gate dropped them. See PR for full trace.
+ */
+export function isClosableSession(key: string): boolean {
+  const parsed = parseSessionKey(key);
+  if (parsed.type === "thread") return true;
+  if (parsed.type === "main" && parsed.channel) return true;
+  return false;
+}
+
+/**
  * Group sessions by agent ID, sorted by most recent updatedAt within each group.
  * Groups are also sorted by most recent session.
  */

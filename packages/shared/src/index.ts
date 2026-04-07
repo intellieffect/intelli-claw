@@ -48,6 +48,7 @@ export {
   groupSessionsByAgent,
   isTopicClosed,
   isTopicSession,
+  isClosableSession,
   getCleanLabel,
   CLOSED_PREFIX,
   type ParsedSessionKey,

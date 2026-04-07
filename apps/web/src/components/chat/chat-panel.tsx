@@ -8,7 +8,7 @@ import { AgentSelector } from "./agent-selector";
 import { SessionSwitcher } from "./session-switcher";
 import { AgentBrowser } from "./agent-browser";
 import { DropZone, useFileAttachments, attachmentToPayload } from "./file-attachments";
-import { parseSessionKey, sessionDisplayName, type GatewaySession, isTopicClosed, isTopicSession, CLOSED_PREFIX, getCleanLabel } from "@/lib/gateway/session-utils";
+import { parseSessionKey, sessionDisplayName, type GatewaySession, isTopicClosed, isClosableSession, CLOSED_PREFIX, getCleanLabel } from "@/lib/gateway/session-utils";
 import { getTopicCount } from "@/lib/gateway/topic-store";
 import { isSessionHidden, hideSession, unhideSession, getHiddenSessions } from "@/lib/gateway/hidden-sessions";
 import { getLocalMessages } from "@/lib/gateway/message-store";
@@ -402,7 +402,12 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
       }
       // Cmd+D: close topic (label prefix)
       if (matchesShortcutId(e, "close-topic")) {
-        if (effectiveSessionKey && isTopicSession(effectiveSessionKey)) {
+        // Use `isClosableSession` (type-aware) instead of the old
+        // substring-based `isTopicSession` so channel-routed main sessions
+        // (e.g. `agent:main:telegram:direct:{userId}`) are also closable.
+        // Bug context (2026-04-07): Cmd+D silently no-op'd on Telegram
+        // sessions because they have no `:thread:` / `:topic:` marker.
+        if (effectiveSessionKey && isClosableSession(effectiveSessionKey)) {
           e.preventDefault();
           handleCloseTopic(effectiveSessionKey);
           // Switch to previous tab
