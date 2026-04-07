@@ -151,13 +151,33 @@ export function isTopicClosed(session: { label?: string | null }): boolean {
   return typeof session.label === "string" && session.label.startsWith(CLOSED_PREFIX);
 }
 
-/** Get label without the [closed] prefix for display */
+/**
+ * Trailing-suffix marker added by `handleCloseTopic` when the simple
+ * `[closed] {label}` form collides with another session that already owns
+ * that label (gateway enforces unique labels).
+ *
+ * Format: ` #~abc123` — the leading `~` after `#` is the discriminator
+ * that separates intelli-claw's collision marker from real chat-id-style
+ * markers like Telegram's `#8224611555`. We will never accidentally strip
+ * a user-meaningful suffix because `~` is essentially never present in
+ * channel chat IDs.
+ *
+ * `getCleanLabel` strips both the `[closed] ` prefix AND this marker so
+ * reopened topics return to their original human-readable label.
+ */
+export const CLOSED_SUFFIX_MARKER = " #~";
+const CLOSED_SUFFIX_RE = /\s#~[A-Za-z0-9]{4,12}$/;
+
+/** Get label without the [closed] prefix (and unique-collision suffix) for display */
 export function getCleanLabel(session: { label?: string | null }): string {
   if (!session.label) return "";
-  if (session.label.startsWith(CLOSED_PREFIX)) {
-    return session.label.slice(CLOSED_PREFIX.length);
+  let label = session.label;
+  if (label.startsWith(CLOSED_PREFIX)) {
+    label = label.slice(CLOSED_PREFIX.length);
   }
-  return session.label;
+  // Strip the collision-avoidance suffix (`{label} #~abc123`) if present.
+  label = label.replace(CLOSED_SUFFIX_RE, "");
+  return label;
 }
 
 /** Check if a session key represents a topic (thread/topic) session */

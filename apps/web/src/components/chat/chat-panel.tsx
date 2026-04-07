@@ -258,8 +258,43 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
       const cleanLabel = isTopicClosed(session || { label: currentLabel })
         ? getCleanLabel(session || { label: currentLabel })
         : currentLabel;
+
+      // Try the simple prefix label first; if the gateway rejects it because
+      // another (already-closed) session has the exact same label, retry with
+      // a unique sessionId-derived suffix.
+      //
+      // Why this happens: the OpenClaw gateway enforces a unique-label
+      // constraint (`openclaw/src/gateway/sessions-patch.ts:208`). Channel
+      // adapters (Telegram, etc.) frequently spawn multiple sessions sharing
+      // the same human-readable label (e.g. `[텔레그램] main 토픽 #1234`).
+      // Closing the second one with just the prefix would collide with the
+      // first one's `[closed] {label}` value and silently fail.
+      const sessionIdSuffix = (() => {
+        const sid = session?.sessionId || key;
+        // Last 6 chars are stable + short enough to keep the label readable.
+        return sid.slice(-6);
+      })();
+
+      const tryPatch = async (label: string) => {
+        await client.request("sessions.patch", { key, label });
+      };
+
       try {
-        await client.request("sessions.patch", { key, label: CLOSED_PREFIX + cleanLabel });
+        const primaryLabel = CLOSED_PREFIX + cleanLabel;
+        try {
+          await tryPatch(primaryLabel);
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          if (msg.toLowerCase().includes("label already in use")) {
+            // Retry with a unique suffix derived from sessionId. The `#~`
+            // discriminator (vs `#`) is what `getCleanLabel` strips on
+            // reopen — see `CLOSED_SUFFIX_MARKER` in shared/session-utils.
+            const uniqueLabel = `${CLOSED_PREFIX}${cleanLabel} #~${sessionIdSuffix}`;
+            await tryPatch(uniqueLabel);
+          } else {
+            throw err;
+          }
+        }
 
         // Phase 3: flush topic summary to memory
         try {
