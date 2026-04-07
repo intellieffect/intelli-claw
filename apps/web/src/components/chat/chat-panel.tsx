@@ -252,49 +252,41 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
 
   const handleCloseTopic = useCallback(
     async (key: string) => {
-      if (!client || !isConnected) return;
+      console.log("[AWF] handleCloseTopic invoked:", key);
+      if (!client || !isConnected) {
+        console.warn("[AWF] handleCloseTopic skipped — no client or not connected");
+        return;
+      }
       const session = (sessions as GatewaySession[]).find((s) => s.key === key);
       const currentLabel = session?.label || sessionDisplayName({ key });
       const cleanLabel = isTopicClosed(session || { label: currentLabel })
         ? getCleanLabel(session || { label: currentLabel })
         : currentLabel;
 
-      // Try the simple prefix label first; if the gateway rejects it because
-      // another (already-closed) session has the exact same label, retry with
-      // a unique sessionId-derived suffix.
+      // ALWAYS use a unique suffix from the start. The OpenClaw gateway
+      // enforces a unique-label constraint (`openclaw/src/gateway/sessions-patch.ts:208`),
+      // and channel adapters (Telegram, etc.) routinely spawn multiple
+      // sessions sharing the same human-readable label. The previous
+      // "try simple → retry on collision" approach (PR #317) collided with
+      // already-closed siblings on the very first attempt and the retry
+      // path turned out to be unreachable in practice. Always-unique avoids
+      // the whole class of collisions and is idempotent per session.
       //
-      // Why this happens: the OpenClaw gateway enforces a unique-label
-      // constraint (`openclaw/src/gateway/sessions-patch.ts:208`). Channel
-      // adapters (Telegram, etc.) frequently spawn multiple sessions sharing
-      // the same human-readable label (e.g. `[텔레그램] main 토픽 #1234`).
-      // Closing the second one with just the prefix would collide with the
-      // first one's `[closed] {label}` value and silently fail.
-      const sessionIdSuffix = (() => {
-        const sid = session?.sessionId || key;
-        // Last 6 chars are stable + short enough to keep the label readable.
-        return sid.slice(-6);
-      })();
-
-      const tryPatch = async (label: string) => {
-        await client.request("sessions.patch", { key, label });
-      };
+      // Marker format: `[closed] {label} #~{sid6}`
+      //   - `#~` discriminator (not bare `#`) so it can never be confused
+      //     with chat-id-style suffixes like Telegram's `#8224611555`.
+      //   - last 6 chars of sessionId — stable across retries on the same
+      //     session, but different per session so siblings don't collide.
+      //   - `getCleanLabel` (shared) strips both prefix AND this suffix
+      //     so reopen returns the original human-readable label.
+      const sid = session?.sessionId || key;
+      const sessionIdSuffix = sid.slice(-6);
+      const closedLabel = `${CLOSED_PREFIX}${cleanLabel} #~${sessionIdSuffix}`;
+      console.log("[AWF] handleCloseTopic patching label:", closedLabel);
 
       try {
-        const primaryLabel = CLOSED_PREFIX + cleanLabel;
-        try {
-          await tryPatch(primaryLabel);
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          if (msg.toLowerCase().includes("label already in use")) {
-            // Retry with a unique suffix derived from sessionId. The `#~`
-            // discriminator (vs `#`) is what `getCleanLabel` strips on
-            // reopen — see `CLOSED_SUFFIX_MARKER` in shared/session-utils.
-            const uniqueLabel = `${CLOSED_PREFIX}${cleanLabel} #~${sessionIdSuffix}`;
-            await tryPatch(uniqueLabel);
-          } else {
-            throw err;
-          }
-        }
+        await client.request("sessions.patch", { key, label: closedLabel });
+        console.log("[AWF] handleCloseTopic patch succeeded");
 
         // Phase 3: flush topic summary to memory
         try {
@@ -402,6 +394,7 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
       }
       // Cmd+D: close topic (label prefix)
       if (matchesShortcutId(e, "close-topic")) {
+        console.log("[AWF] Cmd+D detected, effectiveSessionKey:", effectiveSessionKey, "isClosable:", effectiveSessionKey ? isClosableSession(effectiveSessionKey) : "no-key");
         // Use `isClosableSession` (type-aware) instead of the old
         // substring-based `isTopicSession` so channel-routed main sessions
         // (e.g. `agent:main:telegram:direct:{userId}`) are also closable.
