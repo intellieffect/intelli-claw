@@ -19,6 +19,7 @@ import type {
   ContentPart,
   ToolCall,
 } from "@intelli-claw/shared";
+import { CLOSED_PREFIX } from "@intelli-claw/shared";
 
 import {
   type ToolStreamRefs,
@@ -574,8 +575,16 @@ export function useSessions() {
           // #216: Preserve user-set label across session resets.
           const labelToKeep = labelsToRestore.get(key) || serverLabel;
           if (labelsToRestore.has(key)) {
-            // Server cleared the label — restore it on the gateway
-            client.request("sessions.patch", { key, label: labelsToRestore.get(key)! }).catch(() => {});
+            const labelToRestore = labelsToRestore.get(key)!;
+            // Skip auto-restore for `[closed]`-prefixed labels: they belong
+            // to a closed-topic snapshot, and re-pushing them collides with
+            // the gateway's unique-label constraint when another session
+            // already owns the same closed label. (Bug surfaced 2026-04-07
+            // when Cmd+D close-topic appeared to silently fail — the actual
+            // failures were these auto-restore calls firing on every poll.)
+            if (!labelToRestore.startsWith(CLOSED_PREFIX)) {
+              client.request("sessions.patch", { key, label: labelToRestore }).catch(() => {});
+            }
           }
 
           markSessionEnded(key, oldSessionId, { totalTokens }).catch(() => {});
@@ -592,7 +601,9 @@ export function useSessions() {
                 try {
                   const topics = await getTopicHistory(key);
                   const prevTopic = topics.find((t: any) => t.sessionId === existing);
-                  if (prevTopic?.label) {
+                  // Same guard as above: closed-topic labels are unique-
+                  // constraint hazards. Skip auto-restore for them.
+                  if (prevTopic?.label && !prevTopic.label.startsWith(CLOSED_PREFIX)) {
                     labelsToRestore.set(key, prevTopic.label);
                     preservedLabelsRef.current.set(key, prevTopic.label);
                     client.request("sessions.patch", { key, label: prevTopic.label }).catch(() => {});
