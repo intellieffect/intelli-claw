@@ -95,20 +95,34 @@ describe("handleCloseTopic source guard", () => {
     "utf-8",
   );
 
-  it("uses a unique suffix from the very first attempt (no retry path)", () => {
+  it("builds the closed label with the `#~{sid6}` discriminator from the start", () => {
     // PR #320 follow-up: the retry approach (PR #317) turned out to be
     // unreachable in practice because the same auto-restore polling kept
     // pushing the simple `[closed] {label}` form on every poll cycle. The
-    // robust fix is always-unique from the start.
-    expect(CHAT_PANEL).toMatch(/sessionIdSuffix/);
-    expect(CHAT_PANEL).toMatch(/closedLabel/);
-    // The closed label assignment must include the `#~` discriminator
-    expect(CHAT_PANEL).toMatch(/#~\$\{sessionIdSuffix\}/);
+    // robust fix is always-unique from the start. Match the actual template
+    // literal, regardless of whether the suffix lives in a local variable
+    // or an inline helper expression.
+    // The label assignment must build `${CLOSED_PREFIX}${...} #~${...}`.
+    expect(CHAT_PANEL).toMatch(/CLOSED_PREFIX\}\$\{[^}]+\}\s+#~\$\{[^}]+\}/);
   });
 
-  it("derives suffix from sessionId, not from a fresh timestamp", () => {
+  it("derives suffix from sessionId (sliced to 6), not from a fresh timestamp", () => {
     // Stable suffix per session — closing the same session twice returns
-    // the same label (idempotent on transient retries).
-    expect(CHAT_PANEL).toMatch(/sid\.slice\(-6\)/);
+    // the same label (idempotent on transient retries). Match either the
+    // inline form `(s.sessionId || s.key).slice(-6)` or the older
+    // `sid.slice(-6)` pattern. Whichever lives in the file, the slice MUST
+    // be 6 chars and MUST come from a sessionId expression.
+    expect(CHAT_PANEL).toMatch(/sessionId[\s\S]{0,40}\.slice\(-6\)|sid\.slice\(-6\)/);
+    // Defensive: forbid timestamp-based suffixes (Date.now / random) being
+    // used INSIDE the closed-label template.
+    expect(CHAT_PANEL).not.toMatch(/CLOSED_PREFIX[\s\S]{0,80}Date\.now/);
+  });
+
+  it("does NOT block the UI on the gateway round-trip (#322 optimistic close)", () => {
+    // After #322, handleCloseTopic uses local patchSession() to mark siblings
+    // [closed] BEFORE the gateway patch, so chat-header drops the tab on the
+    // very next paint instead of waiting ~600ms+ for sessions.list to refresh.
+    // Guard the optimistic-update call so it can't be silently removed.
+    expect(CHAT_PANEL).toMatch(/patchSession\(s\.key,\s*\{\s*label:\s*closedLabel\s*\}\)/);
   });
 });

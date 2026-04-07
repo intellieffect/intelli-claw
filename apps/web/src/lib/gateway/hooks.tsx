@@ -672,7 +672,26 @@ export function useSessions() {
     setSessions((prev) => prev.map((s) => (s.key === key ? { ...s, ...patch } : s)));
   }, []);
 
-  return { sessions, loading, refresh: fetchSessions, patchSession };
+  /**
+   * #322: Optimistically insert a session into local state so a brand-new
+   * tab (Cmd+T new topic) appears instantly without waiting for the next
+   * `sessions.list` round-trip. The next polling refresh reconciles with
+   * gateway truth — if the gateway didn't accept the create, the entry is
+   * silently removed on reconcile.
+   */
+  const upsertSession = useCallback((key: string, partial: Partial<Session>) => {
+    setSessions((prev) => {
+      const idx = prev.findIndex((s) => s.key === key);
+      if (idx === -1) {
+        return [{ key, ...partial } as Session, ...prev];
+      }
+      const next = prev.slice();
+      next[idx] = { ...next[idx], ...partial };
+      return next;
+    });
+  }, []);
+
+  return { sessions, loading, refresh: fetchSessions, patchSession, upsertSession };
 }
 
 // --- Helpers ---
@@ -1217,6 +1236,17 @@ export function useChat(sessionKey?: string) {
     // #248: Check both hook state and client's internal state for timing race.
     // TODO: Add public getter for client.state instead of `as any` cast.
     if (!client || (state !== "connected" && (client as any).state !== "connected")) return;
+
+    // #322: skip-load sentinel — set by createSessionForAgent for brand-new
+    // empty topics. No history exists, no point round-tripping chat.history.
+    // The sentinel is consumed (deleted) here so a later reload still works.
+    if (sessionKey && typeof window !== "undefined") {
+      const skipKey = `awf:skip-load:${sessionKey}`;
+      if (sessionStorage.getItem(skipKey)) {
+        sessionStorage.removeItem(skipKey);
+        return;
+      }
+    }
     // #169: Capture guard version at start of async chain. If session switches
     // during any await, the scoped updater will reject the write.
     const scopedUpdate = createScopedUpdater();
@@ -1732,70 +1762,99 @@ export function useChat(sessionKey?: string) {
   // Backfill previous session messages from API server logs.
   // Skip backfill for thread sessions (Cmd+T new topics) — they start fresh
   // and should never inherit messages from other sessions (#149).
+  //
+  // #322: Deferred via requestIdleCallback so the heavy work (sessions API
+  // fetch + per-session backfill loop + IndexedDB merge) does NOT block the
+  // main thread during sessionKey transitions. Cmd+T / Cmd+D used to feel
+  // sluggish (~1.5s) because this useEffect ran synchronously after the
+  // session switch. Now the dialog and new tab paint immediately, and
+  // backfill catches up while the user reads. AbortController cancels any
+  // in-flight backfill the moment sessionKey changes again.
   useEffect(() => {
     if (!sessionKey || state !== "connected") return;
     // Thread/topic sessions (agent:{id}:main:thread:{id} or :topic:{id}) are isolated new chats;
     // backfilling agent-level history into them causes #149.
     if (sessionKey.includes(":thread:") || sessionKey.includes(":topic:")) return;
-    const agentId = sessionKey.split(":")[1] || sessionKey;
-    const apiBase = import.meta.env.VITE_API_URL || "";  // Use same origin (Vite proxies /api to :4001)
 
-    (async () => {
-      try {
-        const topics = await getTopicHistory(sessionKey);
-        console.log("[AWF] Backfill: topics found:", topics.length, "sessionKey:", sessionKey, topics.map(t => ({ id: t.sessionId?.slice(0,8), endedAt: !!t.endedAt })));
+    let cancelled = false;
+    const ric = (typeof window !== "undefined" && (window as any).requestIdleCallback)
+      ? (window as any).requestIdleCallback.bind(window)
+      : (cb: () => void) => setTimeout(cb, 250);
+    const cancelRic = (typeof window !== "undefined" && (window as any).cancelIdleCallback)
+      ? (window as any).cancelIdleCallback.bind(window)
+      : (h: any) => clearTimeout(h);
 
-        // If no ended topics in IndexedDB, try fetching session list from API
-        // and backfill ALL sessions except the current one
-        let previousSessions = topics.filter((t) => t.endedAt);
-        // Always fetch from API — topic-store may not have endedAt marked
-        {
-          console.log("[AWF] Fetching session list from API for backfill...");
-          try {
-            const listRes = await fetch(`${apiBase}/api/session-history/${encodeURIComponent(agentId)}`);
-            if (listRes.ok) {
-              const listData = await listRes.json();
-              const allSessions = (listData.sessions || []) as Array<{ sessionId: string; startedAt: string; messageCount: number }>;
-              // Exclude the most recent session (current)
-              const sorted = allSessions.sort((a: { startedAt: string }, b: { startedAt: string }) => a.startedAt.localeCompare(b.startedAt));
-              if (sorted.length > 1) {
-                previousSessions = sorted.slice(0, -1).map((s: { sessionId: string; startedAt: string }) => ({
-                  sessionKey,
-                  sessionId: s.sessionId,
-                  startedAt: new Date(s.startedAt).getTime(),
-                  endedAt: Date.now(),
-                }));
-                console.log("[AWF] Found", previousSessions.length, "previous sessions from API");
+    const handle = ric(() => {
+      if (cancelled) return;
+      const agentId = sessionKey.split(":")[1] || sessionKey;
+      const apiBase = import.meta.env.VITE_API_URL || "";
+
+      (async () => {
+        try {
+          const topics = await getTopicHistory(sessionKey);
+          if (cancelled) return;
+          console.log("[AWF] Backfill: topics found:", topics.length, "sessionKey:", sessionKey, topics.map(t => ({ id: t.sessionId?.slice(0,8), endedAt: !!t.endedAt })));
+
+          // If no ended topics in IndexedDB, try fetching session list from API
+          // and backfill ALL sessions except the current one
+          let previousSessions = topics.filter((t) => t.endedAt);
+          // Always fetch from API — topic-store may not have endedAt marked
+          {
+            console.log("[AWF] Fetching session list from API for backfill...");
+            try {
+              const listRes = await fetch(`${apiBase}/api/session-history/${encodeURIComponent(agentId)}`);
+              if (cancelled) return;
+              if (listRes.ok) {
+                const listData = await listRes.json();
+                const allSessions = (listData.sessions || []) as Array<{ sessionId: string; startedAt: string; messageCount: number }>;
+                // Exclude the most recent session (current)
+                const sorted = allSessions.sort((a: { startedAt: string }, b: { startedAt: string }) => a.startedAt.localeCompare(b.startedAt));
+                if (sorted.length > 1) {
+                  previousSessions = sorted.slice(0, -1).map((s: { sessionId: string; startedAt: string }) => ({
+                    sessionKey,
+                    sessionId: s.sessionId,
+                    startedAt: new Date(s.startedAt).getTime(),
+                    endedAt: Date.now(),
+                  }));
+                  console.log("[AWF] Found", previousSessions.length, "previous sessions from API");
+                }
               }
+            } catch (e) {
+              console.warn("[AWF] Session list fetch failed:", e);
             }
-          } catch (e) {
-            console.warn("[AWF] Session list fetch failed:", e);
           }
-        }
-        for (const topic of previousSessions) {
-          if (isBackfillDone(sessionKey, topic.sessionId)) continue;
-          const backfilled = await backfillFromApi(
-            sessionKey,
-            topic.sessionId,
-            apiBase,
-            agentId,
-          );
-          if (backfilled.length > 0) {
-            console.log(
-              `[AWF] Backfilled ${backfilled.length} messages from session ${topic.sessionId.slice(0, 8)}`,
+          for (const topic of previousSessions) {
+            if (cancelled) return;
+            if (isBackfillDone(sessionKey, topic.sessionId)) continue;
+            const backfilled = await backfillFromApi(
+              sessionKey,
+              topic.sessionId,
+              apiBase,
+              agentId,
             );
+            if (cancelled) return;
+            if (backfilled.length > 0) {
+              console.log(
+                `[AWF] Backfilled ${backfilled.length} messages from session ${topic.sessionId.slice(0, 8)}`,
+              );
+            }
           }
+          // Always reload after backfill attempts to merge any newly backfilled messages
+          // The previous condition was unreliable due to operator precedence issues (#112)
+          if (!cancelled && previousSessions.length > 0) {
+            console.log("[AWF] Reloading history after backfill to merge previous session messages");
+            loadHistory();
+          }
+        } catch (e) {
+          console.warn("[AWF] Backfill error:", e);
         }
-        // Always reload after backfill attempts to merge any newly backfilled messages
-        // The previous condition was unreliable due to operator precedence issues (#112)
-        if (previousSessions.length > 0) {
-          console.log("[AWF] Reloading history after backfill to merge previous session messages");
-          loadHistory();
-        }
-      } catch (e) {
-        console.warn("[AWF] Backfill error:", e);
-      }
-    })();
+      })();
+    });
+
+    return () => {
+      cancelled = true;
+      cancelRic(handle);
+    };
   }, [sessionKey, state]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Reload history on reconnect (catches messages missed during disconnect).

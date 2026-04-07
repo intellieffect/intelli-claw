@@ -49,6 +49,8 @@ export {
   isTopicClosed,
   isTopicSession,
   isClosableSession,
+  conversationBaseKey,
+  dedupeChannelConversations,
   getCleanLabel,
   CLOSED_PREFIX,
   type ParsedSessionKey,

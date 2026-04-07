@@ -8,7 +8,7 @@ import { AgentSelector } from "./agent-selector";
 import { SessionSwitcher } from "./session-switcher";
 import { AgentBrowser } from "./agent-browser";
 import { DropZone, useFileAttachments, attachmentToPayload } from "./file-attachments";
-import { parseSessionKey, sessionDisplayName, type GatewaySession, isTopicClosed, isClosableSession, CLOSED_PREFIX, getCleanLabel } from "@/lib/gateway/session-utils";
+import { parseSessionKey, sessionDisplayName, type GatewaySession, isTopicClosed, isClosableSession, CLOSED_PREFIX, getCleanLabel, dedupeChannelConversations, conversationBaseKey } from "@/lib/gateway/session-utils";
 import { getTopicCount } from "@/lib/gateway/topic-store";
 import { isSessionHidden, hideSession, unhideSession, getHiddenSessions } from "@/lib/gateway/hidden-sessions";
 import { getLocalMessages } from "@/lib/gateway/message-store";
@@ -110,7 +110,7 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
 
   const { messages, streaming, loading, agentStatus, sendMessage, sendCommand, addUserMessage, addLocalMessage, clearMessages, cancelQueued, abort, replyingTo, setReplyTo, clearReplyTo } = useChat(effectiveSessionKey);
   const { agents } = useAgents();
-  const { sessions, loading: sessionsLoading, refresh: refreshSessions, patchSession } = useSessions();
+  const { sessions, loading: sessionsLoading, refresh: refreshSessions, patchSession, upsertSession } = useSessions();
 
   const { attachments, addFiles, removeAttachment, clearAttachments } = useFileAttachments();
 
@@ -118,7 +118,7 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
   // NOTE: Must be declared before swipe handlers to avoid TDZ in production builds
   const [hiddenVersion, setHiddenVersion] = useState(0);
   const agentSessions = useMemo(() => {
-    return (sessions as GatewaySession[])
+    const sorted = (sessions as GatewaySession[])
       .filter((s) => {
         const p = parseSessionKey(s.key);
         if (p.agentId !== agentId) return false;
@@ -136,6 +136,10 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
         if (bType === "main" && aType !== "main") return 1;
         return (b.updatedAt || 0) - (a.updatedAt || 0);
       });
+    // #321: dedupe channel-routed thread sessions so the Cmd+1~9 shortcuts
+    // and swipe navigation match the chat-header tab order (one tab per
+    // conversation, not per inbound message).
+    return dedupeChannelConversations(sorted);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessions, agentId, hiddenVersion]);
 
@@ -251,62 +255,95 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
   );
 
   const handleCloseTopic = useCallback(
-    async (key: string) => {
+    (key: string) => {
       console.log("[AWF] handleCloseTopic invoked:", key);
       if (!client || !isConnected) {
         console.warn("[AWF] handleCloseTopic skipped — no client or not connected");
         return;
       }
-      const session = (sessions as GatewaySession[]).find((s) => s.key === key);
-      const currentLabel = session?.label || sessionDisplayName({ key });
-      const cleanLabel = isTopicClosed(session || { label: currentLabel })
-        ? getCleanLabel(session || { label: currentLabel })
-        : currentLabel;
 
-      // ALWAYS use a unique suffix from the start. The OpenClaw gateway
-      // enforces a unique-label constraint (`openclaw/src/gateway/sessions-patch.ts:208`),
-      // and channel adapters (Telegram, etc.) routinely spawn multiple
-      // sessions sharing the same human-readable label. The previous
-      // "try simple → retry on collision" approach (PR #317) collided with
-      // already-closed siblings on the very first attempt and the retry
-      // path turned out to be unreachable in practice. Always-unique avoids
-      // the whole class of collisions and is idempotent per session.
-      //
-      // Marker format: `[closed] {label} #~{sid6}`
-      //   - `#~` discriminator (not bare `#`) so it can never be confused
-      //     with chat-id-style suffixes like Telegram's `#8224611555`.
-      //   - last 6 chars of sessionId — stable across retries on the same
-      //     session, but different per session so siblings don't collide.
-      //   - `getCleanLabel` (shared) strips both prefix AND this suffix
-      //     so reopen returns the original human-readable label.
-      const sid = session?.sessionId || key;
-      const sessionIdSuffix = sid.slice(-6);
-      const closedLabel = `${CLOSED_PREFIX}${cleanLabel} #~${sessionIdSuffix}`;
-      console.log("[AWF] handleCloseTopic patching label:", closedLabel);
-
-      try {
-        await client.request("sessions.patch", { key, label: closedLabel });
-        console.log("[AWF] handleCloseTopic patch succeeded");
-
-        // Phase 3: flush topic summary to memory
-        try {
-          const localMessages = await getLocalMessages(key);
-          const summary = generateTopicSummary(localMessages);
-          const sessionId = session?.sessionId || key;
-          await markSessionEnded(key, sessionId, {
-            summary: summary || undefined,
-            messageCount: localMessages.length,
-          });
-        } catch (summaryErr) {
-          console.warn("[AWF] topic summary flush failed:", summaryErr);
-        }
-
-        await refreshSessions();
-      } catch (err) {
-        console.error("[AWF] close topic error:", err);
+      // #321: A single Telegram conversation generates one session per
+      // inbound message (`agent:main:telegram:direct:{user}:thread:{user}:{msgId}`).
+      // The user's mental model is "close this conversation", not "close one
+      // of 64 sibling sessions for the same chat". Build the set of all
+      // open siblings sharing the same conversation base key and patch them
+      // all in parallel so the whole tab vanishes in one Cmd+D.
+      const targetBase = conversationBaseKey(key);
+      const allSessions = sessions as GatewaySession[];
+      const siblings = allSessions.filter((s) => {
+        if (s.key !== key && conversationBaseKey(s.key) !== targetBase) return false;
+        // Skip already-closed sessions to avoid collision-error noise.
+        if (isTopicClosed(s)) return false;
+        return true;
+      });
+      // Always include the explicitly requested key, even if it isn't in
+      // `sessions` yet (defensive — should normally be present).
+      if (!siblings.some((s) => s.key === key)) {
+        const fallback = allSessions.find((s) => s.key === key);
+        if (fallback) siblings.push(fallback);
       }
+      console.log(
+        "[AWF] handleCloseTopic siblings:",
+        siblings.length,
+        siblings.map((s) => s.key),
+      );
+
+      // #322: Optimistic UI — mark every sibling [closed] in the LOCAL state
+      // immediately so chat-header's filter (which hides [closed] tabs) drops
+      // them on the next paint, ~16ms instead of waiting for the gateway
+      // round-trip(s) + sessions.list refresh (~600ms+ on slow store).
+      // The actual gateway patches and IndexedDB writes run in the background.
+      const sidSuffix = (s: GatewaySession) => (s.sessionId || s.key).slice(-6);
+      const buildClosedLabel = (s: GatewaySession) => {
+        const currentLabel = s.label || sessionDisplayName({ key: s.key });
+        const cleanLabel = isTopicClosed({ label: currentLabel })
+          ? getCleanLabel({ label: currentLabel })
+          : currentLabel;
+        return `${CLOSED_PREFIX}${cleanLabel} #~${sidSuffix(s)}`;
+      };
+      for (const s of siblings) {
+        const closedLabel = buildClosedLabel(s);
+        patchSession(s.key, { label: closedLabel });
+      }
+
+      // Background work — DO NOT await: the user's UI is already updated.
+      // ALWAYS use a unique suffix from the start. OpenClaw gateway enforces
+      // unique labels (`openclaw/src/gateway/sessions-patch.ts:208`); the
+      // `#~{sid6}` discriminator avoids collisions while staying idempotent
+      // per session. `getCleanLabel` strips both prefix and suffix on reopen.
+      void (async () => {
+        const closeOne = async (s: GatewaySession) => {
+          const closedLabel = buildClosedLabel(s);
+          try {
+            await client.request("sessions.patch", { key: s.key, label: closedLabel });
+            try {
+              const localMessages = await getLocalMessages(s.key);
+              const summary = generateTopicSummary(localMessages);
+              const sessionId = s.sessionId || s.key;
+              await markSessionEnded(s.key, sessionId, {
+                summary: summary || undefined,
+                messageCount: localMessages.length,
+              });
+            } catch (summaryErr) {
+              console.warn("[AWF] topic summary flush failed:", s.key, summaryErr);
+            }
+            return { ok: true, key: s.key };
+          } catch (err) {
+            console.error("[AWF] close topic error:", s.key, err);
+            return { ok: false, key: s.key, err };
+          }
+        };
+        const results = await Promise.all(siblings.map(closeOne));
+        const okCount = results.filter((r) => r.ok).length;
+        console.log(
+          `[AWF] handleCloseTopic batch close: ${okCount}/${results.length} ok`,
+        );
+        // Reconcile with gateway truth in the background. If any patch
+        // failed, the failed sibling reappears as open on the next refresh.
+        refreshSessions();
+      })();
     },
-    [client, isConnected, sessions, refreshSessions],
+    [client, isConnected, sessions, refreshSessions, patchSession],
   );
 
   const handleReopenTopic = useCallback(
@@ -755,9 +792,10 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
     setTopicNameDialogOpen(true);
   };
 
-  const createSessionForAgent = async (selectedAgentId: string, topicName?: string | null) => {
+  const createSessionForAgent = (selectedAgentId: string, topicName?: string | null) => {
     const topicId = topicName || (Date.now().toString(36) + Math.random().toString(36).slice(2, 6));
     const newKey = `agent:${selectedAgentId}:main:topic:${topicId}`;
+    const label = topicName || makeDefaultThreadLabel(selectedAgentId);
 
     // Switch agent context if different
     if (selectedAgentId !== agentId) {
@@ -767,23 +805,28 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
       }
     }
 
-    setSessionKey(newKey);
-
-    // Pre-label the thread
-    const label = topicName || makeDefaultThreadLabel(selectedAgentId);
-    if (client && isConnected) {
-      try {
-        await client.request("sessions.patch", {
-          key: newKey,
-          label,
-        });
-      } catch {
-        // ignore; auto-labeled on first message
-      }
+    // #322: Optimistic UI — inject the new session into local state and switch
+    // to it immediately so the new tab appears in <50ms instead of waiting for
+    // sessions.patch (~150ms) + sessions.list (~300ms) round-trips.
+    // #322: Tell loadHistory this is a brand-new empty topic so it skips the
+    // chat.history RPC entirely (the topic has no history by definition).
+    if (typeof window !== "undefined") {
+      sessionStorage.setItem(`awf:skip-load:${newKey}`, "1");
     }
-
-    refreshSessions();
+    upsertSession(newKey, {
+      label,
+      updatedAt: Date.now(),
+    } as Partial<GatewaySession>);
+    setSessionKey(newKey);
     refocusPanel();
+
+    // Fire-and-forget gateway patch — UI doesn't block on it. The next
+    // sessions.list polling cycle reconciles state with gateway truth.
+    if (client && isConnected) {
+      client.request("sessions.patch", { key: newKey, label }).catch(() => {
+        // ignore; auto-labeled on first message if rejected
+      });
+    }
   };
 
   const handleRename = useCallback(
