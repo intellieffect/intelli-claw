@@ -19,7 +19,8 @@ import type {
   ContentPart,
   ToolCall,
 } from "@intelli-claw/shared";
-import { CLOSED_PREFIX } from "@intelli-claw/shared";
+// CLOSED_PREFIX import removed: hooks.tsx no longer auto-restores labels
+// to the gateway, so it doesn't need to inspect closed-prefix labels.
 
 import {
   type ToolStreamRefs,
@@ -574,17 +575,15 @@ export function useSessions() {
 
           // #216: Preserve user-set label across session resets.
           const labelToKeep = labelsToRestore.get(key) || serverLabel;
+          // OpenClaw alignment (PR #316/#318/#319 follow-up): client-side
+          // label restoration is the same anti-pattern PR #316 already
+          // removed from auto-labeling. The gateway is the source of
+          // truth — clients shouldn't push labels back. Disabling the
+          // auto-restore entirely so close-topic flow stops getting
+          // overwritten by polling. The `labelToKeep` is still used
+          // locally for display below.
           if (labelsToRestore.has(key)) {
-            const labelToRestore = labelsToRestore.get(key)!;
-            // Skip auto-restore for `[closed]`-prefixed labels: they belong
-            // to a closed-topic snapshot, and re-pushing them collides with
-            // the gateway's unique-label constraint when another session
-            // already owns the same closed label. (Bug surfaced 2026-04-07
-            // when Cmd+D close-topic appeared to silently fail — the actual
-            // failures were these auto-restore calls firing on every poll.)
-            if (!labelToRestore.startsWith(CLOSED_PREFIX)) {
-              client.request("sessions.patch", { key, label: labelToRestore }).catch(() => {});
-            }
+            console.log("[AWF] hooks.tsx: skipping auto-restore for", key, "label:", labelsToRestore.get(key));
           }
 
           markSessionEnded(key, oldSessionId, { totalTokens }).catch(() => {});
@@ -601,12 +600,14 @@ export function useSessions() {
                 try {
                   const topics = await getTopicHistory(key);
                   const prevTopic = topics.find((t: any) => t.sessionId === existing);
-                  // Same guard as above: closed-topic labels are unique-
-                  // constraint hazards. Skip auto-restore for them.
-                  if (prevTopic?.label && !prevTopic.label.startsWith(CLOSED_PREFIX)) {
+                  // OpenClaw alignment: don't auto-push labels back to the
+                  // gateway. Gateway is source of truth. We only update the
+                  // local labelsToRestore cache so the UI display stays
+                  // consistent.
+                  if (prevTopic?.label) {
                     labelsToRestore.set(key, prevTopic.label);
                     preservedLabelsRef.current.set(key, prevTopic.label);
-                    client.request("sessions.patch", { key, label: prevTopic.label }).catch(() => {});
+                    console.log("[AWF] hooks.tsx: cached prevTopic.label without push:", prevTopic.label);
                   }
                 } catch { /* best-effort */ }
               }

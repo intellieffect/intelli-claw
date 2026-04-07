@@ -95,14 +95,20 @@ describe("handleCloseTopic source guard", () => {
     "utf-8",
   );
 
-  it("retries with a unique suffix when gateway rejects with 'label already in use'", () => {
-    expect(CHAT_PANEL).toMatch(/label already in use/);
+  it("uses a unique suffix from the very first attempt (no retry path)", () => {
+    // PR #320 follow-up: the retry approach (PR #317) turned out to be
+    // unreachable in practice because the same auto-restore polling kept
+    // pushing the simple `[closed] {label}` form on every poll cycle. The
+    // robust fix is always-unique from the start.
     expect(CHAT_PANEL).toMatch(/sessionIdSuffix/);
+    expect(CHAT_PANEL).toMatch(/closedLabel/);
+    // The closed label assignment must include the `#~` discriminator
+    expect(CHAT_PANEL).toMatch(/#~\$\{sessionIdSuffix\}/);
   });
 
   it("derives suffix from sessionId, not from a fresh timestamp", () => {
     // Stable suffix per session — closing the same session twice returns
-    // the same retry label (idempotent on transient retries).
+    // the same label (idempotent on transient retries).
     expect(CHAT_PANEL).toMatch(/sid\.slice\(-6\)/);
   });
 });
