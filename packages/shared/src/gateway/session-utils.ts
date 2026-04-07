@@ -186,6 +186,91 @@ export function isTopicSession(key: string): boolean {
 }
 
 /**
+ * Detect a *per-message dummy thread* — a session that channel adapters
+ * (Telegram, etc.) generate one-per-inbound-message instead of grouping
+ * into a real conversation thread.
+ *
+ * Distinguishing signal: in per-message dummy threads the segment IMMEDIATELY
+ * after `:thread:` repeats the parent chat/user identifier. Compare:
+ *
+ *   Telegram (per-message dummy):
+ *     `agent:main:telegram:direct:8224611555:thread:8224611555:23787`
+ *                                  ^^^^^^^^^^         ^^^^^^^^^^
+ *                                  parent userId      first thread segment
+ *                                  (matches → dummy)
+ *
+ *   Slack (real conversation thread):
+ *     `agent:main:slack:channel:c0apg78a5v4:thread:1774935958.629449`
+ *                              ^^^^^^^^^^^         ^^^^^^^^^^^^^^^^^
+ *                              channelId           Slack thread_ts
+ *                              (doesn't match → real thread)
+ *
+ * Real Slack/Discord threads represent distinct user conversations and
+ * MUST appear as separate tabs. Telegram per-message threads are noise
+ * and should collapse into a single conversation tab.
+ *
+ * #321 (2026-04-07): the first version of this helper deduped ALL channel
+ * threads, which collapsed Slack threads into a single tab. This pattern
+ * test fixes that.
+ */
+function isPerMessageDummyThread(key: string): boolean {
+  const parts = key.split(":");
+  const ti = parts.indexOf("thread");
+  if (ti < 0 || ti < 4) return false; // need at least `agent:{id}:{ch}:{kind}:{chatId}:thread:...`
+  const parentChatId = parts[ti - 1]; // segment immediately before `:thread:`
+  const firstThreadSeg = parts[ti + 1];
+  if (!parentChatId || !firstThreadSeg) return false;
+  return parentChatId === firstThreadSeg;
+}
+
+/**
+ * Derive the *base conversation key* for a channel-routed session.
+ *
+ * Used to collapse Telegram-style per-message dummy threads (one session
+ * per inbound message) into a single conversation tab. See
+ * `isPerMessageDummyThread` for the distinguishing pattern — Slack-style
+ * real threads are NOT collapsed.
+ *
+ * Returns:
+ *   - For Telegram per-message dummies: parent key with `:thread:...` stripped
+ *   - For channel `main` sessions: key unchanged (already the root)
+ *   - For Slack/Discord real threads: key unchanged (each is its own conversation)
+ *   - For everything else (plain main, cron, subagent, user `:topic:`):
+ *     key unchanged so dedup is a no-op
+ *
+ * #321 (2026-04-07).
+ */
+export function conversationBaseKey(key: string): string {
+  if (isPerMessageDummyThread(key)) {
+    return key.replace(/:thread:[^:]+(:[^:]+)?$/, "");
+  }
+  return key;
+}
+
+/**
+ * Dedupe channel-routed conversations by their base key, keeping the
+ * FIRST occurrence per conversation (caller is responsible for sorting
+ * by recency before invoking — typically `updatedAt` desc, with `main`
+ * first if you want main pinned ahead of newer threads).
+ *
+ * Only Telegram-style per-message dummy threads are collapsed:
+ *   - Telegram channel `main` + per-message dummy threads → 1 tab
+ *   - Slack/Discord real threads → unchanged (each remains its own tab)
+ *   - Plain `main`, user `:topic:`, cron, subagent → unchanged passthrough
+ */
+export function dedupeChannelConversations<T extends { key: string }>(
+  sessions: T[],
+): T[] {
+  const seen = new Set<string>();
+  return sessions.filter((s) => {
+    const base = conversationBaseKey(s.key);
+    if (seen.has(base)) return false;
+    seen.add(base);
+    return true;
+  });
+}
+
+/**
  * Whether a session can be closed by the user (Cmd+D close-topic).
  *
  * Closable types:

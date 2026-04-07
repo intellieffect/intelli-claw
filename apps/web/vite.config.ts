@@ -8,7 +8,8 @@ const desktopPkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, "../../app
 
 const certKeyPath = path.resolve(__dirname, "../../certificates/localhost-key.pem");
 const certPath = path.resolve(__dirname, "../../certificates/localhost.pem");
-const hasCerts = fs.existsSync(certKeyPath) && fs.existsSync(certPath);
+const disableHttps = process.env.VITE_DISABLE_HTTPS === "1";
+const hasCerts = !disableHttps && fs.existsSync(certKeyPath) && fs.existsSync(certPath);
 const httpsConfig = hasCerts
   ? { key: fs.readFileSync(certKeyPath), cert: fs.readFileSync(certPath) }
   : undefined;

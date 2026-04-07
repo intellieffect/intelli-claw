@@ -4,7 +4,7 @@ import {
   MessageSquare, Plus, X, Pin, Zap,
   MessageCircle, Bot, Settings, Eye, EyeOff,
 } from "lucide-react";
-import { parseSessionKey, isTopicClosed, getCleanLabel } from "@/lib/gateway/session-utils";
+import { parseSessionKey, isTopicClosed, getCleanLabel, dedupeChannelConversations } from "@/lib/gateway/session-utils";
 import { isSessionHidden, hideSession } from "@/lib/gateway/hidden-sessions";
 import type { Agent, Session } from "@/lib/gateway/protocol";
 import type { AgentStatus } from "@/lib/gateway/hooks";
@@ -157,7 +157,7 @@ export function ChatHeader({
   const agentId = parsed?.agentId;
   const allAgentSessions = useMemo(() => {
     if (!agentId) return [];
-    return sessions
+    const filtered = sessions
       .filter((s) => {
         if (!s.key) return false;
         const p = parseSessionKey(s.key as string);
@@ -179,6 +179,15 @@ export function ChatHeader({
         const bTime = typeof (b as any).updatedAt === "string" ? new Date((b as any).updatedAt).getTime() : ((b as any).updatedAt || 0);
         return bTime - aTime;
       });
+
+    // Channel-routed thread dedup (#321):
+    //   Channel adapters (Telegram, Signal, etc.) create one *thread* session
+    //   per inbound message — a single Telegram conversation can produce
+    //   50–100+ sessions, each shown as its own tab. Cmd+D appeared "broken"
+    //   because closing one of 64 visible siblings did nothing perceptible.
+    //   Sort above is updatedAt desc, so the first occurrence per
+    //   conversation wins (most recent stays visible).
+    return dedupeChannelConversations(filtered as Array<{ key: string }>) as typeof filtered;
   }, [sessions, agentId]);
 
   // Show all sessions (no active/idle split)
