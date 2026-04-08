@@ -36,24 +36,47 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_BRANCH: ${{ github.event.pull_request.head.ref }}
         run: |
-          ISSUES=""
+          CANDIDATE_ISSUES=""
 
-          # From branch name
+          # From branch name (e.g. fix/123-foo, feat/45-bar)
+          # The number is treated as a HINT — we validate it below before
+          # blocking on assignees, because branch names sometimes encode
+          # PR numbers, milestones, or non-issue identifiers.
           if [[ "$PR_BRANCH" =~ ^(fix|feat|refactor|chore|docs)/([0-9]+) ]]; then
-            ISSUES="${BASH_REMATCH[2]}"
+            CANDIDATE_ISSUES="${BASH_REMATCH[2]}"
           fi
 
-          # From PR body
+          # From PR body — closing keywords like "fixes #123"
           BODY=$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json body -q '.body')
           BODY_ISSUES=$(echo "$BODY" | grep -oiE '(close[sd]?|fix(e[sd])?|resolve[sd]?)\s+#([0-9]+)' | grep -oE '[0-9]+' || true)
           for i in $BODY_ISSUES; do
-            if [[ ! " $ISSUES " =~ " $i " ]]; then
+            if [[ ! " $CANDIDATE_ISSUES " =~ " $i " ]]; then
+              CANDIDATE_ISSUES="$CANDIDATE_ISSUES $i"
+            fi
+          done
+
+          if [ -z "$CANDIDATE_ISSUES" ]; then
+            echo "::warning::No linked issue found. Consider linking an issue."
+            exit 0
+          fi
+
+          # Validate each candidate is an actual GitHub issue (not a PR
+          # number or stale reference). Non-existent / non-issue references
+          # degrade to a warning instead of failing the workflow.
+          # Without this guard, branches named after PR numbers or
+          # milestones (e.g. fix/322-perf-cleanup) crash `gh issue view`
+          # with "Could not resolve to an issue or pull request" → exit 1.
+          ISSUES=""
+          for i in $CANDIDATE_ISSUES; do
+            if gh issue view "$i" --repo "$GITHUB_REPOSITORY" --json number -q '.number' > /dev/null 2>&1; then
               ISSUES="$ISSUES $i"
+            else
+              echo "::warning::Reference #$i (from branch or PR body) is not a valid issue — ignoring."
             fi
           done
 
           if [ -z "$ISSUES" ]; then
-            echo "::warning::No linked issue found. Consider linking an issue."
+            echo "::warning::No valid linked issue found. Consider linking an issue."
             exit 0
           fi
 

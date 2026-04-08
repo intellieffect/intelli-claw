@@ -157,22 +157,24 @@ export function ChatHeader({
   const agentId = parsed?.agentId;
   const allAgentSessions = useMemo(() => {
     if (!agentId) return [];
+    // Type predicate narrows `SessionEntry` (key?: string) to `key: string`
+    // so the dedup helper picks up the exact element type without casts.
     const filtered = sessions
-      .filter((s) => {
+      .filter((s): s is SessionEntry & { key: string } => {
         if (!s.key) return false;
-        const p = parseSessionKey(s.key as string);
+        const p = parseSessionKey(s.key);
         if (p.agentId !== agentId) return false;
         if (p.type !== "main" && p.type !== "thread") return false;
         // Hide hidden sessions from tabs (main is always visible)
-        if (p.type !== "main" && isSessionHidden(s.key as string)) return false;
+        if (p.type !== "main" && isSessionHidden(s.key)) return false;
         // Hide closed topics from tab bar
         if (s.label && typeof s.label === "string" && isTopicClosed({ label: s.label })) return false;
         return true;
       })
       .sort((a, b) => {
         // Main always first
-        const aType = parseSessionKey((a.key || "") as string).type;
-        const bType = parseSessionKey((b.key || "") as string).type;
+        const aType = parseSessionKey(a.key).type;
+        const bType = parseSessionKey(b.key).type;
         if (aType === "main" && bType !== "main") return -1;
         if (bType === "main" && aType !== "main") return 1;
         const aTime = typeof (a as any).updatedAt === "string" ? new Date((a as any).updatedAt).getTime() : ((a as any).updatedAt || 0);
@@ -187,7 +189,7 @@ export function ChatHeader({
     //   because closing one of 64 visible siblings did nothing perceptible.
     //   Sort above is updatedAt desc, so the first occurrence per
     //   conversation wins (most recent stays visible).
-    return dedupeChannelConversations(filtered as Array<{ key: string }>) as typeof filtered;
+    return dedupeChannelConversations(filtered);
   }, [sessions, agentId]);
 
   // Show all sessions (no active/idle split)

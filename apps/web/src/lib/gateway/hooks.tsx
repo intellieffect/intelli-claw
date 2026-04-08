@@ -673,13 +673,18 @@ export function useSessions() {
   }, []);
 
   /**
-   * #322: Optimistically insert a session into local state so a brand-new
-   * tab (Cmd+T new topic) appears instantly without waiting for the next
-   * `sessions.list` round-trip. The next polling refresh reconciles with
-   * gateway truth — if the gateway didn't accept the create, the entry is
-   * silently removed on reconcile.
+   * #322: Optimistically insert (or update) a session in local state so a
+   * brand-new tab (Cmd+T new topic) appears instantly without waiting for
+   * the next `sessions.list` round-trip. The next polling refresh
+   * reconciles with gateway truth — if the gateway didn't accept the
+   * create, the entry is silently removed on reconcile.
+   *
+   * Signature mirrors `patchSession` (Record<string, unknown>) so callers
+   * can pass arbitrary gateway fields like `label` / numeric `updatedAt`
+   * that aren't on the narrow `Session` shape but DO live on the runtime
+   * objects (see fetchSessions where the spread retains all gateway data).
    */
-  const upsertSession = useCallback((key: string, partial: Partial<Session>) => {
+  const upsertSession = useCallback((key: string, partial: Record<string, unknown>) => {
     setSessions((prev) => {
       const idx = prev.findIndex((s) => s.key === key);
       if (idx === -1) {

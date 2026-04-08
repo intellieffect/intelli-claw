@@ -424,9 +424,20 @@ export class ChatStreamProcessor {
     } else if (stream === "lifecycle" && data?.phase === "start") {
       this.handleLifecycleStart(raw, data);
     } else if (stream === "lifecycle" && data?.phase === "end") {
-      // NO-OP for stream finalization — chat "final" handles it.
-      // Only record finalized event key for dedup.
+      // #225: lifecycle.end is ground truth that the run is over. Clear
+      // runId so it doesn't leak when the chat "final" event never arrives
+      // (subscription drop, gateway restart, error path, agent-only flows).
+      // chat "final" still calls finalizeActiveStream() which is idempotent
+      // for runId, so this is safe alongside the chat-event flow.
+      // Only clear if the event's runId matches ours (or is absent), to
+      // avoid clearing on stale events from a previous run.
       const eventRunId = resolveRunId(raw, data);
+      if (!eventRunId || eventRunId === this.runId) {
+        if (this.runId !== null) {
+          this.runId = null;
+          this.cb.onRunIdChange(null);
+        }
+      }
       const key = finalEventKey(eventRunId);
       if (key) this.finalizedEventKeys.add(key);
     } else if (
@@ -434,8 +445,16 @@ export class ChatStreamProcessor {
       stream === "end" ||
       stream === "finish"
     ) {
-      // NO-OP — same as lifecycle.end. Only record dedup key.
+      // #225: same as lifecycle.end — these are explicit stream-termination
+      // signals. Clear runId so subsequent chat.abort fallback logic uses
+      // sessionKey-only (no stale runId).
       const eventRunId = resolveRunId(raw, data);
+      if (!eventRunId || eventRunId === this.runId) {
+        if (this.runId !== null) {
+          this.runId = null;
+          this.cb.onRunIdChange(null);
+        }
+      }
       const key = finalEventKey(eventRunId);
       if (key) this.finalizedEventKeys.add(key);
     } else if (stream === "error") {
