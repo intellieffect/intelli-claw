@@ -816,7 +816,7 @@ export function ChatPanel({ showHeader = true }: ChatPanelProps) {
     upsertSession(newKey, {
       label,
       updatedAt: Date.now(),
-    } as Partial<GatewaySession>);
+    });
     setSessionKey(newKey);
     refocusPanel();
 

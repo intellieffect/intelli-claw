@@ -215,7 +215,10 @@ export function isTopicSession(key: string): boolean {
  */
 function isPerMessageDummyThread(key: string): boolean {
   const parts = key.split(":");
-  const ti = parts.indexOf("thread");
+  // Use the LAST `:thread:` segment so nested keys (theoretical, not seen
+  // in OpenClaw today) collapse correctly: only the trailing thread group
+  // matters for "is this a per-message dummy" — outer threads are real.
+  const ti = parts.lastIndexOf("thread");
   if (ti < 0 || ti < 4) return false; // need at least `agent:{id}:{ch}:{kind}:{chatId}:thread:...`
   const parentChatId = parts[ti - 1]; // segment immediately before `:thread:`
   const firstThreadSeg = parts[ti + 1];
