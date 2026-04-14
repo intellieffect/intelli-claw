@@ -29,10 +29,27 @@ const nodeConnection = new NodeConnectionManager();
 
 // ── Claude Code session manager ──
 let claudeProcess: ChildProcess | null = null;
-const WEBCHAT_PORT = 4003;
+let webchatPort = 0; // Assigned dynamically
+
+/** Find a free port starting from base */
+function findFreePort(base: number): Promise<number> {
+  return new Promise((res) => {
+    import("net").then(({ createServer }) => {
+      const srv = createServer();
+      srv.listen(base, "127.0.0.1", () => {
+        const port = (srv.address() as { port: number }).port;
+        srv.close(() => res(port));
+      });
+      srv.on("error", () => res(findFreePort(base + 1)));
+    });
+  });
+}
 
 function spawnClaudeCode(): Promise<void> {
-  return new Promise((resolve, reject) => {
+  return new Promise(async (resolve) => {
+    webchatPort = await findFreePort(4003);
+    console.log(`[claude-code] Using port ${webchatPort}`);
+
     const cwd = process.env.CLAUDE_CODE_CWD || app.getAppPath();
 
     const proc = spawn("claude", [
@@ -40,7 +57,7 @@ function spawnClaudeCode(): Promise<void> {
       "--dangerously-skip-permissions",
     ], {
       cwd,
-      env: { ...process.env, WEBCHAT_PORT: String(WEBCHAT_PORT) },
+      env: { ...process.env, WEBCHAT_PORT: String(webchatPort) },
       stdio: ["pipe", "pipe", "pipe"],
     });
 
@@ -59,14 +76,14 @@ function spawnClaudeCode(): Promise<void> {
     let ready = false;
     const checkReady = setInterval(() => {
       import("net").then(({ createConnection }) => {
-        const sock = createConnection({ port: WEBCHAT_PORT, host: "127.0.0.1" });
+        const sock = createConnection({ port: webchatPort, host: "127.0.0.1" });
         sock.on("connect", () => {
           sock.destroy();
           if (!ready) {
             ready = true;
             clearInterval(checkReady);
             clearTimeout(confirmTimer);
-            console.log(`[claude-code] Ready on port ${WEBCHAT_PORT}`);
+            console.log(`[claude-code] Ready on port ${webchatPort}`);
             resolve();
           }
         });
@@ -74,13 +91,12 @@ function spawnClaudeCode(): Promise<void> {
       });
     }, 1000);
 
-    // Timeout after 30s
     setTimeout(() => {
       if (!ready) {
         clearInterval(checkReady);
         clearTimeout(confirmTimer);
         console.warn("[claude-code] Timed out waiting for webchat plugin");
-        resolve(); // Don't block app start
+        resolve();
       }
     }, 30000);
 
@@ -89,7 +105,7 @@ function spawnClaudeCode(): Promise<void> {
       claudeProcess = null;
       clearInterval(checkReady);
       clearTimeout(confirmTimer);
-      resolve(); // Don't block
+      resolve();
     });
 
     proc.on("exit", (code) => {
@@ -223,7 +239,7 @@ function createWindow(opts?: CreateWindowOpts): BrowserWindow {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
-      additionalArguments: [`--window-id=${windowId}`],
+      additionalArguments: [`--window-id=${windowId}`, `--webchat-port=${webchatPort}`],
     },
   };
 

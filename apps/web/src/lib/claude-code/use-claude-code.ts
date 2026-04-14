@@ -26,10 +26,10 @@ interface UseClaudeCodeReturn {
 }
 
 function getDefaultWsUrl(): string {
-  const port = import.meta.env.VITE_WEBCHAT_PORT || "4003";
-
-  // Electron: file:// protocol, no host — connect directly to plugin
-  if ("electronAPI" in window || window.location.protocol === "file:") {
+  // Electron: use dynamic port from preload
+  if ("electronAPI" in window) {
+    const api = (window as any).electronAPI;
+    const port = api?.webchatPort || 4003;
     return `ws://127.0.0.1:${port}`;
   }
 

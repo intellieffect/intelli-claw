@@ -4,8 +4,13 @@ import { contextBridge, ipcRenderer } from "electron";
 const windowIdArg = process.argv.find((a) => a.startsWith("--window-id="));
 const windowId = windowIdArg ? parseInt(windowIdArg.split("=")[1], 10) : 0;
 
+// Parse webchat port from additionalArguments (--webchat-port=N)
+const webchatPortArg = process.argv.find((a) => a.startsWith("--webchat-port="));
+const webchatPort = webchatPortArg ? parseInt(webchatPortArg.split("=")[1], 10) : 0;
+
 const electronAPI = {
   windowId,
+  webchatPort,
   getVersion: () => ipcRenderer.invoke("app:version") as Promise<string>,
   /** Notify main process of current active session key (#170) */
   updateSessionKey: (sessionKey: string) => ipcRenderer.send("session:update", sessionKey),
