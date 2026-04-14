@@ -5,7 +5,12 @@
 # be running on http://127.0.0.1:8790 (default). Start it separately in another
 # terminal:
 #
-#   claude --dangerously-load-development-channels plugin:intelli-claw-channel@<marketplace>
+#   # one-time: register this repo as a local marketplace
+#   claude plugin marketplace add "$PWD"
+#   claude plugin install intelli-claw-channel@intelli-claw
+#
+#   # each session:
+#   claude --dangerously-load-development-channels plugin:intelli-claw-channel@intelli-claw
 #
 # For purely local development without Claude Code, you can run the plugin's
 # HTTP server directly:

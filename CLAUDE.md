@@ -63,8 +63,12 @@ pnpm dev
 # Channel 플러그인 단독 기동 (개발용, Claude Code 없이 HTTP/WS만)
 cd plugins/intelli-claw-channel && bun server.ts
 
+# 최초 1회 — 저장소를 로컬 마켓플레이스로 등록
+claude plugin marketplace add "$PWD"
+claude plugin install intelli-claw-channel@intelli-claw
+
 # Claude Code 세션에 플러그인 연결 (실제 사용)
-claude --dangerously-load-development-channels plugin:intelli-claw-channel@<marketplace>
+claude --dangerously-load-development-channels plugin:intelli-claw-channel@intelli-claw
 
 # 전체 빌드
 pnpm build

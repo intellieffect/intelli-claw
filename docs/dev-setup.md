@@ -17,13 +17,24 @@ pnpm install
 
 ## 개발 흐름
 
+### 0. 로컬 마켓플레이스 등록 (최초 1회)
+
+저장소 루트의 `.claude-plugin/marketplace.json`을 사용해 Claude Code에 마켓플레이스를 등록합니다:
+
+```sh
+claude plugin marketplace add /절대/경로/intelli-claw
+claude plugin install intelli-claw-channel@intelli-claw
+```
+
+정상 등록 시 `Successfully installed plugin: intelli-claw-channel@intelli-claw (scope: user)` 가 출력됩니다. 업데이트는 `claude plugin update intelli-claw-channel` 또는 `claude plugin marketplace update intelli-claw`.
+
 ### 1. Channel 플러그인 기동
 
 두 가지 방식:
 
 ```sh
 # (A) Claude Code 세션에 붙여서 — 실제 사용 모드
-claude --dangerously-load-development-channels plugin:intelli-claw-channel@<marketplace>
+claude --dangerously-load-development-channels plugin:intelli-claw-channel@intelli-claw
 
 # (B) 플러그인 단독 기동 — UI만 테스트하고 싶을 때 (Claude와 연결 안 됨)
 cd plugins/intelli-claw-channel && bun server.ts

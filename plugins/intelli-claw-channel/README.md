@@ -17,11 +17,13 @@ Based on the `fakechat` reference plugin (`anthropics/claude-plugins-official/ex
 Requires Bun (`brew install oven-sh/bun/bun`).
 
 ```sh
-# From repo root:
+# From repo root — install deps and register this repo as a local marketplace:
 pnpm install
+claude plugin marketplace add "$PWD"
+claude plugin install intelli-claw-channel@intelli-claw
 
-# Launch Claude Code with this plugin active (local dev — no marketplace install):
-claude --dangerously-load-development-channels plugin:intelli-claw-channel@local
+# Launch Claude Code with this plugin active:
+claude --dangerously-load-development-channels plugin:intelli-claw-channel@intelli-claw
 
 # Separately run the intelli-claw web UI (Vite):
 pnpm dev   # opens http://localhost:4000
