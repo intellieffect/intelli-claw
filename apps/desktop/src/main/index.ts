@@ -70,10 +70,25 @@ function spawnClaudeCode(): Promise<void> {
     console.log(`[claude-code] Using port ${webchatPort}, resume: ${previousSession || "new session"}`);
 
     const cwd = process.env.CLAUDE_CODE_CWD || app.getAppPath();
+    const pluginDir = join(cwd, "plugins", "webchat");
+
+    // Inject port directly via --mcp-config so each instance gets its own port
+    const mcpConfig = JSON.stringify({
+      mcpServers: {
+        webchat: {
+          type: "stdio",
+          command: "bun",
+          args: ["run", "--cwd", pluginDir, "start"],
+          env: { WEBCHAT_PORT: String(webchatPort) },
+        },
+      },
+    });
 
     const args = [
       "--dangerously-load-development-channels", "server:webchat",
       "--dangerously-skip-permissions",
+      "--mcp-config", mcpConfig,
+      "--strict-mcp-config",
     ];
 
     // Resume previous session if available
