@@ -45,6 +45,10 @@ export interface ChannelInfo {
   port: number;
   activeSessionId: string;
   tools: string[];
+  /** Whether the plugin requires `Authorization: Bearer <token>` (LAN mode). */
+  authRequired?: boolean;
+  /** `"loopback"` for 127.0.0.1 default, `"lan"` for INTELLI_CLAW_HOST != 127.0.0.1. */
+  mode?: "loopback" | "lan";
 }
 
 export interface SendPayload {

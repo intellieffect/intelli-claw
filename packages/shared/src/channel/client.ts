@@ -151,7 +151,13 @@ export class ChannelClient {
   private wsUrl(): string {
     const base = new URL(this.config.url);
     const scheme = base.protocol === "https:" ? "wss:" : "ws:";
-    return `${scheme}//${base.host}/ws`;
+    // Browsers can't set custom headers on a WebSocket handshake, so the
+    // plugin accepts `?token=…` as a fallback. Loopback (no token) sends no
+    // query string at all.
+    const qs = this.config.token
+      ? `?token=${encodeURIComponent(this.config.token)}`
+      : "";
+    return `${scheme}//${base.host}/ws${qs}`;
   }
 
   private authHeaders(): Record<string, string> {

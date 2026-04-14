@@ -20,6 +20,7 @@ import {
   parsePermissionReply,
   pendingPermissions,
   resolvePermissionVerdict,
+  isAuthorized,
 } from "./server";
 
 // ---------- mime ----------
@@ -61,6 +62,21 @@ describe("corsHeaders", () => {
   it("allows Electron app:// origin", () => {
     const h = corsHeaders("app://./index.html");
     expect(h["Access-Control-Allow-Origin"]).toBe("app://./index.html");
+  });
+
+  it.each([
+    "capacitor://localhost",
+    "ionic://localhost",
+    "exp://192.168.1.42:19000",
+    "file:///Users/bruce/app/index.html",
+  ])("allows mobile/native origin %s", (origin) => {
+    const h = corsHeaders(origin);
+    expect(h["Access-Control-Allow-Origin"]).toBe(origin);
+  });
+
+  it("advertises Authorization in Allow-Headers (for LAN bearer auth)", () => {
+    const h = corsHeaders("http://localhost:4000");
+    expect(h["Access-Control-Allow-Headers"]).toContain("Authorization");
   });
 
   it("omits the Allow-Origin header for disallowed origins", () => {
@@ -292,6 +308,13 @@ describe("HTTP server", () => {
     const res = await fetch(`${base}/nope`);
     expect(res.status).toBe(404);
   });
+
+  it("/config advertises authRequired=false and mode=loopback by default", async () => {
+    const res = await fetch(`${base}/config`);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body.authRequired).toBe(false);
+    expect(body.mode).toBe("loopback");
+  });
 });
 
 // ---------- Permission relay ----------
@@ -331,6 +354,17 @@ describe("parsePermissionReply", () => {
   it("rejects non-matching prefixes (no bare yes/no)", () => {
     expect(parsePermissionReply("maybe abcde")).toBeNull();
     expect(parsePermissionReply("yes")).toBeNull();
+  });
+});
+
+// ---------- Bearer auth (LAN mode) ----------
+
+describe("isAuthorized", () => {
+  it("allows everything when no token is configured (loopback default)", () => {
+    // CHANNEL_TOKEN is module-evaluated; the test binary runs without the
+    // env var, so the function must behave as an open door here.
+    const req = new Request("http://127.0.0.1:8790/send", { method: "POST" });
+    expect(isAuthorized(req)).toBe(true);
   });
 });
 

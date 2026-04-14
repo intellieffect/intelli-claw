@@ -36,14 +36,26 @@ const INBOX_DIR = join(STATE_DIR, "inbox");
 const OUTBOX_DIR = join(STATE_DIR, "outbox");
 const DEFAULT_SESSION_ID = "main";
 
-// CORS allowlist — Vite dev, prod preview, Electron packaged shell.
+// LAN mode: set INTELLI_CLAW_TOKEN in the plugin's process env (e.g. via
+// ~/.claude/channels/intelli-claw/.env) and set INTELLI_CLAW_HOST=0.0.0.0 (or
+// the Tailscale IP) to expose the server beyond loopback. Every non-/config
+// request then requires `Authorization: Bearer <token>` (or `?token=…` on
+// WebSocket upgrade, since browsers can't set WS headers).
+export const CHANNEL_TOKEN = process.env.INTELLI_CLAW_TOKEN ?? "";
+export const IS_LAN_MODE = HOST !== "127.0.0.1" && HOST !== "localhost";
+
+// CORS allowlist — Vite dev, prod preview, Electron packaged shell, and
+// mobile webview / Expo dev schemes for LAN mode.
 const ALLOWED_ORIGINS = new Set([
   "http://localhost:4000",
   "http://localhost:4100",
   "http://127.0.0.1:4000",
   "http://127.0.0.1:4100",
 ]);
-const ELECTRON_ORIGIN_RE = /^app:\/\//;
+// app://  — Electron packaged prod
+// capacitor://, ionic://, file://  — mobile native webviews
+// exp://  — Expo dev client
+const WILDCARD_ORIGIN_RE = /^(?:app|capacitor|ionic|exp|file):\/\//;
 
 export type ChannelMsg = {
   id: string;
@@ -134,16 +146,42 @@ export function assertSendable(f: string): void {
 
 export function corsHeaders(origin: string | null): Record<string, string> {
   const allow =
-    origin && (ALLOWED_ORIGINS.has(origin) || ELECTRON_ORIGIN_RE.test(origin))
+    origin && (ALLOWED_ORIGINS.has(origin) || WILDCARD_ORIGIN_RE.test(origin))
       ? origin
       : "";
   const h: Record<string, string> = {
     Vary: "Origin",
     "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Headers": "Content-Type,Authorization",
   };
   if (allow) h["Access-Control-Allow-Origin"] = allow;
   return h;
+}
+
+/**
+ * Authorize a request against the configured bearer token.
+ *
+ * - Loopback with no token configured: all requests pass. This is the dev
+ *   default — anything on the local host already has full loopback access.
+ * - Token configured: `Authorization: Bearer <token>` must match.
+ * - WebSocket upgrades cannot set headers from the browser, so a `?token=…`
+ *   query-string fallback is accepted.
+ *
+ * The caller short-circuits `/config` so unauthenticated clients can discover
+ * whether a token is required before attempting to authenticate.
+ */
+export function isAuthorized(req: Request): boolean {
+  if (!CHANNEL_TOKEN) return true;
+  const header = req.headers.get("authorization") ?? "";
+  const bearer = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
+  if (bearer && bearer === CHANNEL_TOKEN) return true;
+  try {
+    const url = new URL(req.url);
+    const qs = url.searchParams.get("token") ?? "";
+    return qs !== "" && qs === CHANNEL_TOKEN;
+  } catch {
+    return false;
+  }
 }
 
 // ---- MCP server (stdio) --------------------------------------------------
@@ -427,11 +465,8 @@ export async function startHttpServer(
         return new Response(null, { status: 204, headers: baseHeaders });
       }
 
-      if (url.pathname === "/ws") {
-        if (server.upgrade(req)) return;
-        return new Response("upgrade failed", { status: 400, headers: baseHeaders });
-      }
-
+      // /config is always accessible so clients can discover auth requirements
+      // before attempting to authenticate.
       if (url.pathname === "/" || url.pathname === "/config") {
         const body = JSON.stringify({
           status: "ok",
@@ -440,10 +475,27 @@ export async function startHttpServer(
           port: PORT,
           activeSessionId,
           tools: ["reply", "edit_message", "session_switch"],
+          authRequired: CHANNEL_TOKEN !== "",
+          mode: IS_LAN_MODE ? "lan" : "loopback",
         });
         return new Response(body, {
           headers: { ...baseHeaders, "content-type": "application/json" },
         });
+      }
+
+      if (!isAuthorized(req)) {
+        return new Response("unauthorized", {
+          status: 401,
+          headers: {
+            ...baseHeaders,
+            "WWW-Authenticate": "Bearer realm=\"intelli-claw-channel\"",
+          },
+        });
+      }
+
+      if (url.pathname === "/ws") {
+        if (server.upgrade(req)) return;
+        return new Response("upgrade failed", { status: 400, headers: baseHeaders });
       }
 
       if (url.pathname.startsWith("/files/")) {
@@ -550,5 +602,15 @@ const isEntrypoint = import.meta.main;
 if (isEntrypoint) {
   await mcp.connect(new StdioServerTransport());
   await startHttpServer();
-  process.stderr.write(`intelli-claw-channel: http://${HOST}:${PORT}\n`);
+  const mode = IS_LAN_MODE ? "lan" : "loopback";
+  const auth = CHANNEL_TOKEN ? "bearer-token" : "none";
+  process.stderr.write(
+    `intelli-claw-channel: http://${HOST}:${PORT} (mode=${mode} auth=${auth})\n`,
+  );
+  if (IS_LAN_MODE && !CHANNEL_TOKEN) {
+    process.stderr.write(
+      "intelli-claw-channel: WARNING — LAN mode without INTELLI_CLAW_TOKEN. " +
+        "Anyone on the network can talk to Claude. Set INTELLI_CLAW_TOKEN=<secret>.\n",
+    );
+  }
 }
