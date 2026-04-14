@@ -24,6 +24,7 @@ import {
   statSync,
   copyFileSync,
   realpathSync,
+  readdirSync,
 } from "fs";
 import { homedir } from "os";
 import { join, extname, basename, sep } from "path";
@@ -69,6 +70,114 @@ const DEFAULT_SESSION_ID = "main";
 // WebSocket upgrade, since browsers can't set WS headers).
 export const CHANNEL_TOKEN = process.env.INTELLI_CLAW_TOKEN ?? "";
 export const IS_LAN_MODE = HOST !== "127.0.0.1" && HOST !== "localhost";
+
+// Claude Code stores session transcripts at
+//   ~/.claude/projects/<escaped-cwd>/<session-uuid>.jsonl
+// where <escaped-cwd> replaces every "/" in the absolute cwd with "-".
+// The plugin's cwd matches the Claude Code session's cwd (spawned via stdio
+// from that session), so we reuse it to locate the transcript directory.
+export const CLAUDE_PROJECTS_DIR = join(homedir(), ".claude", "projects");
+export function claudeProjectDir(cwd: string = process.cwd()): string {
+  return join(CLAUDE_PROJECTS_DIR, cwd.replace(/\//g, "-"));
+}
+
+export interface SessionSummary {
+  uuid: string;
+  /** Preview of the first external user message (best-effort, 200 chars max). */
+  title: string;
+  /** Total number of entries in the transcript (rough activity signal). */
+  messageCount: number;
+  /** Last-modified epoch ms. */
+  updatedAt: number;
+  /** Git branch at startup, if the transcript recorded one. */
+  gitBranch?: string;
+  /** Absolute jsonl path (useful for debugging). */
+  path: string;
+}
+
+/**
+ * Extract a human-readable preview from the first external user message in a
+ * transcript. Tolerant to the variety of shapes Claude Code emits (string
+ * content vs. `[{type:"text", text:"…"}]` arrays, hook attachments first,
+ * etc.). Returns `""` if nothing usable is found in the first ~200 lines.
+ */
+function firstUserPreview(jsonlPath: string): { title: string; count: number } {
+  let count = 0;
+  let title = "";
+  let raw: string;
+  try {
+    raw = readFileSync(jsonlPath, "utf8");
+  } catch {
+    return { title: "", count: 0 };
+  }
+  const lines = raw.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (!line) continue;
+    count++;
+    if (title) continue;
+    try {
+      const entry = JSON.parse(line) as Record<string, unknown>;
+      if (entry.type !== "user") continue;
+      if (entry.userType && entry.userType !== "external") continue;
+      const message = entry.message as Record<string, unknown> | undefined;
+      const content = message?.content;
+      let text = "";
+      if (typeof content === "string") {
+        text = content;
+      } else if (Array.isArray(content)) {
+        for (const part of content) {
+          if (part && typeof part === "object" && typeof (part as { text?: string }).text === "string") {
+            text = (part as { text: string }).text;
+            break;
+          }
+        }
+      }
+      text = text.trim();
+      if (!text) continue;
+      // Drop hook injection markers and trim to a preview window.
+      const cleaned = text.replace(/^<[^>]+>\s*/m, "").trim();
+      title = cleaned.slice(0, 200);
+    } catch {
+      // Malformed line — skip.
+    }
+  }
+  return { title, count };
+}
+
+export function listSessionSummaries(
+  cwd: string = process.cwd(),
+): SessionSummary[] {
+  const dir = claudeProjectDir(cwd);
+  let names: string[];
+  try {
+    names = readdirSync(dir);
+  } catch {
+    return [];
+  }
+  const summaries: SessionSummary[] = [];
+  for (const name of names) {
+    if (!name.endsWith(".jsonl")) continue;
+    const uuid = name.slice(0, -".jsonl".length);
+    const path = join(dir, name);
+    let stat;
+    try {
+      stat = statSync(path);
+    } catch {
+      continue;
+    }
+    const { title, count } = firstUserPreview(path);
+    summaries.push({
+      uuid,
+      title,
+      messageCount: count,
+      updatedAt: stat.mtimeMs,
+      path,
+    });
+  }
+  summaries.sort((a, b) => b.updatedAt - a.updatedAt);
+  return summaries;
+}
 
 // CORS allowlist — Vite dev, prod preview, Electron packaged shell, and
 // mobile webview / Expo dev schemes for LAN mode.
@@ -541,6 +650,29 @@ export async function startHttpServer(
             "WWW-Authenticate": "Bearer realm=\"intelli-claw-channel\"",
           },
         });
+      }
+
+      if (url.pathname === "/sessions" && req.method === "GET") {
+        // Resolution order:
+        //  1) explicit `?cwd=…` (UI sends the project directory it cares about)
+        //  2) INTELLI_CLAW_PROJECT_CWD env (for Electron-spawned sessions)
+        //  3) the plugin's own process.cwd() — only useful when the user
+        //     happened to launch claude from the same dir the plugin lives in
+        const queryCwd = url.searchParams.get("cwd") || "";
+        const envCwd = process.env.INTELLI_CLAW_PROJECT_CWD ?? "";
+        const cwd = queryCwd || envCwd || process.cwd();
+        const sessions = listSessionSummaries(cwd);
+        return new Response(
+          JSON.stringify({
+            cwd,
+            projectDir: claudeProjectDir(cwd),
+            activeUuid: process.env.INTELLI_CLAW_SESSION_UUID ?? null,
+            sessions,
+          }),
+          {
+            headers: { ...baseHeaders, "content-type": "application/json" },
+          },
+        );
       }
 
       if (url.pathname === "/ws") {

@@ -12,6 +12,7 @@ import {
   type ChannelWire,
   type ConnectionState,
   type SendPayload,
+  type SessionListResponse,
   type UploadPayload,
 } from "./protocol";
 
@@ -117,6 +118,19 @@ export class ChannelClient {
     });
     if (!res.ok) throw new Error(`channel /config ${res.status}`);
     return (await res.json()) as ChannelInfo;
+  }
+
+  /**
+   * List Claude Code session transcripts discovered under `cwd`. The plugin
+   * walks `~/.claude/projects/<escaped-cwd>/` and reads the first external
+   * user message from each `<uuid>.jsonl` for the preview title.
+   */
+  async listSessions(cwd?: string): Promise<SessionListResponse> {
+    const target = new URL("/sessions", this.config.url);
+    if (cwd) target.searchParams.set("cwd", cwd);
+    const res = await fetch(target, { headers: this.authHeaders() });
+    if (!res.ok) throw new Error(`channel /sessions ${res.status}`);
+    return (await res.json()) as SessionListResponse;
   }
 
   async send(payload: SendPayload): Promise<void> {

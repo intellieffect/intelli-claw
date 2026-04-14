@@ -13,10 +13,12 @@ export {
   type ChannelWire,
   type ChannelProviderProps,
   type ChannelStorage,
+  type ClaudeSessionSummary,
   type MessageHandler,
   type PermissionRequest,
   type StateHandler,
   type SendPayload,
+  type SessionListResponse,
   type UploadPayload,
   type ConnectionState as ChannelConnectionState,
 } from "./channel";

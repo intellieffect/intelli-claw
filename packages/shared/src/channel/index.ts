@@ -5,9 +5,11 @@ export {
   type ChannelInfo,
   type ChannelMsg,
   type ChannelWire,
+  type ClaudeSessionSummary,
   type ConnectionState,
   type PermissionRequest,
   type SendPayload,
+  type SessionListResponse,
   type UploadPayload,
 } from "./protocol";
 

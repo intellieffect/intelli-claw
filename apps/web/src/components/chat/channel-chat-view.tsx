@@ -18,25 +18,36 @@ import {
   type KeyboardEvent,
 } from "react";
 import {
+  ChannelClient,
   useChannel,
   type ChannelMsg,
   type ChannelConnectionState,
+  type ClaudeSessionSummary,
   type PermissionRequest,
 } from "@intelli-claw/shared";
-import { Paperclip, Send, X, Wifi, WifiOff, Loader2, ShieldCheck, ShieldX } from "lucide-react";
+import {
+  Clipboard,
+  Loader2,
+  Paperclip,
+  RefreshCw,
+  Send,
+  ShieldCheck,
+  ShieldX,
+  Wifi,
+  WifiOff,
+  X,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const MarkdownRenderer = lazy(() =>
   import("./markdown-renderer").then((m) => ({ default: m.MarkdownRenderer })),
 );
 
-const PRESET_SESSIONS = [
-  { id: "main", label: "main" },
-  { id: "scout", label: "scout" },
-  { id: "biz-ops", label: "biz-ops" },
-  { id: "product-dev", label: "product-dev" },
-  { id: "content-engine", label: "content-engine" },
-];
+const SESSIONS_POLL_MS = 15_000;
+const DEFAULT_CHANNEL_URL =
+  (import.meta.env.VITE_CHANNEL_URL as string | undefined) ?? "http://127.0.0.1:8790";
+const DEFAULT_PROJECT_CWD =
+  (import.meta.env.VITE_CLAUDE_PROJECT_CWD as string | undefined) ?? "";
 
 function StatusBadge({ state }: { state: ChannelConnectionState }) {
   if (state === "connected") {
@@ -67,29 +78,134 @@ function StatusBadge({ state }: { state: ChannelConnectionState }) {
   );
 }
 
-function SessionPicker({
-  value,
-  onChange,
-}: {
-  value: string;
-  onChange: (id: string) => void;
-}) {
-  const options = PRESET_SESSIONS.some((s) => s.id === value)
-    ? PRESET_SESSIONS
-    : [...PRESET_SESSIONS, { id: value, label: value }];
+function formatRelative(ts: number): string {
+  const diff = Date.now() - ts;
+  if (diff < 60_000) return "방금 전";
+  if (diff < 3_600_000) return `${Math.round(diff / 60_000)}분 전`;
+  if (diff < 86_400_000) return `${Math.round(diff / 3_600_000)}시간 전`;
+  const d = new Date(ts);
+  return `${d.getMonth() + 1}/${d.getDate()} ${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`;
+}
 
+async function copyToClipboard(text: string): Promise<void> {
+  try {
+    await navigator.clipboard?.writeText(text);
+  } catch {
+    // Older browsers / insecure contexts — silently ignore.
+  }
+}
+
+function SessionSidebar({
+  sessions,
+  selectedUuid,
+  activeUuid,
+  loading,
+  error,
+  projectCwd,
+  onSelect,
+  onRefresh,
+}: {
+  sessions: ClaudeSessionSummary[];
+  selectedUuid: string | null;
+  activeUuid: string | null;
+  loading: boolean;
+  error: string | null;
+  projectCwd: string;
+  onSelect: (uuid: string) => void;
+  onRefresh: () => void;
+}) {
   return (
-    <select
-      className="h-8 rounded-md border border-input bg-background px-2 text-sm"
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-    >
-      {options.map((s) => (
-        <option key={s.id} value={s.id}>
-          {s.label}
-        </option>
-      ))}
-    </select>
+    <aside className="flex h-full w-80 flex-col border-r border-border bg-muted/30">
+      <div className="flex items-center gap-2 border-b border-border px-3 py-2">
+        <div className="min-w-0 flex-1">
+          <div className="text-xs font-semibold">Claude Code sessions</div>
+          <div className="truncate text-[10px] text-muted-foreground" title={projectCwd}>
+            {projectCwd || "(cwd unknown)"}
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onRefresh}
+          disabled={loading}
+          className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-input hover:bg-accent disabled:opacity-50"
+          aria-label="새로고침"
+        >
+          {loading ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <RefreshCw className="h-3.5 w-3.5" />
+          )}
+        </button>
+      </div>
+      {error && (
+        <div className="px-3 py-2 text-xs text-rose-500">{error}</div>
+      )}
+      <div className="flex-1 overflow-y-auto">
+        {sessions.length === 0 && !loading && !error ? (
+          <div className="p-4 text-xs text-muted-foreground">
+            세션이 없습니다. 이 프로젝트 cwd에서 Claude Code를 한 번 이상 실행해야 합니다.
+          </div>
+        ) : (
+          sessions.map((s) => {
+            const isSelected = s.uuid === selectedUuid;
+            const isActive = s.uuid === activeUuid;
+            return (
+              <button
+                key={s.uuid}
+                type="button"
+                onClick={() => onSelect(s.uuid)}
+                className={cn(
+                  "flex w-full flex-col items-start gap-1 border-b border-border/50 px-3 py-2 text-left text-xs hover:bg-accent/50",
+                  isSelected && "bg-accent",
+                )}
+              >
+                <div className="flex w-full items-center gap-2">
+                  {isActive && (
+                    <span className="inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                  )}
+                  <span className="truncate text-[10px] font-mono text-muted-foreground">
+                    {s.uuid.slice(0, 8)}
+                  </span>
+                  <span className="ml-auto text-[10px] text-muted-foreground">
+                    {s.messageCount} msg · {formatRelative(s.updatedAt)}
+                  </span>
+                </div>
+                <div className="line-clamp-2 w-full text-foreground">
+                  {s.title || "(제목 없음)"}
+                </div>
+              </button>
+            );
+          })
+        )}
+      </div>
+    </aside>
+  );
+}
+
+function SelectedSessionBanner({
+  session,
+  projectCwd,
+}: {
+  session: ClaudeSessionSummary | null;
+  projectCwd: string;
+}) {
+  if (!session) return null;
+  const command = `cd "${projectCwd}" && claude -r ${session.uuid} --dangerously-load-development-channels plugin:intelli-claw-channel@intelli-claw`;
+  return (
+    <div className="flex items-center gap-2 border-b border-border bg-accent/30 px-4 py-2 text-xs">
+      <span className="truncate">
+        선택된 세션 <code className="rounded bg-muted px-1 py-0.5">{session.uuid.slice(0, 8)}</code>{" "}
+        — 연결하려면 아래 명령을 터미널에서 실행하세요
+      </span>
+      <button
+        type="button"
+        onClick={() => copyToClipboard(command)}
+        className="ml-auto inline-flex items-center gap-1 rounded-md border border-input px-2 py-1 hover:bg-accent"
+      >
+        <Clipboard className="h-3 w-3" />
+        명령 복사
+      </button>
+    </div>
   );
 }
 
@@ -315,6 +431,38 @@ function PermissionPrompt({
   );
 }
 
+function useClaudeSessionList(projectCwd: string) {
+  const [sessions, setSessions] = useState<ClaudeSessionSummary[]>([]);
+  const [activeUuid, setActiveUuid] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const client = new ChannelClient({ url: DEFAULT_CHANNEL_URL });
+      const res = await client.listSessions(projectCwd);
+      setSessions(res.sessions);
+      setActiveUuid(res.activeUuid);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+    }
+  }, [projectCwd]);
+
+  useEffect(() => {
+    void refresh();
+    const t = setInterval(() => {
+      void refresh();
+    }, SESSIONS_POLL_MS);
+    return () => clearInterval(t);
+  }, [refresh]);
+
+  return { sessions, activeUuid, loading, error, refresh };
+}
+
 export function ChannelChatView() {
   const {
     state,
@@ -323,9 +471,21 @@ export function ChannelChatView() {
     pendingPermissions,
     send,
     clearMessages,
-    setActiveSessionId,
     resolvePermission,
   } = useChannel();
+
+  const projectCwd = DEFAULT_PROJECT_CWD;
+  const { sessions, activeUuid, loading, error, refresh } = useClaudeSessionList(projectCwd);
+  const [selectedUuid, setSelectedUuid] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (activeUuid && !selectedUuid) setSelectedUuid(activeUuid);
+  }, [activeUuid, selectedUuid]);
+
+  const selectedSession = useMemo(
+    () => sessions.find((s) => s.uuid === selectedUuid) ?? null,
+    [sessions, selectedUuid],
+  );
 
   const handleSubmit = useCallback(
     async (text: string, file?: File) => {
@@ -341,34 +501,53 @@ export function ChannelChatView() {
   const disabled = state !== "connected";
 
   return (
-    <div className="flex h-dvh flex-col bg-background">
-      <header className="flex items-center gap-3 border-b border-border px-4 py-2">
-        <h1 className="text-sm font-semibold">intelli-claw</h1>
-        <SessionPicker value={activeSessionId} onChange={setActiveSessionId} />
-        <StatusBadge state={state} />
-        <button
-          type="button"
-          onClick={clearMessages}
-          className="ml-auto text-xs text-muted-foreground hover:text-foreground"
-        >
-          화면 비우기
-        </button>
-      </header>
-      {pendingPermissions.length > 0 && (
-        <div className="flex flex-col gap-1 pt-1">
-          {pendingPermissions.map((p) => (
-            <PermissionPrompt
-              key={p.request_id}
-              request={p}
-              onResolve={resolvePermission}
-            />
-          ))}
-        </div>
-      )}
-      <main className="flex-1 overflow-y-auto">
-        <MessageList messages={messages} sessionId={activeSessionId} />
-      </main>
-      <Composer disabled={disabled} onSubmit={handleSubmit} />
+    <div className="flex h-dvh bg-background">
+      <SessionSidebar
+        sessions={sessions}
+        selectedUuid={selectedUuid}
+        activeUuid={activeUuid}
+        loading={loading}
+        error={error}
+        projectCwd={projectCwd}
+        onSelect={setSelectedUuid}
+        onRefresh={() => {
+          void refresh();
+        }}
+      />
+      <div className="flex h-full min-w-0 flex-1 flex-col">
+        <header className="flex items-center gap-3 border-b border-border px-4 py-2">
+          <h1 className="text-sm font-semibold">intelli-claw</h1>
+          <span className="text-xs text-muted-foreground">
+            · {activeSessionId}
+          </span>
+          <StatusBadge state={state} />
+          <button
+            type="button"
+            onClick={clearMessages}
+            className="ml-auto text-xs text-muted-foreground hover:text-foreground"
+          >
+            화면 비우기
+          </button>
+        </header>
+        {selectedSession && selectedSession.uuid !== activeUuid && (
+          <SelectedSessionBanner session={selectedSession} projectCwd={projectCwd} />
+        )}
+        {pendingPermissions.length > 0 && (
+          <div className="flex flex-col gap-1 pt-1">
+            {pendingPermissions.map((p) => (
+              <PermissionPrompt
+                key={p.request_id}
+                request={p}
+                onResolve={resolvePermission}
+              />
+            ))}
+          </div>
+        )}
+        <main className="flex-1 overflow-y-auto">
+          <MessageList messages={messages} sessionId={activeSessionId} />
+        </main>
+        <Composer disabled={disabled} onSubmit={handleSubmit} />
+      </div>
     </div>
   );
 }

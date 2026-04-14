@@ -51,6 +51,28 @@ export interface ChannelInfo {
   mode?: "loopback" | "lan";
 }
 
+/**
+ * One Claude Code transcript file (`<uuid>.jsonl`) discovered on disk.
+ * Not the same as the plugin's in-memory `sessionId` label — this is the
+ * real Claude Code session UUID that `claude -r <uuid>` can resume.
+ */
+export interface ClaudeSessionSummary {
+  uuid: string;
+  title: string;
+  messageCount: number;
+  updatedAt: number;
+  gitBranch?: string;
+  path: string;
+}
+
+export interface SessionListResponse {
+  cwd: string;
+  projectDir: string;
+  /** The UUID the currently-spawned Claude Code session is running as, if known. */
+  activeUuid: string | null;
+  sessions: ClaudeSessionSummary[];
+}
+
 export interface SendPayload {
   id: string;
   text: string;
