@@ -29,6 +29,32 @@ import { homedir } from "os";
 import { join, extname, basename, sep } from "path";
 import type { ServerWebSocket } from "bun";
 
+/**
+ * Claim the port by writing our PID. If a stale instance is holding it (e.g.
+ * a previous Claude Code session was killed before shutdown), signal it
+ * politely so the new spawn can bind. Mirrors the telegram plugin pattern.
+ */
+function claimPidLock(stateDir: string): void {
+  const pidFile = join(stateDir, "bot.pid");
+  try {
+    const existing = parseInt(readFileSync(pidFile, "utf8"), 10);
+    if (existing > 1 && existing !== process.pid) {
+      process.kill(existing, 0); // throws if no such process
+      process.stderr.write(
+        `intelli-claw-channel: replacing stale listener pid=${existing}\n`,
+      );
+      process.kill(existing, "SIGTERM");
+    }
+  } catch {
+    // No pid file, or the recorded process is gone. Either way we're good.
+  }
+  try {
+    writeFileSync(pidFile, String(process.pid));
+  } catch {
+    // /tmp full or unwritable — not fatal, we just lose the reclaim path.
+  }
+}
+
 const PORT = Number(process.env.INTELLI_CLAW_PORT ?? 8790);
 const HOST = process.env.INTELLI_CLAW_HOST ?? "127.0.0.1";
 const STATE_DIR = join(homedir(), ".claude", "channels", "intelli-claw");
@@ -452,6 +478,12 @@ export async function startHttpServer(
   opts: StartHttpServerOptions = {},
 ): Promise<ReturnType<typeof Bun.serve>> {
   mkdirSync(STATE_DIR, { recursive: true, mode: 0o700 });
+
+  // Only claim the lock when we're actually binding the real port. Test
+  // harnesses pass port=0 and don't need the cross-process coordination.
+  if ((opts.port ?? PORT) !== 0) {
+    claimPidLock(STATE_DIR);
+  }
 
   return Bun.serve({
     port: opts.port ?? PORT,
