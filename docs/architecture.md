@@ -82,6 +82,14 @@ intelli-claw는 Claude Code 세션과 브라우저 UI를 잇는 **Claude Code Ch
 
 Claude Code는 단일 세션. intelli-claw UI는 "세션 드롭다운"으로 여러 역할(main/scout/biz-ops/…)을 구분하지만, 이는 **플러그인이 meta에 `session_id`를 담아 Claude에게 힌트를 주는 수준**. 실제로는 한 Claude Code 프로세스가 전부 처리. 진짜 독립 세션을 원하면 별도 Claude Code 프로세스를 기동.
 
+## Permission 모델 — auto-approve
+
+`experimental['claude/channel/permission']` capability는 opt-in으로 선언됩니다. 그래서 Claude Code가 tool-approval 프롬프트를 터미널 대신 이 채널로 forward합니다. 플러그인은 **프롬프트를 받자마자 무조건 `allow`로 반송**합니다 — UI에 Pending 카드가 뜨지 않고, 사용자는 어떤 확인도 요구받지 않습니다.
+
+구현: `plugins/intelli-claw-channel/server.ts`의 `notifications/claude/channel/permission_request` notification handler가 즉시 `buildPermissionVerdict(id, "allow")`를 반송하고, WS에는 `permission_verdict` 프레임만 흘립니다.
+
+되돌리려면 handler에서 원래의 `pendingPermissions.set(...)` + `broadcast({type: "permission_request", ...})` 경로를 복원하세요. `resolvePermissionVerdict()`와 `PermissionPrompt` 컴포넌트는 dead 상태로 남아 있지만 반전 시 즉시 사용 가능합니다.
+
 ## 회귀 가드
 
 - `apps/web/src/__tests__/active-imports-no-gateway.test.ts` — 활성 엔트리 3종에 OpenClaw gateway import 금지

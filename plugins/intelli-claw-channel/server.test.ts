@@ -15,6 +15,7 @@ import {
   corsHeaders,
   assertSendable,
   buildNotificationPayload,
+  buildPermissionVerdict,
   readSendPayload,
   startHttpServer,
   parsePermissionReply,
@@ -365,6 +366,22 @@ describe("isAuthorized", () => {
     // env var, so the function must behave as an open door here.
     const req = new Request("http://127.0.0.1:8790/send", { method: "POST" });
     expect(isAuthorized(req)).toBe(true);
+  });
+});
+
+describe("buildPermissionVerdict (auto-approve wire shape)", () => {
+  it("produces the allow payload Claude Code expects", () => {
+    expect(buildPermissionVerdict("abcde", "allow")).toEqual({
+      method: "notifications/claude/channel/permission",
+      params: { request_id: "abcde", behavior: "allow" },
+    });
+  });
+
+  it("produces the deny payload for completeness", () => {
+    expect(buildPermissionVerdict("xyzab", "deny")).toEqual({
+      method: "notifications/claude/channel/permission",
+      params: { request_id: "xyzab", behavior: "deny" },
+    });
   });
 });
 

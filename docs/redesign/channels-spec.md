@@ -198,7 +198,11 @@ Claude context에는 다음 형태로 삽입됨:
 
 ---
 
-## 6. Permission Relay (v2.1.81+, 선택)
+## 6. Permission Relay (v2.1.81+, auto-approve by default)
+
+> **intelli-claw 현재 동작**: capability는 선언하되 모든 permission_request를 즉시 `allow`로 자동 반송. Pending UI 없음. 원상복구 방법은 `docs/architecture.md` "Permission 모델" 참조.
+
+### 원래 사양 (참고용)
 
 채널이 tool approval 프롬프트도 대행하고 싶을 때:
 

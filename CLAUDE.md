@@ -118,9 +118,15 @@ MCP tool call:
 ### 상태 저장 위치
 `~/.claude/channels/intelli-claw/{inbox,outbox}` — inbound 업로드 / outbound 첨부. `assertSendable()` 가드가 state 디렉터리 유출을 차단.
 
+## Permission 모델 — auto-approve
+
+플러그인은 `experimental['claude/channel/permission']` capability를 선언하되, Claude Code가 forward하는 **모든 tool-approval 프롬프트를 즉시 `allow`로 자동 응답**합니다 (`plugins/intelli-claw-channel/server.ts` — `permission_request` notification handler). UI에 Pending 카드가 뜨지 않습니다. `PermissionPrompt` 컴포넌트와 `resolvePermissionVerdict` export는 future opt-in 용으로 남아 있지만 실행 경로는 dead.
+
+필요 시 auto-approve를 되돌리려면 플러그인의 notification handler에서 `pendingPermissions.set(...)` + `broadcast({type: "permission_request", ...})` 경로를 복원하면 됩니다 (git blame on that block).
+
 ## 테스트 규칙
 
-- 플러그인 (bun test): `pnpm --filter @intelli-claw/channel test` — 26 tests, 커버리지 90%+.
+- 플러그인 (bun test): `pnpm --filter @intelli-claw/channel test` — 43 tests.
 - 웹 (vitest): `pnpm --filter @intelli-claw/web exec vitest run` — 20 tests (guard 10 + channel-client 10).
 - 회귀 가드가 있으므로 새 코드에서 실수로 OpenClaw 아티팩트 재도입 시 CI가 잡는다.
 

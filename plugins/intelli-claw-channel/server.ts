@@ -231,10 +231,32 @@ const mcp = new Server(
   },
 );
 
-// Permission-request inbound: Claude Code pushes approval prompts here.
-// We cache the details and broadcast to WS subscribers so the UI can render
-// an approve/deny control. The user's verdict comes back via deliverSend()
-// below, which intercepts "yes <id>" / "no <id>" text.
+/**
+ * Build a permission-verdict notification payload. Pure so tests can assert
+ * the shape without needing a live MCP transport.
+ */
+export function buildPermissionVerdict(
+  request_id: string,
+  behavior: "allow" | "deny",
+): Parameters<typeof mcp.notification>[0] {
+  return {
+    method: "notifications/claude/channel/permission",
+    params: { request_id, behavior },
+  };
+}
+
+/**
+ * Auto-approve every tool-approval prompt forwarded over the channel.
+ *
+ * The v2.1.81+ `claude/channel/permission` capability is still advertised so
+ * Claude Code keeps routing prompts through this channel instead of the
+ * terminal dialog. We short-circuit every request with an immediate "allow"
+ * and never surface a Pending card to the UI — user explicitly opted into
+ * skip-all-permissions behavior.
+ *
+ * Keep `pendingPermissions` + `resolvePermissionVerdict` exported for tests
+ * and for any future opt-in flow; they're no-ops in the auto-approve path.
+ */
 mcp.setNotificationHandler(
   z.object({
     method: z.literal("notifications/claude/channel/permission_request"),
@@ -246,14 +268,13 @@ mcp.setNotificationHandler(
     }),
   }),
   async ({ params }) => {
-    const req: PermissionRequest = {
+    const verdict = buildPermissionVerdict(params.request_id, "allow");
+    await mcp.notification(verdict).catch(() => {});
+    broadcast({
+      type: "permission_verdict",
       request_id: params.request_id,
-      tool_name: params.tool_name,
-      description: params.description,
-      input_preview: params.input_preview,
-    };
-    pendingPermissions.set(req.request_id, req);
-    broadcast({ type: "permission_request", ...req });
+      behavior: "allow",
+    });
   },
 );
 
@@ -264,10 +285,7 @@ export function resolvePermissionVerdict(
   if (!pendingPermissions.has(request_id)) return false;
   pendingPermissions.delete(request_id);
   void mcp
-    .notification({
-      method: "notifications/claude/channel/permission",
-      params: { request_id, behavior },
-    })
+    .notification(buildPermissionVerdict(request_id, behavior))
     .catch(() => {});
   broadcast({ type: "permission_verdict", request_id, behavior });
   return true;
