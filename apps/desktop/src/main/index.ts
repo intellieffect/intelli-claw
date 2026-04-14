@@ -1,6 +1,7 @@
 import { app, BrowserWindow, shell, protocol, net, Menu, screen, dialog, nativeImage, ipcMain } from "electron";
-import { join } from "path";
+import { join, resolve } from "path";
 import { readFileSync, writeFileSync } from "fs";
+import { spawn, type ChildProcess } from "child_process";
 
 // Read version from package.json (bundled into the app)
 const appVersion = app.getVersion(); // electron-builder sets this from package.json
@@ -25,6 +26,90 @@ let mainWindow: BrowserWindow | null = null;
 let nextWindowId = 0;
 let isQuitting = false;
 const nodeConnection = new NodeConnectionManager();
+
+// ── Claude Code session manager ──
+let claudeProcess: ChildProcess | null = null;
+const WEBCHAT_PORT = 4003;
+
+function spawnClaudeCode(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const cwd = process.env.CLAUDE_CODE_CWD || app.getAppPath();
+
+    const proc = spawn("claude", [
+      "--dangerously-load-development-channels", "server:webchat",
+      "--dangerously-skip-permissions",
+    ], {
+      cwd,
+      env: { ...process.env, WEBCHAT_PORT: String(WEBCHAT_PORT) },
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+
+    claudeProcess = proc;
+
+    // Auto-confirm the development channel warning (sends Enter)
+    let confirmed = false;
+    const confirmTimer = setTimeout(() => {
+      if (!confirmed && proc.stdin?.writable) {
+        proc.stdin.write("\n");
+        confirmed = true;
+      }
+    }, 3000);
+
+    // Wait for webchat plugin to be ready (port listening)
+    let ready = false;
+    const checkReady = setInterval(() => {
+      import("net").then(({ createConnection }) => {
+        const sock = createConnection({ port: WEBCHAT_PORT, host: "127.0.0.1" });
+        sock.on("connect", () => {
+          sock.destroy();
+          if (!ready) {
+            ready = true;
+            clearInterval(checkReady);
+            clearTimeout(confirmTimer);
+            console.log(`[claude-code] Ready on port ${WEBCHAT_PORT}`);
+            resolve();
+          }
+        });
+        sock.on("error", () => sock.destroy());
+      });
+    }, 1000);
+
+    // Timeout after 30s
+    setTimeout(() => {
+      if (!ready) {
+        clearInterval(checkReady);
+        clearTimeout(confirmTimer);
+        console.warn("[claude-code] Timed out waiting for webchat plugin");
+        resolve(); // Don't block app start
+      }
+    }, 30000);
+
+    proc.on("error", (err) => {
+      console.error("[claude-code] Spawn error:", err);
+      claudeProcess = null;
+      clearInterval(checkReady);
+      clearTimeout(confirmTimer);
+      resolve(); // Don't block
+    });
+
+    proc.on("exit", (code) => {
+      console.log("[claude-code] Exited with code:", code);
+      claudeProcess = null;
+    });
+
+    proc.stderr?.on("data", (data: Buffer) => {
+      const line = data.toString().trim();
+      if (line) console.log("[claude-code]", line);
+    });
+  });
+}
+
+function killClaudeCode() {
+  if (claudeProcess) {
+    claudeProcess.kill("SIGTERM");
+    claudeProcess = null;
+  }
+}
 
 // Track active session key per window (windowId → sessionKey)
 const windowSessionKeys = new Map<number, string>();
@@ -86,6 +171,8 @@ interface CreateWindowOpts {
   windowId?: number;
   bounds?: Electron.Rectangle;
   sessionKey?: string;
+  /** Start in Claude Code webchat mode */
+  claudeCode?: boolean;
 }
 
 /**
@@ -176,16 +263,19 @@ function createWindow(opts?: CreateWindowOpts): BrowserWindow {
 
   // Append session query param if duplicating a session (#170)
   const sessionParam = opts?.sessionKey ? `session=${encodeURIComponent(opts.sessionKey)}` : "";
+  const hash = opts?.claudeCode ? "#/claude-code" : "";
 
   if (rendererUrl) {
     const separator = rendererUrl.includes("?") ? "&" : "?";
-    win.loadURL(sessionParam ? `${rendererUrl}${separator}${sessionParam}` : rendererUrl);
+    let url = sessionParam ? `${rendererUrl}${separator}${sessionParam}` : rendererUrl;
+    if (hash) url += hash;
+    win.loadURL(url);
   } else {
     const htmlPath = join(__dirname, "../renderer/index.html");
     if (sessionParam) {
-      win.loadFile(htmlPath, { query: { session: opts!.sessionKey! } });
+      win.loadFile(htmlPath, { query: { session: opts!.sessionKey! }, hash });
     } else {
-      win.loadFile(htmlPath);
+      win.loadFile(htmlPath, hash ? { hash } : undefined);
     }
   }
 
@@ -314,6 +404,7 @@ app.on("certificate-error", (event, _webContents, _url, _error, _certificate, ca
 app.on("before-quit", () => {
   isQuitting = true;
   saveWindowStates();
+  killClaudeCode();
 });
 
 // Prevent GPU/child process crashes from killing the app
@@ -326,7 +417,7 @@ app.on("render-process-gone", (_event, _webContents, details) => {
   console.warn("[main] render-process-gone:", details.reason, "exitCode:", details.exitCode);
 });
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   // Set Dock icon (macOS) — ensures iClaw icon shows in Dock & Cmd+Tab even in dev mode
   if (process.platform === "darwin") {
     const iconPath = join(__dirname, "../../../../resources/icon.png");
@@ -341,6 +432,10 @@ app.whenReady().then(() => {
   registerProtocol();
   registerIpcHandlers(nodeConnection);
 
+  // Start Claude Code session (webchat channel plugin)
+  console.log("[main] Starting Claude Code session...");
+  await spawnClaudeCode();
+
   // IPC: renderer reports its active session key (#170)
   ipcMain.on("session:update", (event, sessionKey: string) => {
     // Find the windowId for the sender
@@ -352,14 +447,15 @@ app.whenReady().then(() => {
     }
   });
 
-  // Restore previous windows, or create a fresh one
+  // Restore previous windows, or create a fresh one — default to Claude Code mode
+  const useClaudeCode = !!claudeProcess;
   const savedStates = loadWindowStates();
   if (savedStates.length > 0) {
     for (const state of savedStates) {
-      createWindow({ windowId: state.id, bounds: state.bounds });
+      createWindow({ windowId: state.id, bounds: state.bounds, claudeCode: useClaudeCode });
     }
   } else {
-    createWindow();
+    createWindow({ claudeCode: useClaudeCode });
   }
 
   // Application menu with Cmd+N for new window

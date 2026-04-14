@@ -39,7 +39,7 @@ export function ClaudeCodePanel() {
     disconnect,
     sendMessage,
     clearMessages,
-  } = useClaudeCode();
+  } = useClaudeCode({ autoConnect: true });
 
   const isConnected = status === "ready";
 
