@@ -26,7 +26,14 @@ interface UseClaudeCodeReturn {
 }
 
 function getDefaultWsUrl(): string {
-  // Use Vite proxy path — avoids HTTPS/ws mixed content issues
+  const port = import.meta.env.VITE_WEBCHAT_PORT || "4003";
+
+  // Electron: file:// protocol, no host — connect directly to plugin
+  if ("electronAPI" in window || window.location.protocol === "file:") {
+    return `ws://127.0.0.1:${port}`;
+  }
+
+  // Web: use Vite proxy to avoid HTTPS/ws mixed content
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
   return `${protocol}//${window.location.host}/ws/claude-code`;
 }
