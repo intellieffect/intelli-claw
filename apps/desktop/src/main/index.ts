@@ -447,6 +447,25 @@ app.whenReady().then(() => {
         },
         { role: "toggleDevTools" },
         { type: "separator" },
+        {
+          label: "Claude Code",
+          accelerator: "CmdOrCtrl+Shift+C",
+          click: () => {
+            const focused = BrowserWindow.getFocusedWindow();
+            if (focused && !focused.isDestroyed()) {
+              focused.webContents.executeJavaScript(`
+                if (location.hash === '#/claude-code') {
+                  location.hash = '';
+                  location.reload();
+                } else {
+                  location.hash = '#/claude-code';
+                  location.reload();
+                }
+              `);
+            }
+          },
+        },
+        { type: "separator" },
         { role: "resetZoom" },
         { role: "zoomIn" },
         { role: "zoomOut" },
