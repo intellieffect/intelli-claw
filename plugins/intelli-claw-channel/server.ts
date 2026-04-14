@@ -35,8 +35,10 @@ import type { ServerWebSocket } from "bun";
  * a previous Claude Code session was killed before shutdown), signal it
  * politely so the new spawn can bind. Mirrors the telegram plugin pattern.
  */
-function claimPidLock(stateDir: string): void {
-  const pidFile = join(stateDir, "bot.pid");
+function claimPidLock(stateDir: string, port: number): void {
+  // One lock per port so multiple plugin instances on different ports
+  // (multi-session iClaw) don't fight for the same file.
+  const pidFile = join(stateDir, `bot-${port}.pid`);
   try {
     const existing = parseInt(readFileSync(pidFile, "utf8"), 10);
     if (existing > 1 && existing !== process.pid) {
@@ -613,8 +615,9 @@ export async function startHttpServer(
 
   // Only claim the lock when we're actually binding the real port. Test
   // harnesses pass port=0 and don't need the cross-process coordination.
-  if ((opts.port ?? PORT) !== 0) {
-    claimPidLock(STATE_DIR);
+  const effectivePort = opts.port ?? PORT;
+  if (effectivePort !== 0) {
+    claimPidLock(STATE_DIR, effectivePort);
   }
 
   return Bun.serve({

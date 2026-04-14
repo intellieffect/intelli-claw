@@ -3,9 +3,35 @@ import { ChannelProvider, DEFAULT_CHANNEL_URL } from "@intelli-claw/shared";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ChannelChatView } from "@/components/chat/channel-chat-view";
 
-const CHANNEL_URL =
-  (import.meta.env.VITE_CHANNEL_URL as string | undefined) ?? DEFAULT_CHANNEL_URL;
-const CHANNEL_TOKEN = import.meta.env.VITE_CHANNEL_TOKEN as string | undefined;
+/**
+ * Channel URL resolution (highest precedence first):
+ *  1. `?channel=<url-or-port>` query string. A bare integer is treated as a
+ *     loopback port (`8791` → `http://127.0.0.1:8791`). Lets you open
+ *     multiple browser tabs against different Claude Code sessions.
+ *  2. `?token=<bearer>` query string for LAN-mode pairing override.
+ *  3. `VITE_CHANNEL_URL` / `VITE_CHANNEL_TOKEN` baked at build time.
+ *  4. `DEFAULT_CHANNEL_URL` from the shared package.
+ */
+function resolveChannelConfig(): { url: string; token?: string } {
+  const params = new URLSearchParams(window.location.search);
+  const rawChannel = params.get("channel");
+  let url: string;
+  if (rawChannel) {
+    url = /^\d+$/.test(rawChannel)
+      ? `http://127.0.0.1:${rawChannel}`
+      : rawChannel;
+  } else {
+    url =
+      (import.meta.env.VITE_CHANNEL_URL as string | undefined) ??
+      DEFAULT_CHANNEL_URL;
+  }
+  const token =
+    params.get("token") ??
+    (import.meta.env.VITE_CHANNEL_TOKEN as string | undefined);
+  return { url, token: token || undefined };
+}
+
+const { url: CHANNEL_URL, token: CHANNEL_TOKEN } = resolveChannelConfig();
 
 class AppErrorBoundary extends Component<
   { children: ReactNode },

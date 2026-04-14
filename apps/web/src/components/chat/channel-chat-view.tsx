@@ -431,7 +431,7 @@ function PermissionPrompt({
   );
 }
 
-function useClaudeSessionList(projectCwd: string) {
+function useClaudeSessionList(projectCwd: string, channelUrl: string) {
   const [sessions, setSessions] = useState<ClaudeSessionSummary[]>([]);
   const [activeUuid, setActiveUuid] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -441,7 +441,7 @@ function useClaudeSessionList(projectCwd: string) {
     setLoading(true);
     setError(null);
     try {
-      const client = new ChannelClient({ url: DEFAULT_CHANNEL_URL });
+      const client = new ChannelClient({ url: channelUrl });
       const res = await client.listSessions(projectCwd);
       setSessions(res.sessions);
       setActiveUuid(res.activeUuid);
@@ -450,7 +450,7 @@ function useClaudeSessionList(projectCwd: string) {
     } finally {
       setLoading(false);
     }
-  }, [projectCwd]);
+  }, [projectCwd, channelUrl]);
 
   useEffect(() => {
     void refresh();
@@ -465,6 +465,7 @@ function useClaudeSessionList(projectCwd: string) {
 
 export function ChannelChatView() {
   const {
+    client,
     state,
     activeSessionId,
     messages,
@@ -475,7 +476,11 @@ export function ChannelChatView() {
   } = useChannel();
 
   const projectCwd = DEFAULT_PROJECT_CWD;
-  const { sessions, activeUuid, loading, error, refresh } = useClaudeSessionList(projectCwd);
+  const channelUrl = client?.getConfig().url ?? DEFAULT_CHANNEL_URL;
+  const { sessions, activeUuid, loading, error, refresh } = useClaudeSessionList(
+    projectCwd,
+    channelUrl,
+  );
   const [selectedUuid, setSelectedUuid] = useState<string | null>(null);
 
   useEffect(() => {
@@ -517,8 +522,9 @@ export function ChannelChatView() {
       <div className="flex h-full min-w-0 flex-1 flex-col">
         <header className="flex items-center gap-3 border-b border-border px-4 py-2">
           <h1 className="text-sm font-semibold">intelli-claw</h1>
-          <span className="text-xs text-muted-foreground">
-            · {activeSessionId}
+          <span className="text-xs text-muted-foreground">· {activeSessionId}</span>
+          <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+            {channelUrl.replace(/^https?:\/\//, "")}
           </span>
           <StatusBadge state={state} />
           <button
