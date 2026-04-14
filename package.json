@@ -5,7 +5,10 @@
   "packageManager": "pnpm@10.12.4",
   "scripts": {
     "dev": "pnpm --filter @intelli-claw/web dev",
+    "dev:electron": "pnpm --filter @intelli-claw/desktop dev",
     "build": "turbo run build",
+    "build:electron": "pnpm --filter @intelli-claw/desktop build",
+    "package": "pnpm --filter @intelli-claw/desktop package",
     "preview": "pnpm --filter @intelli-claw/web preview",
     "version:bump": "bash scripts/bump-version.sh",
     "release": "bash scripts/release.sh",
@@ -21,6 +24,7 @@
   },
   "pnpm": {
     "onlyBuiltDependencies": [
+      "electron",
       "esbuild"
     ],
     "overrides": {
