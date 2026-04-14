@@ -20,7 +20,13 @@
     "deploy:macbook": "bash scripts/deploy.sh macbook",
     "deploy:all": "bash scripts/deploy.sh all",
     "deploy:testflight": "bash scripts/deploy-testflight.sh",
-    "deploy:android": "bash scripts/deploy-android.sh"
+    "deploy:android": "bash scripts/deploy-android.sh",
+    "claude:rc": "bash scripts/start-claude-rc.sh",
+    "claude:rc:stop": "tmux kill-session -t claude-rc 2>/dev/null || echo 'No session running'",
+    "claude:rc:attach": "tmux attach -t claude-rc",
+    "claude:webchat": "bash scripts/start-claude-webchat.sh",
+    "claude:webchat:stop": "tmux kill-session -t claude-webchat 2>/dev/null; pkill -f 'vite.*intelli-claw' 2>/dev/null; pkill -f 'tsx.*api-server' 2>/dev/null; echo 'Stopped'",
+    "claude:webchat:attach": "tmux attach -t claude-webchat"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",

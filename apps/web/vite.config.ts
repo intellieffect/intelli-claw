@@ -15,6 +15,8 @@ const httpsConfig = hasCerts
 
 const apiPort = process.env.API_PORT || "4001";
 const apiTarget = `http://localhost:${apiPort}`;
+const webchatPort = process.env.WEBCHAT_PORT || "4003";
+const webchatTarget = `http://localhost:${webchatPort}`;
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
@@ -44,6 +46,11 @@ export default defineConfig({
         target: apiTarget,
         changeOrigin: true,
       },
+      "/ws/claude-code": {
+        target: webchatTarget,
+        changeOrigin: true,
+        ws: true,
+      },
     },
   },
   preview: {
@@ -54,6 +61,11 @@ export default defineConfig({
       "/api": {
         target: apiTarget,
         changeOrigin: true,
+      },
+      "/ws/claude-code": {
+        target: webchatTarget,
+        changeOrigin: true,
+        ws: true,
       },
     },
   },

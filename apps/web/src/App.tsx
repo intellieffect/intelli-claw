@@ -3,15 +3,24 @@ import { GatewayProvider } from "@/lib/gateway/hooks";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ChatView } from "@/components/chat/chat-view";
 import { CronPanel } from "@/components/settings/cron-panel";
+import { ClaudeCodePanel } from "@/components/claude-code/claude-code-panel";
 
 function AppContent() {
-  // Hash-based routing: #/cron → CronPanel, default → ChatView
+  // Hash-based routing: #/cron → CronPanel, #/claude-code → ClaudeCodePanel, default → ChatView
   const hash = window.location.hash;
 
   if (hash === "#/cron") {
     return (
       <div className="h-dvh w-full">
         <CronPanel />
+      </div>
+    );
+  }
+
+  if (hash === "#/claude-code") {
+    return (
+      <div className="h-dvh w-full bg-background">
+        <ClaudeCodePanel />
       </div>
     );
   }
