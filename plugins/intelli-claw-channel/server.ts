@@ -179,13 +179,18 @@ export function listSessionSummaries(
   return summaries;
 }
 
-// CORS allowlist — Vite dev, prod preview, Electron packaged shell, and
-// mobile webview / Expo dev schemes for LAN mode.
+// CORS allowlist — Vite dev (http + https when local certs are present),
+// prod preview, Electron packaged shell, and mobile webview / Expo dev
+// schemes for LAN mode.
 const ALLOWED_ORIGINS = new Set([
   "http://localhost:4000",
+  "https://localhost:4000",
   "http://localhost:4100",
+  "https://localhost:4100",
   "http://127.0.0.1:4000",
+  "https://127.0.0.1:4000",
   "http://127.0.0.1:4100",
+  "https://127.0.0.1:4100",
 ]);
 // app://  — Electron packaged prod
 // capacitor://, ionic://, file://  — mobile native webviews
