@@ -24,10 +24,19 @@ export interface ChannelMsg {
   file?: { url: string; name: string };
 }
 
+export interface PermissionRequest {
+  request_id: string;
+  tool_name: string;
+  description: string;
+  input_preview: string;
+}
+
 export type ChannelWire =
   | ({ type: "msg" } & ChannelMsg)
   | { type: "edit"; id: string; text: string }
-  | { type: "session"; sessionId: string; note?: string };
+  | { type: "session"; sessionId: string; note?: string }
+  | ({ type: "permission_request" } & PermissionRequest)
+  | { type: "permission_verdict"; request_id: string; behavior: "allow" | "deny" };
 
 export interface ChannelInfo {
   status: "ok";

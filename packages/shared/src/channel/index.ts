@@ -6,6 +6,7 @@ export {
   type ChannelMsg,
   type ChannelWire,
   type ConnectionState,
+  type PermissionRequest,
   type SendPayload,
   type UploadPayload,
 } from "./protocol";
@@ -20,6 +21,7 @@ export {
   ChannelProvider,
   useChannel,
   CHANNEL_CONFIG_STORAGE_KEY,
+  CHANNEL_MESSAGES_STORAGE_KEY,
   DEFAULT_CHANNEL_URL,
   type ChannelProviderProps,
 } from "./hooks";

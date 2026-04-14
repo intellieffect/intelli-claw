@@ -16,6 +16,7 @@ import {
   ListToolsRequestSchema,
   CallToolRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
+import { z } from "zod";
 import {
   readFileSync,
   writeFileSync,
@@ -54,14 +55,39 @@ export type ChannelMsg = {
   file?: { url: string; name: string };
 };
 
+export type PermissionRequest = {
+  request_id: string;
+  tool_name: string;
+  description: string;
+  input_preview: string;
+};
+
 export type Wire =
   | ({ type: "msg" } & ChannelMsg)
   | { type: "edit"; id: string; text: string }
-  | { type: "session"; sessionId: string; note?: string };
+  | { type: "session"; sessionId: string; note?: string }
+  | ({ type: "permission_request" } & PermissionRequest)
+  | { type: "permission_verdict"; request_id: string; behavior: "allow" | "deny" };
+
+// Matches fakechat-style 5-char permission codes from the telegram reference
+// (lowercase a-z minus 'l', case-insensitive). Format: "yes <id>" or "no <id>".
+export const PERMISSION_REPLY_RE = /^\s*(y|yes|n|no)\s+([a-km-z]{5})\s*$/i;
 
 const clients = new Set<ServerWebSocket<unknown>>();
 let seq = 0;
 let activeSessionId = DEFAULT_SESSION_ID;
+
+// Permission requests awaiting a user verdict. Keyed by request_id (5 chars).
+export const pendingPermissions = new Map<string, PermissionRequest>();
+
+export function parsePermissionReply(
+  text: string,
+): { request_id: string; behavior: "allow" | "deny" } | null {
+  const m = PERMISSION_REPLY_RE.exec(text);
+  if (!m) return null;
+  const behavior = m[1]!.toLowerCase().startsWith("y") ? "allow" : "deny";
+  return { request_id: m[2]!.toLowerCase(), behavior };
+}
 
 export function nextId(): string {
   return `m${Date.now()}-${++seq}`;
@@ -127,7 +153,12 @@ const mcp = new Server(
   {
     capabilities: {
       tools: {},
-      experimental: { "claude/channel": {} },
+      experimental: {
+        "claude/channel": {},
+        // Opt in to v2.1.81+ permission relay — Claude forwards tool-approval
+        // prompts to this channel so the user can answer from the UI.
+        "claude/channel/permission": {},
+      },
     },
     instructions:
       `The sender reads the intelli-claw UI, not this session. Anything you want them to see must go through the reply tool — your transcript output never reaches the UI.\n\n` +
@@ -135,6 +166,48 @@ const mcp = new Server(
       `The UI supports multiple named sessions (main, scout, biz-ops, etc). The inbound tag's session_id tells you which conversation the user is in. Use session_switch to acknowledge a session change the user requested, and scope your tone/tools to match.`,
   },
 );
+
+// Permission-request inbound: Claude Code pushes approval prompts here.
+// We cache the details and broadcast to WS subscribers so the UI can render
+// an approve/deny control. The user's verdict comes back via deliverSend()
+// below, which intercepts "yes <id>" / "no <id>" text.
+mcp.setNotificationHandler(
+  z.object({
+    method: z.literal("notifications/claude/channel/permission_request"),
+    params: z.object({
+      request_id: z.string(),
+      tool_name: z.string(),
+      description: z.string(),
+      input_preview: z.string(),
+    }),
+  }),
+  async ({ params }) => {
+    const req: PermissionRequest = {
+      request_id: params.request_id,
+      tool_name: params.tool_name,
+      description: params.description,
+      input_preview: params.input_preview,
+    };
+    pendingPermissions.set(req.request_id, req);
+    broadcast({ type: "permission_request", ...req });
+  },
+);
+
+export function resolvePermissionVerdict(
+  request_id: string,
+  behavior: "allow" | "deny",
+): boolean {
+  if (!pendingPermissions.has(request_id)) return false;
+  pendingPermissions.delete(request_id);
+  void mcp
+    .notification({
+      method: "notifications/claude/channel/permission",
+      params: { request_id, behavior },
+    })
+    .catch(() => {});
+  broadcast({ type: "permission_verdict", request_id, behavior });
+  return true;
+}
 
 mcp.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: [
@@ -305,6 +378,33 @@ export function readSendPayload(body: unknown): {
   return { id, text: text.trim(), sessionId };
 }
 
+/**
+ * Handle inbound text from the UI. If the text is a permission reply
+ * ("yes <id>" / "no <id>") it short-circuits to resolve the pending request;
+ * otherwise it's broadcast as a chat message and delivered to Claude.
+ * Returns `'permission'` or `'chat'` for the caller to log / branch on.
+ */
+export function handleInboundText(args: {
+  id: string;
+  text: string;
+  sessionId: string;
+}): "permission" | "chat" {
+  const verdict = parsePermissionReply(args.text);
+  if (verdict && resolvePermissionVerdict(verdict.request_id, verdict.behavior)) {
+    return "permission";
+  }
+  broadcast({
+    type: "msg",
+    id: args.id,
+    from: "user",
+    text: args.text,
+    ts: Date.now(),
+    sessionId: args.sessionId,
+  });
+  deliverNotification(args.id, args.sessionId, args.text);
+  return "chat";
+}
+
 export interface StartHttpServerOptions {
   port?: number;
   hostname?: string;
@@ -378,15 +478,7 @@ export async function startHttpServer(
               headers: baseHeaders,
             });
           }
-          broadcast({
-            type: "msg",
-            id: payload.id,
-            from: "user",
-            text: payload.text,
-            ts: Date.now(),
-            sessionId: payload.sessionId,
-          });
-          deliverNotification(payload.id, payload.sessionId, payload.text);
+          handleInboundText(payload);
           return new Response(null, { status: 204, headers: baseHeaders });
         })();
       }
@@ -440,8 +532,11 @@ export async function startHttpServer(
             session_id?: string;
           };
           if (!obj.id || !obj.text?.trim()) return;
-          const sessionId = obj.session_id || activeSessionId;
-          deliverNotification(obj.id, sessionId, obj.text.trim());
+          handleInboundText({
+            id: obj.id,
+            text: obj.text.trim(),
+            sessionId: obj.session_id || activeSessionId,
+          });
         } catch {
           // Ignore malformed frames.
         }

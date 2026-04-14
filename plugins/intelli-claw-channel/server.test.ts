@@ -17,6 +17,9 @@ import {
   buildNotificationPayload,
   readSendPayload,
   startHttpServer,
+  parsePermissionReply,
+  pendingPermissions,
+  resolvePermissionVerdict,
 } from "./server";
 
 // ---------- mime ----------
@@ -288,5 +291,77 @@ describe("HTTP server", () => {
   it("GET unknown route returns 404", async () => {
     const res = await fetch(`${base}/nope`);
     expect(res.status).toBe(404);
+  });
+});
+
+// ---------- Permission relay ----------
+
+describe("parsePermissionReply", () => {
+  it("accepts 'yes <id>' and 'no <id>' with 5-char ids", () => {
+    expect(parsePermissionReply("yes abcde")).toEqual({
+      request_id: "abcde",
+      behavior: "allow",
+    });
+    expect(parsePermissionReply("no xyzab")).toEqual({
+      request_id: "xyzab",
+      behavior: "deny",
+    });
+  });
+
+  it("accepts short 'y'/'n' aliases and is case-insensitive", () => {
+    expect(parsePermissionReply("Y abcde")).toEqual({
+      request_id: "abcde",
+      behavior: "allow",
+    });
+    expect(parsePermissionReply("  N  ABCDE  ")).toEqual({
+      request_id: "abcde",
+      behavior: "deny",
+    });
+  });
+
+  it("rejects ids containing 'l' (spec: [a-km-z])", () => {
+    expect(parsePermissionReply("yes abcle")).toBeNull();
+  });
+
+  it("rejects the wrong id length", () => {
+    expect(parsePermissionReply("yes abcd")).toBeNull();
+    expect(parsePermissionReply("yes abcdef")).toBeNull();
+  });
+
+  it("rejects non-matching prefixes (no bare yes/no)", () => {
+    expect(parsePermissionReply("maybe abcde")).toBeNull();
+    expect(parsePermissionReply("yes")).toBeNull();
+  });
+});
+
+describe("resolvePermissionVerdict", () => {
+  beforeEach(() => {
+    pendingPermissions.clear();
+  });
+
+  it("returns false when no request is pending", () => {
+    expect(resolvePermissionVerdict("abcde", "allow")).toBe(false);
+  });
+
+  it("consumes a pending request and returns true", () => {
+    pendingPermissions.set("abcde", {
+      request_id: "abcde",
+      tool_name: "Bash",
+      description: "run ls",
+      input_preview: "ls -la",
+    });
+    expect(resolvePermissionVerdict("abcde", "deny")).toBe(true);
+    expect(pendingPermissions.has("abcde")).toBe(false);
+  });
+
+  it("does not double-resolve", () => {
+    pendingPermissions.set("abcde", {
+      request_id: "abcde",
+      tool_name: "Bash",
+      description: "",
+      input_preview: "",
+    });
+    expect(resolvePermissionVerdict("abcde", "allow")).toBe(true);
+    expect(resolvePermissionVerdict("abcde", "allow")).toBe(false);
   });
 });

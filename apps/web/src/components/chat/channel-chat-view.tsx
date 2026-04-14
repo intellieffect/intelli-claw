@@ -7,11 +7,28 @@
  * incrementally on top of the channel contract.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
-import { useChannel, type ChannelMsg, type ChannelConnectionState } from "@intelli-claw/shared";
-import { Paperclip, Send, X, Wifi, WifiOff, Loader2 } from "lucide-react";
-import { MarkdownRenderer } from "./markdown-renderer";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+} from "react";
+import {
+  useChannel,
+  type ChannelMsg,
+  type ChannelConnectionState,
+  type PermissionRequest,
+} from "@intelli-claw/shared";
+import { Paperclip, Send, X, Wifi, WifiOff, Loader2, ShieldCheck, ShieldX } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+const MarkdownRenderer = lazy(() =>
+  import("./markdown-renderer").then((m) => ({ default: m.MarkdownRenderer })),
+);
 
 const PRESET_SESSIONS = [
   { id: "main", label: "main" },
@@ -98,7 +115,9 @@ function MessageBubble({ msg }: { msg: ChannelMsg }) {
             ↳ {msg.replyTo}
           </div>
         )}
-        <MarkdownRenderer content={msg.text || "(empty)"} />
+        <Suspense fallback={<div className="whitespace-pre-wrap">{msg.text || "(empty)"}</div>}>
+          <MarkdownRenderer content={msg.text || "(empty)"} />
+        </Suspense>
         {msg.file && (
           <a
             href={msg.file.url}
@@ -248,23 +267,75 @@ function Composer({
   );
 }
 
-export function ChannelChatView() {
-  const { state, activeSessionId, messages, send, clearMessages } = useChannel();
-  const [sessionId, setSessionId] = useState(activeSessionId);
+function PermissionPrompt({
+  request,
+  onResolve,
+}: {
+  request: PermissionRequest;
+  onResolve: (id: string, behavior: "allow" | "deny") => void;
+}) {
+  return (
+    <div className="mx-4 my-2 rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-sm">
+      <div className="mb-2 flex items-center gap-2 font-medium">
+        <ShieldCheck className="h-4 w-4 text-amber-600" />
+        Tool approval: <code className="rounded bg-muted px-1.5 py-0.5 text-xs">{request.tool_name}</code>
+        <code className="ml-auto rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
+          {request.request_id}
+        </code>
+      </div>
+      {request.description && (
+        <p className="mb-2 whitespace-pre-wrap text-xs text-muted-foreground">
+          {request.description}
+        </p>
+      )}
+      {request.input_preview && (
+        <pre className="mb-3 max-h-32 overflow-auto rounded-md bg-muted p-2 text-xs">
+          {request.input_preview}
+        </pre>
+      )}
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={() => onResolve(request.request_id, "allow")}
+          className="inline-flex h-8 items-center gap-1 rounded-md bg-emerald-600 px-3 text-xs font-medium text-white hover:bg-emerald-700"
+        >
+          <ShieldCheck className="h-3.5 w-3.5" />
+          Allow
+        </button>
+        <button
+          type="button"
+          onClick={() => onResolve(request.request_id, "deny")}
+          className="inline-flex h-8 items-center gap-1 rounded-md bg-rose-600 px-3 text-xs font-medium text-white hover:bg-rose-700"
+        >
+          <ShieldX className="h-3.5 w-3.5" />
+          Deny
+        </button>
+      </div>
+    </div>
+  );
+}
 
-  useEffect(() => {
-    setSessionId(activeSessionId);
-  }, [activeSessionId]);
+export function ChannelChatView() {
+  const {
+    state,
+    activeSessionId,
+    messages,
+    pendingPermissions,
+    send,
+    clearMessages,
+    setActiveSessionId,
+    resolvePermission,
+  } = useChannel();
 
   const handleSubmit = useCallback(
     async (text: string, file?: File) => {
       try {
-        await send(text, { sessionId, file });
+        await send(text, { sessionId: activeSessionId, file });
       } catch (err) {
         console.error("[channel] send failed:", err);
       }
     },
-    [send, sessionId],
+    [send, activeSessionId],
   );
 
   const disabled = state !== "connected";
@@ -273,7 +344,7 @@ export function ChannelChatView() {
     <div className="flex h-dvh flex-col bg-background">
       <header className="flex items-center gap-3 border-b border-border px-4 py-2">
         <h1 className="text-sm font-semibold">intelli-claw</h1>
-        <SessionPicker value={sessionId} onChange={setSessionId} />
+        <SessionPicker value={activeSessionId} onChange={setActiveSessionId} />
         <StatusBadge state={state} />
         <button
           type="button"
@@ -283,8 +354,19 @@ export function ChannelChatView() {
           화면 비우기
         </button>
       </header>
+      {pendingPermissions.length > 0 && (
+        <div className="flex flex-col gap-1 pt-1">
+          {pendingPermissions.map((p) => (
+            <PermissionPrompt
+              key={p.request_id}
+              request={p}
+              onResolve={resolvePermission}
+            />
+          ))}
+        </div>
+      )}
       <main className="flex-1 overflow-y-auto">
-        <MessageList messages={messages} sessionId={sessionId} />
+        <MessageList messages={messages} sessionId={activeSessionId} />
       </main>
       <Composer disabled={disabled} onSubmit={handleSubmit} />
     </div>
