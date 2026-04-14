@@ -29,7 +29,25 @@ const nodeConnection = new NodeConnectionManager();
 
 // ── Claude Code session manager ──
 let claudeProcess: ChildProcess | null = null;
-let webchatPort = 0; // Assigned dynamically
+let webchatPort = 0;
+let claudeSessionId: string | null = null;
+
+function claudeSessionPath(): string {
+  return join(app.getPath("userData"), "claude-session.json");
+}
+
+function loadClaudeSession(): string | null {
+  try {
+    const data = JSON.parse(readFileSync(claudeSessionPath(), "utf-8"));
+    return data.sessionId || null;
+  } catch { return null; }
+}
+
+function saveClaudeSession(sessionId: string) {
+  try {
+    writeFileSync(claudeSessionPath(), JSON.stringify({ sessionId }));
+  } catch {}
+}
 
 /** Find a free port starting from base */
 function findFreePort(base: number): Promise<number> {
@@ -48,14 +66,22 @@ function findFreePort(base: number): Promise<number> {
 function spawnClaudeCode(): Promise<void> {
   return new Promise(async (resolve) => {
     webchatPort = await findFreePort(4003);
-    console.log(`[claude-code] Using port ${webchatPort}`);
+    const previousSession = loadClaudeSession();
+    console.log(`[claude-code] Using port ${webchatPort}, resume: ${previousSession || "new session"}`);
 
     const cwd = process.env.CLAUDE_CODE_CWD || app.getAppPath();
 
-    const proc = spawn("claude", [
+    const args = [
       "--dangerously-load-development-channels", "server:webchat",
       "--dangerously-skip-permissions",
-    ], {
+    ];
+
+    // Resume previous session if available
+    if (previousSession) {
+      args.push("--resume", previousSession);
+    }
+
+    const proc = spawn("claude", args, {
       cwd,
       env: { ...process.env, WEBCHAT_PORT: String(webchatPort) },
       stdio: ["pipe", "pipe", "pipe"],
@@ -117,6 +143,26 @@ function spawnClaudeCode(): Promise<void> {
       const line = data.toString().trim();
       if (line) console.log("[claude-code]", line);
     });
+
+    // Capture sessionId from ~/.claude/sessions/<pid>.json
+    const captureSessionId = () => {
+      if (!proc.pid) return;
+      try {
+        const sessionFile = join(require("os").homedir(), ".claude", "sessions", `${proc.pid}.json`);
+        const data = JSON.parse(readFileSync(sessionFile, "utf-8"));
+        if (data.sessionId && data.sessionId !== claudeSessionId) {
+          claudeSessionId = data.sessionId;
+          saveClaudeSession(data.sessionId);
+          console.log(`[claude-code] Session ID captured: ${data.sessionId}`);
+        }
+      } catch { /* not yet available */ }
+    };
+    // Check periodically until captured
+    const captureInterval = setInterval(() => {
+      captureSessionId();
+      if (claudeSessionId) clearInterval(captureInterval);
+    }, 2000);
+    setTimeout(() => clearInterval(captureInterval), 60000);
   });
 }
 
