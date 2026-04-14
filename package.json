@@ -7,20 +7,10 @@
     "dev": "pnpm --filter @intelli-claw/web dev",
     "build": "turbo run build",
     "preview": "pnpm --filter @intelli-claw/web preview",
-    "dev:electron": "pnpm --filter @intelli-claw/desktop dev",
-    "build:electron": "pnpm --filter @intelli-claw/desktop build",
     "version:bump": "bash scripts/bump-version.sh",
     "release": "bash scripts/release.sh",
-    "package": "pnpm --filter @intelli-claw/desktop package",
     "lint": "turbo run lint",
-    "test": "turbo run test",
-    "dev:server": "pnpm --filter @intelli-claw/server dev",
-    "dev:mobile": "pnpm --filter @intelli-claw/mobile dev",
-    "deploy:local": "bash scripts/deploy.sh local",
-    "deploy:macbook": "bash scripts/deploy.sh macbook",
-    "deploy:all": "bash scripts/deploy.sh all",
-    "deploy:testflight": "bash scripts/deploy-testflight.sh",
-    "deploy:android": "bash scripts/deploy-android.sh"
+    "test": "turbo run test"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",
@@ -31,17 +21,12 @@
   },
   "pnpm": {
     "onlyBuiltDependencies": [
-      "electron",
-      "esbuild",
-      "react-native-mmkv"
+      "esbuild"
     ],
     "overrides": {
       "@types/react": "~19.1.0",
       "react": "19.1.0",
       "react-dom": "19.1.0"
     }
-  },
-  "dependencies": {
-    "electron": "^40.6.1"
   }
 }

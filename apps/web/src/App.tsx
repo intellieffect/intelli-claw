@@ -1,23 +1,11 @@
 import { Component, type ReactNode } from "react";
-import { GatewayProvider } from "@/lib/gateway/hooks";
+import { ChannelProvider, DEFAULT_CHANNEL_URL } from "@intelli-claw/shared";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { ChatView } from "@/components/chat/chat-view";
-import { CronPanel } from "@/components/settings/cron-panel";
+import { ChannelChatView } from "@/components/chat/channel-chat-view";
 
-function AppContent() {
-  // Hash-based routing: #/cron → CronPanel, default → ChatView
-  const hash = window.location.hash;
-
-  if (hash === "#/cron") {
-    return (
-      <div className="h-dvh w-full">
-        <CronPanel />
-      </div>
-    );
-  }
-
-  return <ChatView />;
-}
+const CHANNEL_URL =
+  (import.meta.env.VITE_CHANNEL_URL as string | undefined) ?? DEFAULT_CHANNEL_URL;
+const CHANNEL_TOKEN = import.meta.env.VITE_CHANNEL_TOKEN as string | undefined;
 
 class AppErrorBoundary extends Component<
   { children: ReactNode },
@@ -34,25 +22,11 @@ class AppErrorBoundary extends Component<
   }
 
   private handleReset = () => {
-    try { sessionStorage.clear(); } catch {}
-    const SESSION_DBS = [
-      "intelli-claw-messages",
-      "intelli-claw-topics",
-      "intelli-claw-input-history",
-    ];
     try {
-      Promise.all(
-        SESSION_DBS.map(
-          (name) =>
-            new Promise<void>((res) => {
-              const req = indexedDB.deleteDatabase(name);
-              req.onsuccess = req.onerror = () => res();
-            }),
-        ),
-      ).then(() => window.location.reload());
-    } catch {
-      window.location.reload();
-    }
+      sessionStorage.clear();
+      localStorage.clear();
+    } catch {}
+    window.location.reload();
   };
 
   render() {
@@ -81,11 +55,11 @@ class AppErrorBoundary extends Component<
 export function App() {
   return (
     <AppErrorBoundary>
-      <GatewayProvider>
+      <ChannelProvider url={CHANNEL_URL} token={CHANNEL_TOKEN}>
         <TooltipProvider>
-          <AppContent />
+          <ChannelChatView />
         </TooltipProvider>
-      </GatewayProvider>
+      </ChannelProvider>
     </AppErrorBoundary>
   );
 }

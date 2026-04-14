@@ -1,3 +1,8 @@
 packages:
   - "packages/*"
-  - "apps/*"
+  - "plugins/*"
+  - "apps/web"
+  # apps/desktop and apps/mobile are excluded from the active build pipeline
+  # until they are rewritten on top of the Channel plugin (Phase 4). See
+  # docs/redesign/channels-spec.md §10.3. Source remains in-tree so nothing
+  # is lost; re-add the path when the rewrite lands.

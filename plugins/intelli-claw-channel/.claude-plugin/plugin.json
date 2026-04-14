@@ -1,0 +1,10 @@
+{
+  "name": "intelli-claw-channel",
+  "description": "Localhost + LAN webchat channel for Claude Code — bridges the intelli-claw UI (Vite + React 19) to Claude Code sessions with file upload, edits, and optional pairing for mobile access.",
+  "version": "0.1.0",
+  "keywords": ["channel", "mcp", "webchat", "intelli-claw"],
+  "author": {
+    "name": "IntelliEffect",
+    "url": "https://github.com/intellieffect/intelli-claw"
+  }
+}
