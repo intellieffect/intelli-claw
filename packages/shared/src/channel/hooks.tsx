@@ -37,9 +37,31 @@ export const DEFAULT_CHANNEL_URL = "http://127.0.0.1:8790";
 
 const MAX_PERSISTED_MESSAGES = 200;
 
-function loadPersistedMessages(): ChannelMsg[] {
+/**
+ * Minimal key-value store contract used for message / session persistence.
+ * Synchronous to match the browser's `localStorage`; React Native callers
+ * pass a wrapper (e.g. backed by MMKV) with the same shape.
+ */
+export interface ChannelStorage {
+  getItem: (key: string) => string | null;
+  setItem: (key: string, value: string) => void;
+  removeItem?: (key: string) => void;
+}
+
+function defaultStorage(): ChannelStorage | null {
+  // `typeof` guard so the module is safe to import in React Native / SSR.
+  if (typeof localStorage === "undefined") return null;
+  return {
+    getItem: (k) => localStorage.getItem(k),
+    setItem: (k, v) => localStorage.setItem(k, v),
+    removeItem: (k) => localStorage.removeItem(k),
+  };
+}
+
+function loadPersistedMessages(storage: ChannelStorage | null): ChannelMsg[] {
+  if (!storage) return [];
   try {
-    const raw = localStorage.getItem(CHANNEL_MESSAGES_STORAGE_KEY);
+    const raw = storage.getItem(CHANNEL_MESSAGES_STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as ChannelMsg[];
     return Array.isArray(parsed) ? parsed.slice(-MAX_PERSISTED_MESSAGES) : [];
@@ -48,26 +70,35 @@ function loadPersistedMessages(): ChannelMsg[] {
   }
 }
 
-function persistMessages(messages: ChannelMsg[]): void {
+function persistMessages(
+  storage: ChannelStorage | null,
+  messages: ChannelMsg[],
+): void {
+  if (!storage) return;
   try {
     const tail = messages.slice(-MAX_PERSISTED_MESSAGES);
-    localStorage.setItem(CHANNEL_MESSAGES_STORAGE_KEY, JSON.stringify(tail));
+    storage.setItem(CHANNEL_MESSAGES_STORAGE_KEY, JSON.stringify(tail));
   } catch {
     // Out of quota or unavailable — silent, the UI stays functional.
   }
 }
 
-function loadPersistedSession(fallback = "main"): string {
+function loadPersistedSession(
+  storage: ChannelStorage | null,
+  fallback = "main",
+): string {
+  if (!storage) return fallback;
   try {
-    return localStorage.getItem(CHANNEL_SESSION_STORAGE_KEY) || fallback;
+    return storage.getItem(CHANNEL_SESSION_STORAGE_KEY) || fallback;
   } catch {
     return fallback;
   }
 }
 
-function persistSession(id: string): void {
+function persistSession(storage: ChannelStorage | null, id: string): void {
+  if (!storage) return;
   try {
-    localStorage.setItem(CHANNEL_SESSION_STORAGE_KEY, id);
+    storage.setItem(CHANNEL_SESSION_STORAGE_KEY, id);
   } catch {
     // Silent.
   }
@@ -105,6 +136,8 @@ export interface ChannelProviderProps {
   url: string;
   token?: string;
   onConfigChange?: (next: ChannelConfig) => void;
+  /** Override the storage backend (React Native passes an MMKV-backed wrapper). */
+  storage?: ChannelStorage | null;
   children: ReactNode;
 }
 
@@ -112,19 +145,27 @@ export function ChannelProvider({
   url,
   token,
   onConfigChange,
+  storage,
   children,
 }: ChannelProviderProps) {
+  const storageRef = useRef<ChannelStorage | null>(
+    storage === undefined ? defaultStorage() : storage,
+  );
   const [client, setClient] = useState<ChannelClient | null>(null);
   const [state, setState] = useState<ConnectionState>("disconnected");
   const [error, setError] = useState<Error | null>(null);
-  const [activeSessionId, setActiveSessionIdState] = useState(() => loadPersistedSession());
-  const [messages, setMessages] = useState<ChannelMsg[]>(() => loadPersistedMessages());
+  const [activeSessionId, setActiveSessionIdState] = useState(() =>
+    loadPersistedSession(storageRef.current),
+  );
+  const [messages, setMessages] = useState<ChannelMsg[]>(() =>
+    loadPersistedMessages(storageRef.current),
+  );
   const [pendingPermissions, setPendingPermissions] = useState<PermissionRequest[]>([]);
   const configRef = useRef<ChannelConfig>({ url, token });
 
   const setActiveSessionId = useCallback((id: string) => {
     setActiveSessionIdState(id);
-    persistSession(id);
+    persistSession(storageRef.current, id);
   }, []);
 
   const handleMessage = useCallback<MessageHandler>((frame: ChannelWire) => {
@@ -132,7 +173,7 @@ export function ChannelProvider({
       case "msg":
         setMessages((prev) => {
           const next = [...prev, frame];
-          persistMessages(next);
+          persistMessages(storageRef.current, next);
           return next;
         });
         break;
@@ -141,13 +182,13 @@ export function ChannelProvider({
           const next = prev.map((m) =>
             m.id === frame.id ? { ...m, text: frame.text } : m,
           );
-          persistMessages(next);
+          persistMessages(storageRef.current, next);
           return next;
         });
         break;
       case "session":
         setActiveSessionIdState(frame.sessionId);
-        persistSession(frame.sessionId);
+        persistSession(storageRef.current, frame.sessionId);
         break;
       case "permission_request":
         setPendingPermissions((prev) => [
@@ -184,7 +225,7 @@ export function ChannelProvider({
         // Only adopt the plugin-reported active session if we have no local
         // preference yet. Saved sessions win to avoid surprising the user on
         // reload.
-        if (!localStorage.getItem(CHANNEL_SESSION_STORAGE_KEY)) {
+        if (!storageRef.current?.getItem(CHANNEL_SESSION_STORAGE_KEY)) {
           setActiveSessionIdState(info.activeSessionId);
         }
       })
@@ -218,7 +259,7 @@ export function ChannelProvider({
         const [cmd, ...rest] = trimmed.slice(1).split(/\s+/);
         if (cmd === "clear") {
           setMessages([]);
-          persistMessages([]);
+          persistMessages(storageRef.current, []);
           return "";
         }
         if (cmd === "session" && rest[0]) {
@@ -245,7 +286,7 @@ export function ChannelProvider({
               : undefined,
           },
         ];
-        persistMessages(next);
+        persistMessages(storageRef.current, next);
         return next;
       });
 
@@ -261,7 +302,7 @@ export function ChannelProvider({
 
   const clearMessages = useCallback(() => {
     setMessages([]);
-    persistMessages([]);
+    persistMessages(storageRef.current, []);
   }, []);
 
   const updateConfig = useCallback(

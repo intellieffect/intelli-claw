@@ -1,6 +1,4 @@
 packages:
   - "packages/*"
   - "plugins/*"
-  - "apps/web"
-  - "apps/desktop"
-  # apps/mobile excluded until Phase 4-B (LAN/Tailscale HTTPS + pairing).
+  - "apps/*"

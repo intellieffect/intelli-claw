@@ -24,4 +24,5 @@ export {
   CHANNEL_MESSAGES_STORAGE_KEY,
   DEFAULT_CHANNEL_URL,
   type ChannelProviderProps,
+  type ChannelStorage,
 } from "./hooks";
