@@ -1,23 +1,27 @@
 /**
- * Electron main process — minimal shell for intelli-claw.
+ * Electron main process — minimal shell + Claude Code session orchestrator.
  *
- * The renderer is the Vite-built apps/web bundle. All data flows through the
- * loopback Claude Code channel plugin (http://127.0.0.1:8790) — the main
- * process does no protocol work, no IPC relay, no origin rewriting.
+ * The renderer is the Vite-built apps/web bundle. The shell talks to the
+ * loopback channel plugin spawned by each Claude Code session it owns.
  *
  * Dev: loads http://localhost:4000 (Vite dev server).
  * Prod: loads the packaged renderer via the app:// protocol so CORS works
  *       against the plugin (file:// would produce a null origin).
  */
 
-import { app, BrowserWindow, shell, protocol, net } from "electron";
+import { app, BrowserWindow, ipcMain, shell, protocol, net } from "electron";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+
+import { SessionManager } from "./session-manager.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const isDev = !app.isPackaged;
 
 const RENDERER_DIR = path.join(__dirname, "../renderer");
+
+const sessions = new SessionManager();
+let mainWindow: BrowserWindow | null = null;
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -31,35 +35,58 @@ protocol.registerSchemesAsPrivileged([
   },
 ]);
 
+function broadcastSessionsChanged(): void {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  mainWindow.webContents.send("session:changed", sessions.list());
+}
+
+ipcMain.handle(
+  "session:spawn",
+  (_event, opts: { uuid?: string; cwd: string }) => {
+    const info = sessions.spawn(opts);
+    broadcastSessionsChanged();
+    return info;
+  },
+);
+
+ipcMain.handle("session:list", () => sessions.list());
+
+ipcMain.handle("session:stop", (_event, port: number) => {
+  sessions.stop(port);
+  // The pty.onExit handler will emit a session:changed broadcast.
+});
+
 async function createWindow(): Promise<void> {
-  const win = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 1280,
     height: 860,
     titleBarStyle: "hiddenInset",
     backgroundColor: "#09090b",
     webPreferences: {
       preload: path.join(__dirname, "../preload/index.js"),
-      // webSecurity stays on in prod (app:// origin satisfies the plugin's
-      // CORS allowlist). In dev we load http://localhost:4000, which is also
-      // allowlisted, so webSecurity can stay on there too.
     },
   });
 
-  win.webContents.setWindowOpenHandler(({ url }) => {
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url).catch(() => {});
     return { action: "deny" };
   });
 
+  mainWindow.on("closed", () => {
+    mainWindow = null;
+  });
+
   if (isDev) {
-    await win.loadURL("http://localhost:4000");
-    win.webContents.openDevTools({ mode: "detach" });
+    await mainWindow.loadURL("http://localhost:4000");
+    mainWindow.webContents.openDevTools({ mode: "detach" });
   } else {
-    await win.loadURL("app://./index.html");
+    await mainWindow.loadURL("app://./index.html");
   }
 }
 
+sessions.onChange(broadcastSessionsChanged);
+
 app.whenReady().then(() => {
-  // Map app://./<path> → out/renderer/<path> for prod bundles.
   protocol.handle("app", (request) => {
     const url = new URL(request.url);
     const relPath = decodeURIComponent(url.pathname);
@@ -71,9 +98,14 @@ app.whenReady().then(() => {
 });
 
 app.on("window-all-closed", () => {
+  sessions.shutdown();
   if (process.platform !== "darwin") app.quit();
 });
 
 app.on("activate", () => {
   if (BrowserWindow.getAllWindows().length === 0) void createWindow();
+});
+
+app.on("before-quit", () => {
+  sessions.shutdown();
 });

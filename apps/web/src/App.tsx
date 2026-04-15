@@ -1,18 +1,30 @@
-import { Component, type ReactNode } from "react";
+import {
+  Component,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import { ChannelProvider, DEFAULT_CHANNEL_URL } from "@intelli-claw/shared";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ChannelChatView } from "@/components/chat/channel-chat-view";
+import {
+  getElectronBridge,
+  isElectron,
+  type ManagedSessionInfo,
+} from "@/lib/electron-bridge";
+
+const DEFAULT_PROJECT_CWD =
+  (import.meta.env.VITE_CLAUDE_PROJECT_CWD as string | undefined) ??
+  "/Volumes/WorkSSD/Projects/intelli-claw";
 
 /**
- * Channel URL resolution (highest precedence first):
- *  1. `?channel=<url-or-port>` query string. A bare integer is treated as a
- *     loopback port (`8791` → `http://127.0.0.1:8791`). Lets you open
- *     multiple browser tabs against different Claude Code sessions.
- *  2. `?token=<bearer>` query string for LAN-mode pairing override.
- *  3. `VITE_CHANNEL_URL` / `VITE_CHANNEL_TOKEN` baked at build time.
- *  4. `DEFAULT_CHANNEL_URL` from the shared package.
+ * In the browser fall back to env / query-string config; in Electron the
+ * SessionManager owns spawn/teardown and the URL gets driven by selected
+ * session port.
  */
-function resolveChannelConfig(): { url: string; token?: string } {
+function resolveBrowserChannelConfig(): { url: string; token?: string } {
   const params = new URLSearchParams(window.location.search);
   const rawChannel = params.get("channel");
   let url: string;
@@ -30,8 +42,6 @@ function resolveChannelConfig(): { url: string; token?: string } {
     (import.meta.env.VITE_CHANNEL_TOKEN as string | undefined);
   return { url, token: token || undefined };
 }
-
-const { url: CHANNEL_URL, token: CHANNEL_TOKEN } = resolveChannelConfig();
 
 class AppErrorBoundary extends Component<
   { children: ReactNode },
@@ -78,14 +88,106 @@ class AppErrorBoundary extends Component<
   }
 }
 
+function ElectronShell() {
+  const bridge = getElectronBridge()!;
+  const [sessions, setSessions] = useState<ManagedSessionInfo[]>([]);
+  const [activePort, setActivePort] = useState<number | null>(null);
+  const [bootError, setBootError] = useState<string | null>(null);
+  const [pendingSpawn, setPendingSpawn] = useState(false);
+
+  // Subscribe to lifecycle changes so the sidebar refreshes as PTYs come and go.
+  useEffect(() => {
+    bridge.session.list().then(setSessions).catch(() => {});
+    return bridge.session.onChanged(setSessions);
+  }, [bridge]);
+
+  // Auto-spawn a default session on first launch if the pool is empty.
+  useEffect(() => {
+    if (sessions.length > 0 || pendingSpawn) return;
+    setPendingSpawn(true);
+    bridge.session
+      .spawn({ cwd: DEFAULT_PROJECT_CWD })
+      .then((info) => setActivePort(info.port))
+      .catch((err) =>
+        setBootError(err instanceof Error ? err.message : String(err)),
+      )
+      .finally(() => setPendingSpawn(false));
+  }, [bridge, sessions.length, pendingSpawn]);
+
+  // If we don't yet know the active port, adopt the first available session.
+  useEffect(() => {
+    if (activePort !== null) return;
+    if (sessions.length > 0) setActivePort(sessions[0].port);
+  }, [activePort, sessions]);
+
+  const handleResume = useCallback(
+    async (uuid: string) => {
+      setPendingSpawn(true);
+      try {
+        const info = await bridge.session.spawn({
+          uuid,
+          cwd: DEFAULT_PROJECT_CWD,
+        });
+        setActivePort(info.port);
+      } catch (err) {
+        setBootError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setPendingSpawn(false);
+      }
+    },
+    [bridge],
+  );
+
+  const channelUrl = useMemo(
+    () => (activePort ? `http://127.0.0.1:${activePort}` : null),
+    [activePort],
+  );
+
+  if (bootError) {
+    return (
+      <div className="flex h-dvh items-center justify-center bg-background p-8 text-sm text-rose-400">
+        세션 기동 실패: {bootError}
+      </div>
+    );
+  }
+
+  if (!channelUrl) {
+    return (
+      <div className="flex h-dvh items-center justify-center bg-background text-sm text-muted-foreground">
+        Claude Code 세션 기동 중…
+      </div>
+    );
+  }
+
+  return (
+    <ChannelProvider key={channelUrl} url={channelUrl}>
+      <TooltipProvider>
+        <ChannelChatView
+          managedSessions={sessions}
+          activePort={activePort}
+          onResume={handleResume}
+          spawning={pendingSpawn}
+        />
+      </TooltipProvider>
+    </ChannelProvider>
+  );
+}
+
+function BrowserShell() {
+  const { url, token } = resolveBrowserChannelConfig();
+  return (
+    <ChannelProvider url={url} token={token}>
+      <TooltipProvider>
+        <ChannelChatView />
+      </TooltipProvider>
+    </ChannelProvider>
+  );
+}
+
 export function App() {
   return (
     <AppErrorBoundary>
-      <ChannelProvider url={CHANNEL_URL} token={CHANNEL_TOKEN}>
-        <TooltipProvider>
-          <ChannelChatView />
-        </TooltipProvider>
-      </ChannelProvider>
+      {isElectron() ? <ElectronShell /> : <BrowserShell />}
     </AppErrorBoundary>
   );
 }

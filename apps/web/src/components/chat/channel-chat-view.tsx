@@ -463,7 +463,23 @@ function useClaudeSessionList(projectCwd: string, channelUrl: string) {
   return { sessions, activeUuid, loading, error, refresh };
 }
 
-export function ChannelChatView() {
+interface ChannelChatViewProps {
+  /** Electron-only: live snapshot of all PTY-backed sessions. */
+  managedSessions?: { port: number; uuid: string | null }[];
+  /** Electron-only: port of the session the renderer is currently attached to. */
+  activePort?: number | null;
+  /** Electron-only: ask main to spawn/attach a session for the given uuid. */
+  onResume?: (uuid: string) => void | Promise<void>;
+  /** Electron-only: a spawn is in flight (disable inputs, show spinner). */
+  spawning?: boolean;
+}
+
+export function ChannelChatView({
+  managedSessions,
+  activePort,
+  onResume,
+  spawning,
+}: ChannelChatViewProps = {}) {
   const {
     client,
     state,
@@ -483,14 +499,34 @@ export function ChannelChatView() {
   );
   const [selectedUuid, setSelectedUuid] = useState<string | null>(null);
 
+  // Auto-pick the connected session's uuid as the visual selection.
+  // In Electron mode the active port maps back to a managed uuid.
+  const electronActiveUuid = useMemo(() => {
+    if (activePort == null || !managedSessions) return null;
+    return managedSessions.find((s) => s.port === activePort)?.uuid ?? null;
+  }, [activePort, managedSessions]);
+
   useEffect(() => {
-    if (activeUuid && !selectedUuid) setSelectedUuid(activeUuid);
-  }, [activeUuid, selectedUuid]);
+    const target = electronActiveUuid ?? activeUuid;
+    if (target && !selectedUuid) setSelectedUuid(target);
+  }, [activeUuid, electronActiveUuid, selectedUuid]);
+
+  const handleSelect = useCallback(
+    (uuid: string) => {
+      setSelectedUuid(uuid);
+      // Electron path: tell main to (re)spawn this session and switch ports.
+      if (onResume) void onResume(uuid);
+    },
+    [onResume],
+  );
 
   const selectedSession = useMemo(
     () => sessions.find((s) => s.uuid === selectedUuid) ?? null,
     [sessions, selectedUuid],
   );
+
+  const electronModeActive = onResume !== undefined;
+  const effectiveActiveUuid = electronActiveUuid ?? activeUuid;
 
   const handleSubmit = useCallback(
     async (text: string, file?: File) => {
@@ -510,11 +546,11 @@ export function ChannelChatView() {
       <SessionSidebar
         sessions={sessions}
         selectedUuid={selectedUuid}
-        activeUuid={activeUuid}
-        loading={loading}
+        activeUuid={effectiveActiveUuid}
+        loading={loading || !!spawning}
         error={error}
         projectCwd={projectCwd}
-        onSelect={setSelectedUuid}
+        onSelect={handleSelect}
         onRefresh={() => {
           void refresh();
         }}
@@ -535,7 +571,7 @@ export function ChannelChatView() {
             화면 비우기
           </button>
         </header>
-        {selectedSession && selectedSession.uuid !== activeUuid && (
+        {!electronModeActive && selectedSession && selectedSession.uuid !== effectiveActiveUuid && (
           <SelectedSessionBanner session={selectedSession} projectCwd={projectCwd} />
         )}
         {pendingPermissions.length > 0 && (
