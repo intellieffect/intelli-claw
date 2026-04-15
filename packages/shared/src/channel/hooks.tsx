@@ -138,6 +138,13 @@ export interface ChannelProviderProps {
   onConfigChange?: (next: ChannelConfig) => void;
   /** Override the storage backend (React Native passes an MMKV-backed wrapper). */
   storage?: ChannelStorage | null;
+  /**
+   * Seed the message list on mount. Electron passes Claude Code transcript
+   * history for the resumed session here; the provider will merge in any
+   * persisted entries that don't conflict so the channel stream stays
+   * continuous after a resume.
+   */
+  initialMessages?: ChannelMsg[];
   children: ReactNode;
 }
 
@@ -146,6 +153,7 @@ export function ChannelProvider({
   token,
   onConfigChange,
   storage,
+  initialMessages,
   children,
 }: ChannelProviderProps) {
   const storageRef = useRef<ChannelStorage | null>(
@@ -157,9 +165,16 @@ export function ChannelProvider({
   const [activeSessionId, setActiveSessionIdState] = useState(() =>
     loadPersistedSession(storageRef.current),
   );
-  const [messages, setMessages] = useState<ChannelMsg[]>(() =>
-    loadPersistedMessages(storageRef.current),
-  );
+  const [messages, setMessages] = useState<ChannelMsg[]>(() => {
+    // Seed from props first (the Electron resume path), then from persisted
+    // storage, then empty. Provider is keyed on channel URL by the shell so
+    // initialMessages only fires on a genuine session switch.
+    if (initialMessages && initialMessages.length > 0) {
+      persistMessages(storageRef.current, initialMessages);
+      return initialMessages;
+    }
+    return loadPersistedMessages(storageRef.current);
+  });
   const [pendingPermissions, setPendingPermissions] = useState<PermissionRequest[]>([]);
   const configRef = useRef<ChannelConfig>({ url, token });
 

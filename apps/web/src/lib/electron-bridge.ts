@@ -13,6 +13,14 @@ export interface ManagedSessionInfo {
   startedAt: number;
 }
 
+export interface ManagedHistoryMsg {
+  id: string;
+  from: "user" | "assistant";
+  text: string;
+  ts: number;
+  sessionId: string;
+}
+
 interface ElectronBridge {
   platform: string;
   electronVersion: string;
@@ -20,6 +28,11 @@ interface ElectronBridge {
     spawn: (opts: { uuid?: string; cwd: string }) => Promise<ManagedSessionInfo>;
     list: () => Promise<ManagedSessionInfo[]>;
     stop: (port: number) => Promise<void>;
+    history: (opts: {
+      uuid: string;
+      cwd: string;
+      limit?: number;
+    }) => Promise<ManagedHistoryMsg[]>;
     onChanged: (cb: (snap: ManagedSessionInfo[]) => void) => () => void;
   };
 }

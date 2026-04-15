@@ -16,6 +16,14 @@ export interface SessionInfo {
   startedAt: number;
 }
 
+export interface SessionHistoryMsg {
+  id: string;
+  from: "user" | "assistant";
+  text: string;
+  ts: number;
+  sessionId: string;
+}
+
 const electronAPI = {
   platform: process.platform,
   electronVersion: process.versions.electron ?? "",
@@ -26,6 +34,12 @@ const electronAPI = {
       ipcRenderer.invoke("session:list") as Promise<SessionInfo[]>,
     stop: (port: number): Promise<void> =>
       ipcRenderer.invoke("session:stop", port) as Promise<void>,
+    history: (opts: {
+      uuid: string;
+      cwd: string;
+      limit?: number;
+    }): Promise<SessionHistoryMsg[]> =>
+      ipcRenderer.invoke("session:history", opts) as Promise<SessionHistoryMsg[]>,
     onChanged: (cb: (snapshot: SessionInfo[]) => void): (() => void) => {
       const listener = (_event: unknown, snap: SessionInfo[]): void => cb(snap);
       ipcRenderer.on("session:changed", listener);

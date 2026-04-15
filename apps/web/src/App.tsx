@@ -12,8 +12,10 @@ import { ChannelChatView } from "@/components/chat/channel-chat-view";
 import {
   getElectronBridge,
   isElectron,
+  type ManagedHistoryMsg,
   type ManagedSessionInfo,
 } from "@/lib/electron-bridge";
+import type { ChannelMsg } from "@intelli-claw/shared";
 
 const DEFAULT_PROJECT_CWD =
   (import.meta.env.VITE_CLAUDE_PROJECT_CWD as string | undefined) ??
@@ -88,14 +90,24 @@ class AppErrorBoundary extends Component<
   }
 }
 
+function toChannelMsg(m: ManagedHistoryMsg): ChannelMsg {
+  return {
+    id: m.id,
+    from: m.from,
+    text: m.text,
+    ts: m.ts,
+    sessionId: m.sessionId,
+  };
+}
+
 function ElectronShell() {
   const bridge = getElectronBridge()!;
   const [sessions, setSessions] = useState<ManagedSessionInfo[]>([]);
   const [activePort, setActivePort] = useState<number | null>(null);
+  const [seedMessages, setSeedMessages] = useState<ChannelMsg[]>([]);
   const [bootError, setBootError] = useState<string | null>(null);
   const [pendingSpawn, setPendingSpawn] = useState(false);
 
-  // Subscribe to lifecycle changes so the sidebar refreshes as PTYs come and go.
   useEffect(() => {
     bridge.session.list().then(setSessions).catch(() => {});
     return bridge.session.onChanged(setSessions);
@@ -107,14 +119,16 @@ function ElectronShell() {
     setPendingSpawn(true);
     bridge.session
       .spawn({ cwd: DEFAULT_PROJECT_CWD })
-      .then((info) => setActivePort(info.port))
+      .then((info) => {
+        setActivePort(info.port);
+        setSeedMessages([]);
+      })
       .catch((err) =>
         setBootError(err instanceof Error ? err.message : String(err)),
       )
       .finally(() => setPendingSpawn(false));
   }, [bridge, sessions.length, pendingSpawn]);
 
-  // If we don't yet know the active port, adopt the first available session.
   useEffect(() => {
     if (activePort !== null) return;
     if (sessions.length > 0) setActivePort(sessions[0].port);
@@ -124,10 +138,16 @@ function ElectronShell() {
     async (uuid: string) => {
       setPendingSpawn(true);
       try {
-        const info = await bridge.session.spawn({
-          uuid,
-          cwd: DEFAULT_PROJECT_CWD,
-        });
+        const [info, history] = await Promise.all([
+          bridge.session.spawn({ uuid, cwd: DEFAULT_PROJECT_CWD }),
+          bridge.session
+            .history({ uuid, cwd: DEFAULT_PROJECT_CWD })
+            .catch((err) => {
+              console.warn("[session] history fetch failed:", err);
+              return [] as ManagedHistoryMsg[];
+            }),
+        ]);
+        setSeedMessages(history.map(toChannelMsg));
         setActivePort(info.port);
       } catch (err) {
         setBootError(err instanceof Error ? err.message : String(err));
@@ -160,7 +180,11 @@ function ElectronShell() {
   }
 
   return (
-    <ChannelProvider key={channelUrl} url={channelUrl}>
+    <ChannelProvider
+      key={channelUrl}
+      url={channelUrl}
+      initialMessages={seedMessages.length > 0 ? seedMessages : undefined}
+    >
       <TooltipProvider>
         <ChannelChatView
           managedSessions={sessions}

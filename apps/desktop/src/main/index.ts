@@ -14,6 +14,10 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { SessionManager } from "./session-manager.js";
+import {
+  loadSessionHistory,
+  type SessionHistoryRequest,
+} from "./session-history.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const isDev = !app.isPackaged;
@@ -55,6 +59,11 @@ ipcMain.handle("session:stop", (_event, port: number) => {
   sessions.stop(port);
   // The pty.onExit handler will emit a session:changed broadcast.
 });
+
+ipcMain.handle(
+  "session:history",
+  (_event, req: SessionHistoryRequest) => loadSessionHistory(req),
+);
 
 async function createWindow(): Promise<void> {
   mainWindow = new BrowserWindow({
