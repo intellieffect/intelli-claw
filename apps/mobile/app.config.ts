@@ -4,7 +4,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
   name: "iClaw",
   slug: "intelli-claw",
-  version: "0.2.32",
+  version: "0.2.35",
   orientation: "portrait",
   icon: "./assets/icon.png",
   scheme: "intelli-claw",
@@ -13,19 +13,16 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   ios: {
     supportsTablet: true,
     bundleIdentifier: "com.intellieffect.intelliclaw",
-    googleServicesFile: "./GoogleService-Info.plist",
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
-      NSCameraUsageDescription: "QR 코드를 스캔하여 Gateway에 연결하기 위해 카메라 접근이 필요합니다.",
     },
   },
   android: {
     adaptiveIcon: {
       foregroundImage: "./assets/adaptive-icon.png",
-      backgroundColor: "#1a1a2e",
+      backgroundColor: "#09090b",
     },
     package: "com.intellieffect.intelliclaw",
-    googleServicesFile: "./google-services.json",
   },
   plugins: [
     "expo-router",
@@ -34,19 +31,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     [
       "expo-build-properties",
       {
-        ios: {
-          useFrameworks: "static",
-          extraPods: [
-            { name: "GoogleUtilities", modular_headers: true },
-          ],
-        },
-      },
-    ],
-    "@react-native-firebase/app",
-    [
-      "expo-camera",
-      {
-        cameraPermission: "QR 코드를 스캔하여 Gateway에 연결하기 위해 카메라 접근이 필요합니다.",
+        ios: { useFrameworks: "static" },
       },
     ],
   ],
@@ -54,9 +39,6 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     typedRoutes: true,
   },
   extra: {
-    gatewayUrl: process.env.GATEWAY_URL || "ws://127.0.0.1:18789",
-    gatewayToken: process.env.GATEWAY_TOKEN || "",
-    gatewayHttpUrl: process.env.GATEWAY_HTTP_URL || "http://127.0.0.1:18789",
     eas: {
       projectId: "32aef4ab-26e8-4f20-b47a-b0f851dac43b",
     },

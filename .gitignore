@@ -44,8 +44,5 @@ public/agents/*.jpg
 playwright-report/
 certificates/
 
-# Reference repos
-openclaw-ref/
-openclaw-config
 .next
 .next-prod

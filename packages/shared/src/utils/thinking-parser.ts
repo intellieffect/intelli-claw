@@ -8,7 +8,15 @@
  * Uses WeakMap caching to avoid re-parsing the same content array.
  */
 
-import type { ContentPart } from "../gateway/protocol";
+/**
+ * Minimal content-part shape the parser needs. Kept local to avoid a
+ * dependency on any transport-layer module (the original import was from
+ * the now-removed gateway package).
+ */
+interface ContentPart {
+  type: string;
+  text?: string;
+}
 
 export interface ThinkingBlock {
   text: string;

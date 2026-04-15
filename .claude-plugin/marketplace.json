@@ -1,0 +1,18 @@
+{
+  "name": "intelli-claw",
+  "metadata": {
+    "description": "Local marketplace for the intelli-claw Claude Code Channel plugin. Register via `claude plugin marketplace add <path-to-repo>`."
+  },
+  "owner": {
+    "name": "IntelliEffect",
+    "url": "https://github.com/intellieffect/intelli-claw"
+  },
+  "plugins": [
+    {
+      "name": "intelli-claw-channel",
+      "description": "Localhost + LAN webchat channel for Claude Code — bridges the intelli-claw UI (Vite + React 19) to Claude Code sessions with file upload, edits, and optional pairing for mobile access.",
+      "category": "development",
+      "source": "./plugins/intelli-claw-channel"
+    }
+  ]
+}

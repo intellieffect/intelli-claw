@@ -1,22 +1,48 @@
-import { Component, type ReactNode } from "react";
-import { GatewayProvider } from "@/lib/gateway/hooks";
+import {
+  Component,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
+import { ChannelProvider, DEFAULT_CHANNEL_URL } from "@intelli-claw/shared";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { ChatView } from "@/components/chat/chat-view";
-import { CronPanel } from "@/components/settings/cron-panel";
+import { ChannelChatView } from "@/components/chat/channel-chat-view";
+import {
+  getElectronBridge,
+  isElectron,
+  type ManagedHistoryMsg,
+  type ManagedSessionInfo,
+} from "@/lib/electron-bridge";
+import type { ChannelMsg } from "@intelli-claw/shared";
 
-function AppContent() {
-  // Hash-based routing: #/cron → CronPanel, default → ChatView
-  const hash = window.location.hash;
+const DEFAULT_PROJECT_CWD =
+  (import.meta.env.VITE_CLAUDE_PROJECT_CWD as string | undefined) ??
+  "/Volumes/WorkSSD/Projects/intelli-claw";
 
-  if (hash === "#/cron") {
-    return (
-      <div className="h-dvh w-full">
-        <CronPanel />
-      </div>
-    );
+/**
+ * In the browser fall back to env / query-string config; in Electron the
+ * SessionManager owns spawn/teardown and the URL gets driven by selected
+ * session port.
+ */
+function resolveBrowserChannelConfig(): { url: string; token?: string } {
+  const params = new URLSearchParams(window.location.search);
+  const rawChannel = params.get("channel");
+  let url: string;
+  if (rawChannel) {
+    url = /^\d+$/.test(rawChannel)
+      ? `http://127.0.0.1:${rawChannel}`
+      : rawChannel;
+  } else {
+    url =
+      (import.meta.env.VITE_CHANNEL_URL as string | undefined) ??
+      DEFAULT_CHANNEL_URL;
   }
-
-  return <ChatView />;
+  const token =
+    params.get("token") ??
+    (import.meta.env.VITE_CHANNEL_TOKEN as string | undefined);
+  return { url, token: token || undefined };
 }
 
 class AppErrorBoundary extends Component<
@@ -34,25 +60,11 @@ class AppErrorBoundary extends Component<
   }
 
   private handleReset = () => {
-    try { sessionStorage.clear(); } catch {}
-    const SESSION_DBS = [
-      "intelli-claw-messages",
-      "intelli-claw-topics",
-      "intelli-claw-input-history",
-    ];
     try {
-      Promise.all(
-        SESSION_DBS.map(
-          (name) =>
-            new Promise<void>((res) => {
-              const req = indexedDB.deleteDatabase(name);
-              req.onsuccess = req.onerror = () => res();
-            }),
-        ),
-      ).then(() => window.location.reload());
-    } catch {
-      window.location.reload();
-    }
+      sessionStorage.clear();
+      localStorage.clear();
+    } catch {}
+    window.location.reload();
   };
 
   render() {
@@ -78,14 +90,128 @@ class AppErrorBoundary extends Component<
   }
 }
 
+function toChannelMsg(m: ManagedHistoryMsg): ChannelMsg {
+  return {
+    id: m.id,
+    from: m.from,
+    text: m.text,
+    ts: m.ts,
+    sessionId: m.sessionId,
+  };
+}
+
+function ElectronShell() {
+  const bridge = getElectronBridge()!;
+  const [sessions, setSessions] = useState<ManagedSessionInfo[]>([]);
+  const [activePort, setActivePort] = useState<number | null>(null);
+  const [seedMessages, setSeedMessages] = useState<ChannelMsg[]>([]);
+  const [bootError, setBootError] = useState<string | null>(null);
+  const [pendingSpawn, setPendingSpawn] = useState(false);
+
+  useEffect(() => {
+    bridge.session.list().then(setSessions).catch(() => {});
+    return bridge.session.onChanged(setSessions);
+  }, [bridge]);
+
+  // Auto-spawn a default session on first launch if the pool is empty.
+  useEffect(() => {
+    if (sessions.length > 0 || pendingSpawn) return;
+    setPendingSpawn(true);
+    bridge.session
+      .spawn({ cwd: DEFAULT_PROJECT_CWD })
+      .then((info) => {
+        setActivePort(info.port);
+        setSeedMessages([]);
+      })
+      .catch((err) =>
+        setBootError(err instanceof Error ? err.message : String(err)),
+      )
+      .finally(() => setPendingSpawn(false));
+  }, [bridge, sessions.length, pendingSpawn]);
+
+  useEffect(() => {
+    if (activePort !== null) return;
+    if (sessions.length > 0) setActivePort(sessions[0].port);
+  }, [activePort, sessions]);
+
+  const handleResume = useCallback(
+    async (uuid: string) => {
+      setPendingSpawn(true);
+      try {
+        const [info, history] = await Promise.all([
+          bridge.session.spawn({ uuid, cwd: DEFAULT_PROJECT_CWD }),
+          bridge.session
+            .history({ uuid, cwd: DEFAULT_PROJECT_CWD })
+            .catch((err) => {
+              console.warn("[session] history fetch failed:", err);
+              return [] as ManagedHistoryMsg[];
+            }),
+        ]);
+        setSeedMessages(history.map(toChannelMsg));
+        setActivePort(info.port);
+      } catch (err) {
+        setBootError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setPendingSpawn(false);
+      }
+    },
+    [bridge],
+  );
+
+  const channelUrl = useMemo(
+    () => (activePort ? `http://127.0.0.1:${activePort}` : null),
+    [activePort],
+  );
+
+  if (bootError) {
+    return (
+      <div className="flex h-dvh items-center justify-center bg-background p-8 text-sm text-rose-400">
+        세션 기동 실패: {bootError}
+      </div>
+    );
+  }
+
+  if (!channelUrl) {
+    return (
+      <div className="flex h-dvh items-center justify-center bg-background text-sm text-muted-foreground">
+        Claude Code 세션 기동 중…
+      </div>
+    );
+  }
+
+  return (
+    <ChannelProvider
+      key={channelUrl}
+      url={channelUrl}
+      initialMessages={seedMessages.length > 0 ? seedMessages : undefined}
+    >
+      <TooltipProvider>
+        <ChannelChatView
+          managedSessions={sessions}
+          activePort={activePort}
+          onResume={handleResume}
+          spawning={pendingSpawn}
+        />
+      </TooltipProvider>
+    </ChannelProvider>
+  );
+}
+
+function BrowserShell() {
+  const { url, token } = resolveBrowserChannelConfig();
+  return (
+    <ChannelProvider url={url} token={token}>
+      <TooltipProvider>
+        <ChannelChatView />
+      </TooltipProvider>
+    </ChannelProvider>
+  );
+}
+
 export function App() {
   return (
     <AppErrorBoundary>
-      <GatewayProvider>
-        <TooltipProvider>
-          <AppContent />
-        </TooltipProvider>
-      </GatewayProvider>
+      {isElectron() ? <ElectronShell /> : <BrowserShell />}
     </AppErrorBoundary>
   );
 }

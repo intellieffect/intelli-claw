@@ -1,30 +1,50 @@
+/**
+ * Preload script.
+ *
+ * Exposes the Electron-only Session orchestration surface to the renderer.
+ * In the browser/web context this object is absent, so the renderer falls
+ * back to the manual `?channel=<port>` workflow.
+ */
+
 import { contextBridge, ipcRenderer } from "electron";
 
-// Parse window ID from additionalArguments (--window-id=N)
-const windowIdArg = process.argv.find((a) => a.startsWith("--window-id="));
-const windowId = windowIdArg ? parseInt(windowIdArg.split("=")[1], 10) : 0;
+export interface SessionInfo {
+  port: number;
+  uuid: string | null;
+  cwd: string;
+  pid: number;
+  startedAt: number;
+}
+
+export interface SessionHistoryMsg {
+  id: string;
+  from: "user" | "assistant";
+  text: string;
+  ts: number;
+  sessionId: string;
+}
 
 const electronAPI = {
-  windowId,
-  getVersion: () => ipcRenderer.invoke("app:version") as Promise<string>,
-  /** Notify main process of current active session key (#170) */
-  updateSessionKey: (sessionKey: string) => ipcRenderer.send("session:update", sessionKey),
-  platform: {
-    mediaInfo: (filePath: string) => ipcRenderer.invoke("media:info", filePath),
-    mediaServe: (filePath: string) => ipcRenderer.invoke("media:serve", filePath),
-    mediaRange: (filePath: string, start: number, end: number) =>
-      ipcRenderer.invoke("media:range", filePath, start, end),
-    mediaUpload: (data: string, mimeType: string, fileName?: string) =>
-      ipcRenderer.invoke("media:upload", data, mimeType, fileName) as Promise<{ path: string }>,
-    downloadFile: (input: { url?: string; dataUrl?: string; fileName: string; mimeType?: string }) =>
-      ipcRenderer.invoke("media:download", input) as Promise<{ saved: boolean; canceled?: boolean; path?: string; error?: string }>,
-    showcaseList: () => ipcRenderer.invoke("showcase:list"),
-    showcaseServe: (relPath: string) => ipcRenderer.invoke("showcase:serve", relPath),
-  },
-  node: {
-    status: () => ipcRenderer.invoke("node:status") as Promise<string>,
-    enable: (url: string, token: string) => ipcRenderer.invoke("node:enable", url, token) as Promise<string>,
-    disable: () => ipcRenderer.invoke("node:disable") as Promise<string>,
+  platform: process.platform,
+  electronVersion: process.versions.electron ?? "",
+  session: {
+    spawn: (opts: { uuid?: string; cwd: string }): Promise<SessionInfo> =>
+      ipcRenderer.invoke("session:spawn", opts) as Promise<SessionInfo>,
+    list: (): Promise<SessionInfo[]> =>
+      ipcRenderer.invoke("session:list") as Promise<SessionInfo[]>,
+    stop: (port: number): Promise<void> =>
+      ipcRenderer.invoke("session:stop", port) as Promise<void>,
+    history: (opts: {
+      uuid: string;
+      cwd: string;
+      limit?: number;
+    }): Promise<SessionHistoryMsg[]> =>
+      ipcRenderer.invoke("session:history", opts) as Promise<SessionHistoryMsg[]>,
+    onChanged: (cb: (snapshot: SessionInfo[]) => void): (() => void) => {
+      const listener = (_event: unknown, snap: SessionInfo[]): void => cb(snap);
+      ipcRenderer.on("session:changed", listener);
+      return () => ipcRenderer.removeListener("session:changed", listener);
+    },
   },
 };
 

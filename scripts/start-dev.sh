@@ -1,24 +1,32 @@
 #!/bin/bash
-# intelli-claw Dev Server — Vite (port 4000) + API server (port 4001)
-# External access via Tailscale Serve: :4000→:4000, :4001→:4001
+# intelli-claw Dev Server — Vite only (port 4000)
+#
+# The Claude Code channel plugin (plugins/intelli-claw-channel) is expected to
+# be running on http://127.0.0.1:8790 (default). Start it separately in another
+# terminal:
+#
+#   # one-time: register this repo as a local marketplace
+#   claude plugin marketplace add "$PWD"
+#   claude plugin install intelli-claw-channel@intelli-claw
+#
+#   # each session:
+#   claude --dangerously-load-development-channels plugin:intelli-claw-channel@intelli-claw
+#
+# For purely local development without Claude Code, you can run the plugin's
+# HTTP server directly:
+#
+#   cd plugins/intelli-claw-channel && bun server.ts
+#
+# The plugin prints its URL to stderr on startup.
+
+set -e
 cd "$(dirname "$0")/.."
 
-export API_PORT=4001
-
-# Kill any existing dev servers
-pkill -f "vite.*intelli-claw" 2>/dev/null
-pkill -f "tsx.*api-server" 2>/dev/null
+# Kill any existing Vite dev server for this project.
+pkill -f "vite.*intelli-claw" 2>/dev/null || true
 sleep 1
 
-# Start API server in background
-nohup pnpm dev:server \
-  > /tmp/intelli-claw-api.log 2>&1 &
-echo "API server starting on :$API_PORT (log: /tmp/intelli-claw-api.log)"
-
-# Start Vite dev server
-nohup pnpm --filter @intelli-claw/web dev --port 4000 --strictPort \
-  > /tmp/intelli-claw-dev.log 2>&1 &
-echo "Dev server starting on :4000 (log: /tmp/intelli-claw-dev.log)"
-
-sleep 3
-tail -3 /tmp/intelli-claw-dev.log
+# Start Vite dev server in the foreground so Ctrl-C cleans up.
+echo "Dev server starting on http://localhost:4000"
+echo "  (expects intelli-claw-channel at \$VITE_CHANNEL_URL — default http://127.0.0.1:8790)"
+exec pnpm --filter @intelli-claw/web dev --port 4000 --strictPort

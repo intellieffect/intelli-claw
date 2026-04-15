@@ -1,143 +1,96 @@
-import "../global.css";
-import "react-native-get-random-values"; // polyfill crypto.getRandomValues for uuid
+import "react-native-get-random-values";
 import "react-native-gesture-handler";
-import { useState, useCallback, useEffect } from "react";
+
+import { useCallback, useEffect, useState } from "react";
+import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { Slot } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import Constants from "expo-constants";
+import { ChannelProvider, type ChannelConfig } from "@intelli-claw/shared";
+
+import { channelStorage } from "../src/storage";
 import {
-  GatewayProvider,
-  initCryptoAdapter,
-  GATEWAY_CONFIG_STORAGE_KEY,
-  DEFAULT_GATEWAY_URL,
-  type GatewayConfig,
-} from "@intelli-claw/shared";
-import { ExpoCryptoAdapter } from "../src/adapters/crypto";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { mmkvStorage, loadStorageCache } from "../src/adapters/storage";
-import { SessionContext } from "../src/stores/sessionStore";
-import { ChatStateProvider } from "../src/stores/ChatStateProvider";
-import { useDeepLink } from "../src/hooks/useDeepLink";
+  clearChannelConfig,
+  loadChannelConfig,
+  saveChannelConfig,
+  type SecureChannelConfig,
+} from "../src/secure-config";
+import { PairingScreen } from "../src/pairing-screen";
 
-// Initialize crypto adapter (must be called once before gateway connects)
-initCryptoAdapter(new ExpoCryptoAdapter());
-
-// --- Config persistence ---
-
-function loadGatewayConfig(): GatewayConfig {
-  const extra = Constants.expoConfig?.extra;
-  const envUrl = (extra?.gatewayUrl as string) || "";
-  const envToken = (extra?.gatewayToken as string) || "";
-
-  try {
-    const saved = mmkvStorage.getString(GATEWAY_CONFIG_STORAGE_KEY);
-    if (saved) {
-      const parsed = JSON.parse(saved) as Partial<GatewayConfig>;
-      // Trust storage if: (a) URL is non-default (user explicitly configured), or (b) token is set.
-      // Stale entries with default URL + empty token should fall through to env/extra vars.
-      if (parsed.url && (parsed.token || parsed.url !== DEFAULT_GATEWAY_URL)) {
-        // If env var provides a specific (non-default) URL that differs from storage,
-        // the deployment target changed — env var wins and stale storage is cleared.
-        if (envUrl && envUrl !== DEFAULT_GATEWAY_URL && envUrl !== parsed.url) {
-          mmkvStorage.delete(GATEWAY_CONFIG_STORAGE_KEY);
-          return { url: envUrl, token: envToken } as GatewayConfig;
-        }
-        return { url: parsed.url, token: parsed.token ?? "" } as GatewayConfig;
-      }
-    }
-  } catch {
-    /* ignore */
-  }
-  return {
-    url: envUrl || DEFAULT_GATEWAY_URL,
-    token: envToken,
-  };
-}
-
-function saveConfig(url: string, token: string): void {
-  const data = JSON.stringify({ url, token });
-  mmkvStorage.set(GATEWAY_CONFIG_STORAGE_KEY, data);
-  // Verify in-memory cache persistence
-  const stored = mmkvStorage.getString(GATEWAY_CONFIG_STORAGE_KEY);
-  if (stored !== data) {
-    console.warn("[GW] Config save verification failed — stored value does not match");
-  }
-}
-
-// --- Root Layout ---
-
-// Session picker callback ref — set by ChatScreen, called by ChatHeader
-let _openSessionPicker: (() => void) | null = null;
-export function registerSessionPicker(fn: () => void) { _openSessionPicker = fn; }
-export function unregisterSessionPicker() { _openSessionPicker = null; }
-
-/** Inner component that uses hooks requiring GatewayProvider context */
-function DeepLinkHandler({ children }: { children: React.ReactNode }) {
-  useDeepLink();
-  return <>{children}</>;
-}
-
-const ACTIVE_SESSION_KEY = "intelli-claw:activeSessionKey";
+export const ConfigContext = {
+  reset: async () => {},
+};
 
 export default function RootLayout() {
-  const [cacheReady, setCacheReady] = useState(false);
-  const [activeSessionKey, setActiveSessionKeyRaw] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [config, setConfig] = useState<SecureChannelConfig | null>(null);
 
-  // Pre-load AsyncStorage → memCache before reading gateway config
   useEffect(() => {
-    loadStorageCache([GATEWAY_CONFIG_STORAGE_KEY]).then(() => setCacheReady(true));
+    void loadChannelConfig().then((saved) => {
+      setConfig(saved);
+      setLoading(false);
+    });
   }, []);
 
-  const config = cacheReady ? loadGatewayConfig() : null;
-
-  // Restore persisted session on mount
-  useEffect(() => {
-    AsyncStorage.getItem(ACTIVE_SESSION_KEY).then((v) => {
-      if (v) setActiveSessionKeyRaw(v);
-    }).catch(() => {});
+  const handlePaired = useCallback(async (next: SecureChannelConfig) => {
+    await saveChannelConfig(next);
+    setConfig(next);
   }, []);
 
-  const setActiveSessionKey = useCallback((key: string | null) => {
-    setActiveSessionKeyRaw(key);
-    if (key) AsyncStorage.setItem(ACTIVE_SESSION_KEY, key).catch(() => {});
-    else AsyncStorage.removeItem(ACTIVE_SESSION_KEY).catch(() => {});
+  const handleConfigChange = useCallback((next: ChannelConfig) => {
+    void saveChannelConfig({ url: next.url, token: next.token ?? "" });
   }, []);
 
-  const openSessionPicker = useCallback(() => {
-    _openSessionPicker?.();
+  const handleReset = useCallback(async () => {
+    await clearChannelConfig();
+    setConfig(null);
   }, []);
 
-  // Wait for storage cache before rendering GatewayProvider
+  ConfigContext.reset = handleReset;
+
+  if (loading) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator />
+      </View>
+    );
+  }
+
   if (!config) {
     return (
-      <GestureHandlerRootView className="flex-1">
-        <SafeAreaProvider>
-          <StatusBar style="auto" />
-        </SafeAreaProvider>
-      </GestureHandlerRootView>
+      <SafeAreaProvider>
+        <GestureHandlerRootView style={styles.flex}>
+          <StatusBar style="light" />
+          <PairingScreen onPaired={handlePaired} />
+        </GestureHandlerRootView>
+      </SafeAreaProvider>
     );
   }
 
   return (
-    <GestureHandlerRootView className="flex-1">
-      <SafeAreaProvider>
-        <SessionContext.Provider value={{ activeSessionKey, setActiveSessionKey, openSessionPicker }}>
-          <GatewayProvider
-            url={config.url}
-            token={config.token}
-            onConfigChange={saveConfig}
-          >
-            <DeepLinkHandler>
-              <ChatStateProvider>
-                <StatusBar style="auto" />
-                <Slot />
-              </ChatStateProvider>
-            </DeepLinkHandler>
-          </GatewayProvider>
-        </SessionContext.Provider>
-      </SafeAreaProvider>
-    </GestureHandlerRootView>
+    <SafeAreaProvider>
+      <GestureHandlerRootView style={styles.flex}>
+        <StatusBar style="light" />
+        <ChannelProvider
+          url={config.url}
+          token={config.token || undefined}
+          storage={channelStorage}
+          onConfigChange={handleConfigChange}
+        >
+          <Slot />
+        </ChannelProvider>
+      </GestureHandlerRootView>
+    </SafeAreaProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  flex: { flex: 1 },
+  center: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#09090b",
+  },
+});
