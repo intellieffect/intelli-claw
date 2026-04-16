@@ -236,12 +236,42 @@ export function ChannelProvider({
 
     void c
       .fetchInfo()
-      .then((info) => {
+      .then(async (info) => {
         // Only adopt the plugin-reported active session if we have no local
         // preference yet. Saved sessions win to avoid surprising the user on
         // reload.
         if (!storageRef.current?.getItem(CHANNEL_SESSION_STORAGE_KEY)) {
           setActiveSessionIdState(info.activeSessionId);
+        }
+        // Load session history from JSONL (source of truth)
+        const activeUuid = info.activeSessionId;
+        if (activeUuid) {
+          try {
+            const history = await c.loadSessionHistory(activeUuid);
+            if (history.messages.length > 0) {
+              const restored: ChannelMsg[] = history.messages.map((m) => ({
+                id: m.id,
+                from: m.from,
+                text: m.text,
+                ts: m.ts,
+                sessionId: m.sessionId,
+              }));
+              setMessages((prev) => {
+                // Merge: JSONL history is source of truth, append any newer WS messages
+                const historyIds = new Set(restored.map((m) => m.id));
+                const newer = prev.filter(
+                  (m) =>
+                    !historyIds.has(m.id) &&
+                    m.ts > (restored[restored.length - 1]?.ts ?? 0),
+                );
+                const merged = [...restored, ...newer];
+                persistMessages(storageRef.current, merged);
+                return merged;
+              });
+            }
+          } catch {
+            // History API unavailable — fall back to localStorage (already loaded)
+          }
         }
       })
       .catch(() => {});

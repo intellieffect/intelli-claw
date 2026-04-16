@@ -97,6 +97,89 @@ export interface SessionSummary {
   path: string;
 }
 
+// HIDDEN_PREFIXES — markers injected by hooks / system, not real user input.
+export const HIDDEN_PREFIXES = [
+  "<system-reminder>",
+  "<command-name>",
+  "<command-args>",
+  "<local-command-stdout>",
+  "<command-stdout>",
+  "<bash-stdout>",
+  "<bash-stderr>",
+  "<user-prompt-submit-hook>",
+];
+
+export function looksLikeHookInjection(text: string): boolean {
+  for (const prefix of HIDDEN_PREFIXES) {
+    if (text.startsWith(prefix)) return true;
+  }
+  return false;
+}
+
+export function extractText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  const parts: string[] = [];
+  for (const p of content) {
+    if (!p || typeof p !== "object") continue;
+    const obj = p as { type?: string; text?: string };
+    if (obj.type === "text" && typeof obj.text === "string") parts.push(obj.text);
+  }
+  return parts.join("\n");
+}
+
+export interface HistoryMsg {
+  id: string;
+  from: "user" | "assistant";
+  text: string;
+  ts: number;
+  sessionId: string;
+}
+
+export function parseSessionHistory(
+  jsonlPath: string,
+  limit: number = 400,
+): HistoryMsg[] {
+  let raw: string;
+  try {
+    raw = readFileSync(jsonlPath, "utf8");
+  } catch {
+    return [];
+  }
+  const msgs: HistoryMsg[] = [];
+  const lines = raw.split("\n");
+  for (const line of lines) {
+    if (!line) continue;
+    let entry: Record<string, unknown>;
+    try {
+      entry = JSON.parse(line) as Record<string, unknown>;
+    } catch {
+      continue;
+    }
+    const type = entry.type as string | undefined;
+    const from: "user" | "assistant" | null =
+      type === "user" ? "user" : type === "assistant" ? "assistant" : null;
+    if (!from) continue;
+
+    if (from === "user") {
+      const userType = entry.userType as string | undefined;
+      if (userType && userType !== "external") continue;
+    }
+
+    const message = entry.message as Record<string, unknown> | undefined;
+    const text = extractText(message?.content ?? "").trim();
+    if (!text) continue;
+    if (looksLikeHookInjection(text)) continue;
+
+    const uuid = typeof entry.uuid === "string" ? entry.uuid : `hist-${msgs.length}`;
+    const timestamp = entry.timestamp as string | undefined;
+    const ts = timestamp ? Date.parse(timestamp) || Date.now() : Date.now();
+
+    msgs.push({ id: uuid, from, text, ts, sessionId: "main" });
+  }
+  return msgs.slice(-limit);
+}
+
 /**
  * Extract a human-readable preview from the first external user message in a
  * transcript. Tolerant to the variety of shapes Claude Code emits (string
@@ -680,6 +763,37 @@ export async function startHttpServer(
           {
             headers: { ...baseHeaders, "content-type": "application/json" },
           },
+        );
+      }
+
+      // GET /sessions/:uuid/history
+      const historyMatch = url.pathname.match(/^\/sessions\/([^/]+)\/history$/);
+      if (historyMatch && req.method === "GET") {
+        const uuid = historyMatch[1];
+        const queryCwd = url.searchParams.get("cwd") || "";
+        const envCwd = process.env.INTELLI_CLAW_PROJECT_CWD ?? "";
+        const cwd = queryCwd || envCwd || process.cwd();
+        const limit = parseInt(url.searchParams.get("limit") ?? "400", 10);
+
+        const jsonlPath = join(claudeProjectDir(cwd), `${uuid}.jsonl`);
+        try {
+          statSync(jsonlPath);
+        } catch {
+          return new Response(
+            JSON.stringify({ error: "session not found" }),
+            { status: 404, headers: { ...baseHeaders, "content-type": "application/json" } },
+          );
+        }
+
+        const messages = parseSessionHistory(jsonlPath, limit);
+        return new Response(
+          JSON.stringify({
+            uuid,
+            cwd,
+            messages,
+            total: messages.length,
+          }),
+          { headers: { ...baseHeaders, "content-type": "application/json" } },
         );
       }
 
