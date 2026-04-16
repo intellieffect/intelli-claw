@@ -85,6 +85,7 @@ export interface SessionHistoryResponse {
   uuid: string;
   cwd: string;
   messages: SessionHistoryMsg[];
+  /** Total valid messages in the JSONL file (before limit is applied). */
   total: number;
 }
 

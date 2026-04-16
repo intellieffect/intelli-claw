@@ -225,8 +225,10 @@ export function ChannelProvider({
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
     const c = new ChannelClient(configRef.current);
     const unsubState = c.onStateChange((s, err) => {
+      if (cancelled) return;
       setState(s);
       setError(err ?? null);
     });
@@ -237,6 +239,7 @@ export function ChannelProvider({
     void c
       .fetchInfo()
       .then(async (info) => {
+        if (cancelled) return;
         // Only adopt the plugin-reported active session if we have no local
         // preference yet. Saved sessions win to avoid surprising the user on
         // reload.
@@ -248,6 +251,7 @@ export function ChannelProvider({
         if (activeUuid) {
           try {
             const history = await c.loadSessionHistory(activeUuid);
+            if (cancelled) return;
             if (history.messages.length > 0) {
               const restored: ChannelMsg[] = history.messages.map((m) => ({
                 id: m.id,
@@ -277,6 +281,7 @@ export function ChannelProvider({
       .catch(() => {});
 
     return () => {
+      cancelled = true;
       unsubState();
       unsubMsg();
       c.disconnect();

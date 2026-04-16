@@ -139,7 +139,7 @@ export class ChannelClient {
     cwd?: string,
     limit?: number,
   ): Promise<SessionHistoryResponse> {
-    const target = new URL(`/sessions/${uuid}/history`, this.config.url);
+    const target = new URL(`/sessions/${encodeURIComponent(uuid)}/history`, this.config.url);
     if (cwd) target.searchParams.set("cwd", cwd);
     if (limit) target.searchParams.set("limit", String(limit));
     const res = await fetch(target, { headers: this.authHeaders() });

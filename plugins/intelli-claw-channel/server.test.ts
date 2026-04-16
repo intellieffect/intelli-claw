@@ -490,12 +490,20 @@ describe("parseSessionHistory", () => {
       { type: "user", userType: "external", message: { content: "hello" }, uuid: "u1", timestamp: "2025-01-01T00:00:00Z" },
       { type: "assistant", message: { content: "hi there" }, uuid: "a1", timestamp: "2025-01-01T00:00:01Z" },
     ]);
-    const msgs = parseSessionHistory(path);
-    expect(msgs).toHaveLength(2);
-    expect(msgs[0].from).toBe("user");
-    expect(msgs[0].text).toBe("hello");
-    expect(msgs[1].from).toBe("assistant");
-    expect(msgs[1].text).toBe("hi there");
+    const result = parseSessionHistory(path);
+    expect(result.messages).toHaveLength(2);
+    expect(result.messages[0].from).toBe("user");
+    expect(result.messages[0].text).toBe("hello");
+    expect(result.messages[1].from).toBe("assistant");
+    expect(result.messages[1].text).toBe("hi there");
+  });
+
+  it("uses provided sessionId", () => {
+    const path = writeJsonl("test.jsonl", [
+      { type: "user", userType: "external", message: { content: "hello" }, uuid: "u1" },
+    ]);
+    const result = parseSessionHistory(path, "my-session");
+    expect(result.messages[0].sessionId).toBe("my-session");
   });
 
   it("filters non-external userType", () => {
@@ -503,9 +511,9 @@ describe("parseSessionHistory", () => {
       { type: "user", userType: "internal", message: { content: "system msg" }, uuid: "u1" },
       { type: "user", userType: "external", message: { content: "real msg" }, uuid: "u2" },
     ]);
-    const msgs = parseSessionHistory(path);
-    expect(msgs).toHaveLength(1);
-    expect(msgs[0].text).toBe("real msg");
+    const result = parseSessionHistory(path);
+    expect(result.messages).toHaveLength(1);
+    expect(result.messages[0].text).toBe("real msg");
   });
 
   it("filters hook injections", () => {
@@ -513,9 +521,9 @@ describe("parseSessionHistory", () => {
       { type: "user", userType: "external", message: { content: "<system-reminder>injected" }, uuid: "u1" },
       { type: "user", userType: "external", message: { content: "normal message" }, uuid: "u2" },
     ]);
-    const msgs = parseSessionHistory(path);
-    expect(msgs).toHaveLength(1);
-    expect(msgs[0].text).toBe("normal message");
+    const result = parseSessionHistory(path);
+    expect(result.messages).toHaveLength(1);
+    expect(result.messages[0].text).toBe("normal message");
   });
 
   it("respects limit parameter", () => {
@@ -527,9 +535,26 @@ describe("parseSessionHistory", () => {
       timestamp: `2025-01-01T00:00:${String(i).padStart(2, "0")}Z`,
     }));
     const path = writeJsonl("test.jsonl", entries);
-    const msgs = parseSessionHistory(path, 3);
-    expect(msgs).toHaveLength(3);
-    expect(msgs[0].text).toBe("msg 7"); // last 3
+    const result = parseSessionHistory(path, "main", 3);
+    expect(result.messages).toHaveLength(3);
+    expect(result.messages[0].text).toBe("msg 7"); // last 3
+    expect(result.totalBeforeLimit).toBe(10);
+  });
+
+  it("clamps invalid limit to default 400", () => {
+    const entries = Array.from({ length: 5 }, (_, i) => ({
+      type: "user",
+      userType: "external",
+      message: { content: `msg ${i}` },
+      uuid: `u${i}`,
+    }));
+    const path = writeJsonl("test.jsonl", entries);
+    const r1 = parseSessionHistory(path, "main", NaN);
+    expect(r1.messages).toHaveLength(5); // all fit within default 400
+    const r2 = parseSessionHistory(path, "main", -1);
+    expect(r2.messages).toHaveLength(5);
+    const r3 = parseSessionHistory(path, "main", 0);
+    expect(r3.messages).toHaveLength(5);
   });
 
   it("handles malformed JSONL lines gracefully", () => {
@@ -538,22 +563,23 @@ describe("parseSessionHistory", () => {
       path,
       '{"type":"user","userType":"external","message":{"content":"ok"},"uuid":"u1"}\nnot json\n{"type":"assistant","message":{"content":"reply"},"uuid":"a1"}',
     );
-    const msgs = parseSessionHistory(path);
-    expect(msgs).toHaveLength(2);
+    const result = parseSessionHistory(path);
+    expect(result.messages).toHaveLength(2);
   });
 
-  it("returns empty array for missing file", () => {
-    const msgs = parseSessionHistory("/nonexistent/path.jsonl");
-    expect(msgs).toHaveLength(0);
+  it("returns empty for missing file", () => {
+    const result = parseSessionHistory("/nonexistent/path.jsonl");
+    expect(result.messages).toHaveLength(0);
+    expect(result.totalBeforeLimit).toBe(0);
   });
 
   it("handles array content format", () => {
     const path = writeJsonl("test.jsonl", [
       { type: "assistant", message: { content: [{ type: "text", text: "part 1" }, { type: "text", text: "part 2" }] }, uuid: "a1" },
     ]);
-    const msgs = parseSessionHistory(path);
-    expect(msgs).toHaveLength(1);
-    expect(msgs[0].text).toBe("part 1\npart 2");
+    const result = parseSessionHistory(path);
+    expect(result.messages).toHaveLength(1);
+    expect(result.messages[0].text).toBe("part 1\npart 2");
   });
 });
 
@@ -572,8 +598,20 @@ describe("HTTP /sessions/:uuid/history", () => {
     server.stop(true);
   });
 
-  it("GET /sessions/:uuid/history returns 404 for missing session", async () => {
+  it("returns 404 for missing session", async () => {
     const res = await fetch(`${base}/sessions/nonexistent-uuid/history`);
     expect(res.status).toBe(404);
+  });
+
+  it("rejects uuid with path traversal", async () => {
+    const res = await fetch(`${base}/sessions/..%2f..%2fetc/history`);
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects uuid with null byte", async () => {
+    const res = await fetch(`${base}/sessions/abc%00def/history`);
+    // URL parser strips null bytes before they reach the handler;
+    // the resulting uuid won't match any file → 404.
+    expect([400, 404]).toContain(res.status);
   });
 });

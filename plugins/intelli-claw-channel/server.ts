@@ -128,6 +128,7 @@ export function extractText(content: unknown): string {
   return parts.join("\n");
 }
 
+/** Matches SessionHistoryMsg in @intelli-claw/shared protocol.ts */
 export interface HistoryMsg {
   id: string;
   from: "user" | "assistant";
@@ -136,15 +137,24 @@ export interface HistoryMsg {
   sessionId: string;
 }
 
+export interface ParseHistoryResult {
+  messages: HistoryMsg[];
+  /** Total number of valid messages before limit is applied. */
+  totalBeforeLimit: number;
+}
+
 export function parseSessionHistory(
   jsonlPath: string,
+  sessionId: string = "main",
   limit: number = 400,
-): HistoryMsg[] {
+): ParseHistoryResult {
+  const safeLimit =
+    Number.isFinite(limit) && limit > 0 ? Math.min(limit, 2000) : 400;
   let raw: string;
   try {
     raw = readFileSync(jsonlPath, "utf8");
   } catch {
-    return [];
+    return { messages: [], totalBeforeLimit: 0 };
   }
   const msgs: HistoryMsg[] = [];
   const lines = raw.split("\n");
@@ -175,9 +185,9 @@ export function parseSessionHistory(
     const timestamp = entry.timestamp as string | undefined;
     const ts = timestamp ? Date.parse(timestamp) || Date.now() : Date.now();
 
-    msgs.push({ id: uuid, from, text, ts, sessionId: "main" });
+    msgs.push({ id: uuid, from, text, ts, sessionId });
   }
-  return msgs.slice(-limit);
+  return { messages: msgs.slice(-safeLimit), totalBeforeLimit: msgs.length };
 }
 
 /**
@@ -770,28 +780,34 @@ export async function startHttpServer(
       const historyMatch = url.pathname.match(/^\/sessions\/([^/]+)\/history$/);
       if (historyMatch && req.method === "GET") {
         const uuid = historyMatch[1];
+        // Path-traversal guard (mirrors /files/ handler)
+        if (!uuid || uuid.includes("..") || uuid.includes("/") || uuid.includes("\0")) {
+          return new Response("bad request", { status: 400, headers: baseHeaders });
+        }
         const queryCwd = url.searchParams.get("cwd") || "";
         const envCwd = process.env.INTELLI_CLAW_PROJECT_CWD ?? "";
         const cwd = queryCwd || envCwd || process.cwd();
-        const limit = parseInt(url.searchParams.get("limit") ?? "400", 10);
+        const rawLimit = parseInt(url.searchParams.get("limit") ?? "400", 10);
+        const limit =
+          Number.isFinite(rawLimit) && rawLimit > 0
+            ? Math.min(rawLimit, 2000)
+            : 400;
 
         const jsonlPath = join(claudeProjectDir(cwd), `${uuid}.jsonl`);
-        try {
-          statSync(jsonlPath);
-        } catch {
+        const result = parseSessionHistory(jsonlPath, uuid, limit);
+        if (result.totalBeforeLimit === 0) {
           return new Response(
             JSON.stringify({ error: "session not found" }),
             { status: 404, headers: { ...baseHeaders, "content-type": "application/json" } },
           );
         }
 
-        const messages = parseSessionHistory(jsonlPath, limit);
         return new Response(
           JSON.stringify({
             uuid,
             cwd,
-            messages,
-            total: messages.length,
+            messages: result.messages,
+            total: result.totalBeforeLimit,
           }),
           { headers: { ...baseHeaders, "content-type": "application/json" } },
         );
