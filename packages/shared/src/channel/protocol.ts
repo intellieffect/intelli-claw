@@ -73,6 +73,22 @@ export interface SessionListResponse {
   sessions: ClaudeSessionSummary[];
 }
 
+export interface SessionHistoryMsg {
+  id: string;
+  from: "user" | "assistant";
+  text: string;
+  ts: number;
+  sessionId: string;
+}
+
+export interface SessionHistoryResponse {
+  uuid: string;
+  cwd: string;
+  messages: SessionHistoryMsg[];
+  /** Total valid messages in the JSONL file (before limit is applied). */
+  total: number;
+}
+
 export interface SendPayload {
   id: string;
   text: string;

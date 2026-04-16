@@ -12,6 +12,7 @@ import {
   type ChannelWire,
   type ConnectionState,
   type SendPayload,
+  type SessionHistoryResponse,
   type SessionListResponse,
   type UploadPayload,
 } from "./protocol";
@@ -131,6 +132,21 @@ export class ChannelClient {
     const res = await fetch(target, { headers: this.authHeaders() });
     if (!res.ok) throw new Error(`channel /sessions ${res.status}`);
     return (await res.json()) as SessionListResponse;
+  }
+
+  async loadSessionHistory(
+    uuid: string,
+    cwd?: string,
+    limit?: number,
+  ): Promise<SessionHistoryResponse> {
+    const target = new URL(`/sessions/${encodeURIComponent(uuid)}/history`, this.config.url);
+    if (cwd) target.searchParams.set("cwd", cwd);
+    if (limit) target.searchParams.set("limit", String(limit));
+    const res = await fetch(target, { headers: this.authHeaders() });
+    if (!res.ok) {
+      throw new Error(`channel /sessions/${uuid}/history ${res.status}`);
+    }
+    return (await res.json()) as SessionHistoryResponse;
   }
 
   async send(payload: SendPayload): Promise<void> {
