@@ -19,6 +19,14 @@ export default defineConfig({
     plugins: [externalizeDepsPlugin()],
     build: {
       outDir: "out/preload",
+      // Electron's sandboxed preload runner only accepts CommonJS. The
+      // workspace has `"type": "module"` which otherwise emits .mjs.
+      rollupOptions: {
+        output: {
+          format: "cjs",
+          entryFileNames: "[name].js",
+        },
+      },
     },
   },
   renderer: {

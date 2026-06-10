@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
+    "prepackage": "node ./scripts/link-native.mjs",
     "package": "electron-vite build && electron-builder --mac"
   },
   "dependencies": {
@@ -35,7 +36,11 @@
     },
     "files": [
       "out/**/*",
-      "!node_modules"
+      "!node_modules",
+      "node_modules/node-pty/**/*"
+    ],
+    "asarUnpack": [
+      "node_modules/node-pty/**/*"
     ],
     "mac": {
       "target": [

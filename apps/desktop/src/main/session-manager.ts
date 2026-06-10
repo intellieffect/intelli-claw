@@ -55,6 +55,7 @@ export interface SessionInfo {
 interface PoolEntry extends SessionInfo {
   pty: IPty;
   output: string;
+  dismissedTrust?: boolean;
 }
 
 export class SessionManager {
@@ -76,7 +77,14 @@ export class SessionManager {
     const port = this.uuidIndex.get(uuid);
     if (!port) return null;
     const entry = this.pool.get(port);
-    return entry ? entry : null;
+    if (!entry) return null;
+    return {
+      port: entry.port,
+      uuid: entry.uuid,
+      cwd: entry.cwd,
+      pid: entry.pid,
+      startedAt: entry.startedAt,
+    };
   }
 
   onChange(cb: (snapshot: SessionInfo[]) => void): () => void {
@@ -128,14 +136,31 @@ export class SessionManager {
       // Force a UTF-8 locale; bare Electron envs sometimes lack it and
       // claude's TUI bails out trying to render.
       LANG: process.env.LANG ?? "en_US.UTF-8",
+      LC_ALL: process.env.LC_ALL ?? "en_US.UTF-8",
+      TERM: "xterm-256color",
+      COLUMNS: "120",
+      LINES: "30",
+      SHELL: process.env.SHELL ?? "/bin/zsh",
+      HOME: process.env.HOME ?? homedir(),
     };
 
+    // Wrap the invocation in a login shell. Spawning the claude binary
+    // directly from an Electron main process produces a subtly different
+    // environment than the user's Terminal (zprofile/zshrc never runs),
+    // which was enough to put claude's TUI into a quit-confirm prompt
+    // instead of the normal ready state. A login shell fixes that without
+    // us having to enumerate every missing env var.
+    const shell = env.SHELL ?? "/bin/zsh";
+    const quote = (s: string): string => `'${s.replace(/'/g, `'\\''`)}'`;
+    const inner = [CLAUDE_BIN, ...args].map(quote).join(" ");
+    const shellArgs = ["-l", "-c", inner];
+
     console.log(
-      `[session-manager] spawning ${CLAUDE_BIN} ${args.join(" ")} ` +
+      `[session-manager] spawning ${shell} -l -c "${CLAUDE_BIN} ${args.join(" ")}" ` +
         `port=${port} cwd=${cwd} uuid=${wantUuid ?? "(new)"}`,
     );
 
-    const pty = ptySpawn(CLAUDE_BIN, args, {
+    const pty = ptySpawn(shell, shellArgs, {
       name: "xterm-256color",
       cwd,
       env: env as Record<string, string>,
@@ -163,6 +188,18 @@ export class SessionManager {
       if (clean.length > 0 && clean.length < 200) {
         console.log(`[session port=${port}] ${clean}`);
       }
+      // Claude Code's first-run workspace trust dialog blocks the MCP spawn
+      // (and with it our channel plugin). If we spot its "trust" hint and we
+      // haven't sent the initial ack yet, press Enter once to accept the
+      // default. This is hidden from the user anyway — the PTY is not shown.
+      if (!entry.dismissedTrust && /trust|continue|press/i.test(clean)) {
+        entry.dismissedTrust = true;
+        try {
+          pty.write("\r");
+        } catch {
+          /* ignore */
+        }
+      }
     });
     pty.onExit(({ exitCode }) => {
       console.log(
@@ -176,7 +213,13 @@ export class SessionManager {
     this.pool.set(port, entry);
     if (wantUuid) this.uuidIndex.set(wantUuid, port);
     this.notify();
-    return entry;
+    return {
+      port: entry.port,
+      uuid: entry.uuid,
+      cwd: entry.cwd,
+      pid: entry.pid,
+      startedAt: entry.startedAt,
+    };
   }
 
   /** Stop a session by port. Sends SIGTERM via PTY; falls back to kill(). */
